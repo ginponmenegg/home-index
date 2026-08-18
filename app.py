@@ -31,28 +31,80 @@ def _resolver():
 
 app = Flask(__name__)
 
-# ブランド：HOME INDEX（マーク：案C スコアリング×家 / C4 グリーン×アンバー）
-LOGO = ('<svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true" style="flex:0 0 auto">'
-        '<circle cx="32" cy="32" r="22" fill="none" stroke="#e5e7eb" stroke-width="5"/>'
-        '<circle cx="32" cy="32" r="22" fill="none" stroke="#16a34a" stroke-width="5" stroke-linecap="round" stroke-dasharray="104 139" transform="rotate(-90 32 32)"/>'
-        '<circle cx="32" cy="10" r="3" fill="#f59e0b"/>'
-        '<path d="M24 35 L32 28 L40 35" fill="none" stroke="#16a34a" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>'
-        '<path d="M26.5 34 V41 H37.5 V34" fill="none" stroke="#16a34a" stroke-width="2.8" stroke-linejoin="round"/>'
-        '</svg>')
-BRAND_CSS = ('.brand{margin-bottom:10px}'
-             '.brand .cc-top{font-size:16px;font-weight:800;color:#f59e0b;margin-bottom:4px;letter-spacing:.5px}'
-             '.brand .nmrow{display:flex;align-items:center;gap:10px}'
-             '.brand .logo-img{height:64px;width:auto;max-width:100%;display:block}'
-             '.brand .chip{font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;'
-             'border:1px solid #86efac;border-radius:999px;padding:2px 8px}')
+# ブランド：HOME INDEX（シンボル＝家×棒グラフ / モノクロ #111111・#E5E5E5）
+# 欧文は Jost（Futura系ジオメトリックサンセリフ）。未読込環境では端末フォントへ退避。
+FONT_LINK = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
+             '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+             '<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;700'
+             '&display=swap" rel="stylesheet">')
 
 
-def brand_header(chip="購入診断"):
-    # ロゴ画像にサービス名の文字が含まれるため、テキストは重ねない
-    # ※ static/logo.png は旧名（おうちの通信簿）のワードマークのまま。要差し替え
-    return (f'<div class="brand"><div class="cc-top">かっていい？</div>'
-            f'<div class="nmrow"><img src="/static/logo.png" alt="HOME INDEX" class="logo-img"/>'
-            f'<span class="chip">{chip}</span></div></div>')
+def symbol(uid, cls="hi-sym"):
+    """HOME INDEX シンボル（単色・currentColor）。uid は clipPath の重複回避用。"""
+    return (f'<svg class="{cls}" viewBox="0 0 120 120" aria-hidden="true">'
+            f'<defs><clipPath id="c{uid}">'
+            '<path d="M60 5 108 48 108 112 12 112 12 48Z"/></clipPath></defs>'
+            f'<g clip-path="url(#c{uid})">'
+            '<g stroke="currentColor" stroke-width="2.2" fill="none">'
+            '<path d="M28 0V112M44 0V112M60 0V112M76 0V112M92 0V112"/>'
+            '<path d="M0 16H120M0 32H120M0 48H120M0 64H120M0 80H120M0 96H120"/></g>'
+            '<g fill="currentColor"><rect x="12" y="104" width="96" height="8"/>'
+            '<rect x="18" y="92" width="9" height="12"/>'
+            '<rect x="33" y="84" width="9" height="20"/>'
+            '<rect x="48" y="74" width="9" height="30"/>'
+            '<rect x="63" y="67" width="9" height="37"/>'
+            '<rect x="78" y="88" width="9" height="16"/>'
+            '<rect x="93" y="80" width="9" height="24"/></g></g>'
+            '<path d="M60 5 108 48 108 112 12 112 12 48Z" fill="none"'
+            ' stroke="currentColor" stroke-width="7" stroke-linejoin="miter"/></svg>')
+
+
+def symbol_small(cls="hi-sym"):
+    """小サイズ用の簡略シンボル。格子を省き、28px以下でも潰れない。"""
+    return (f'<svg class="{cls}" viewBox="0 0 120 120" aria-hidden="true">'
+            '<path d="M60 5 108 48 108 112 12 112 12 48Z" fill="none"'
+            ' stroke="currentColor" stroke-width="9" stroke-linejoin="miter"/>'
+            '<g fill="currentColor"><rect x="12" y="100" width="96" height="12"/>'
+            '<rect x="30" y="84" width="12" height="16"/>'
+            '<rect x="48" y="72" width="12" height="28"/>'
+            '<rect x="66" y="62" width="12" height="38"/>'
+            '<rect x="84" y="78" width="12" height="22"/></g></svg>')
+
+
+WORDMARK = '<span class="hi-wm"><b>HOME</b> <i>INDEX</i></span>'
+
+BRAND_CSS = (
+    # --- ワードマーク ---
+    '.hi-wm{font-family:Jost,"Century Gothic",Futura,"Avenir Next",'
+    '"Helvetica Neue",Arial,sans-serif;letter-spacing:.16em;white-space:nowrap;'
+    'line-height:1;font-size:16px;color:#111}'
+    '.hi-wm b{font-weight:700}.hi-wm i{font-style:normal;font-weight:300}'
+    # --- 固定ヘッダーバー ---
+    '.hi-bar{position:sticky;top:0;z-index:50;background:#fff;'
+    'border-bottom:1px solid #e5e5e5}'
+    '.hi-bar-in{max-width:760px;margin:0 auto;padding:10px 16px;display:flex;'
+    'align-items:center;justify-content:space-between;gap:12px}'
+    '.hi-lock{display:flex;align-items:center;gap:9px;text-decoration:none;color:#111}'
+    '.hi-sym{width:28px;height:28px;flex:0 0 auto}'
+    '.chip{font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#111;'
+    'background:#e5e5e5;border-radius:999px;padding:3px 9px;white-space:nowrap}'
+    # --- 結果画像用の小ロックアップ ---
+    '.hi-lock-sm{margin-bottom:10px}'
+    '.hi-lock-sm .hi-sym{width:22px;height:22px}'
+    '.hi-lock-sm .hi-wm{font-size:13px}')
+
+
+def brand_bar(chip="購入診断"):
+    """ページ最上部の固定ヘッダーバー（全ページ共通）。"""
+    return ('<div class="hi-bar"><div class="hi-bar-in">'
+            f'<a class="hi-lock" href="/">{symbol_small()}{WORDMARK}</a>'
+            f'<span class="chip">{chip}</span>'
+            '</div></div>')
+
+
+def brand_lockup(uid="lock"):
+    """カード内に置く小さいロックアップ（保存画像・規約ページ用）。"""
+    return f'<div class="hi-lock hi-lock-sm">{symbol_small()}{WORDMARK}</div>'
 
 
 # 運営者情報（Renderの環境変数で設定可能。未設定は仮表示）
@@ -60,8 +112,8 @@ OPERATOR = os.environ.get("OPERATOR_NAME", "〔運営者名〕")
 CONTACT = os.environ.get("CONTACT_EMAIL", "〔連絡先メール〕")
 
 FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#6b7280;line-height:1.9">'
-          '<a href="/terms" style="color:#15803d">利用規約</a>　・　'
-          '<a href="/privacy" style="color:#15803d">プライバシーポリシー</a><br>'
+          '<a href="/terms" style="color:#111">利用規約</a>　・　'
+          '<a href="/privacy" style="color:#111">プライバシーポリシー</a><br>'
           '出典：国土交通省 不動産情報ライブラリ／総務省 e-Stat／国土地理院／Google<br>'
           '© HOME INDEX</div>')
 
@@ -91,16 +143,20 @@ def _rate_ok(ip):
 def _legal_page(title, body):
     return (f'<!doctype html><html lang="ja"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'{FONT_LINK}'
             f'<title>{title}｜HOME INDEX</title><style>'
             'body{margin:0;background:#f5f7fa;color:#1f2937;'
             'font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}'
             '.wrap{max-width:720px;margin:0 auto;padding:24px 16px}'
             '.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:22px}'
-            'h1{font-size:20px;margin:0 0 6px}h2{font-size:15px;margin:20px 0 6px;color:#15803d}'
-            'p,li{font-size:14px;line-height:1.8}a{color:#15803d}.sub{color:#6b7280;font-size:12px}.logo-img{height:64px;width:auto;max-width:100%;display:block}'
-            '</style></head><body><div class="wrap">'
-            '<a href="/" style="color:#15803d;font-size:14px">← トップへ</a>'
-            f'<div class="card">{brand_header()}<h1>{title}</h1>{body}</div>'
+            'h1{font-size:20px;margin:0 0 6px}h2{font-size:15px;margin:20px 0 6px;color:#111}'
+            'p,li{font-size:14px;line-height:1.8}a{color:#111}.sub{color:#6b7280;font-size:12px}.logo-img{height:64px;width:auto;max-width:100%;display:block}'
+            + BRAND_CSS +
+            '</style></head><body>'
+            + brand_bar() +
+            '<div class="wrap">'
+            '<a href="/" style="color:#111;font-size:14px">← トップへ</a>'
+            f'<div class="card">{brand_lockup("lgl")}<h1>{title}</h1>{body}</div>'
             f'{FOOTER}</div></body></html>')
 
 
@@ -139,13 +195,15 @@ def to_float(s):
 FORM = """
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+FONT_LINK_PLACEHOLDER
 <title>HOME INDEX｜購入診断</title>
 <style>
- :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#6b7280;--acc:#16a34a;--line:#e5e7eb}
+ :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#6b7280;--acc:#111111;--line:#e5e5e5}
  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
   font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
  .wrap{max-width:720px;margin:0 auto;padding:24px 16px}
  h1{font-size:22px;margin:8px 0 2px} .lead{color:var(--sub);margin:0 0 16px;font-size:14px}
+ .aim{color:var(--ink);margin:0 0 10px;font-size:14px;line-height:1.85}
  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;
   box-shadow:0 1px 2px rgba(0,0,0,.04);margin-bottom:16px}
  label{display:block;font-size:13px;color:var(--sub);margin:12px 0 4px}
@@ -155,22 +213,24 @@ FORM = """
  .hint{font-size:12px;color:var(--sub);margin-top:3px}
  button{margin-top:14px;width:100%;padding:15px;background:var(--acc);color:#fff;border:0;
   border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;min-height:50px}
- button:hover{background:#15803d}
+ button:hover{background:#333}
  button.sub{background:#eef2f7;color:var(--ink);font-size:15px;font-weight:600}
  button.sub:hover{background:#e2e8f0}
- .badge{display:inline-block;background:#ecfeff;color:#0e7490;border:1px solid #a5f3fc;
+ .badge{display:inline-block;background:#f1f1f1;color:#374151;border:1px solid #e5e5e5;
   border-radius:999px;padding:3px 10px;font-size:12px;margin-bottom:10px}
- .banner{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:10px;
+ .banner{background:#fafafa;border:1px solid #e5e5e5;color:#374151;border-radius:10px;
   padding:12px 14px;font-size:14px;margin-bottom:16px}
- .banner b{color:#15803d}
+ .banner b{color:#111}
  BRAND_CSS_PLACEHOLDER
  @media (max-width:560px){
   .wrap{padding:16px 12px} h1{font-size:19px} .card{padding:16px}
   .row{flex-direction:column;gap:0}
  }
-</style></head><body><div class="wrap">
- BRAND_HEADER
+</style></head><body>
+BRAND_BAR
+<div class="wrap">
  <h1>住まいを100点で採点します</h1>
+ <p class="aim">「この価格は妥当か」「災害リスクはないか」「無理なく返せるか」。住まい選びで迷う点を<b>公的データ</b>から集め、ルール計算で100点に換算します。</p>
  <p class="lead">物件説明を貼り付けると自動で項目を埋めます。内容を確認・修正して診断してください。金額は<b>万円</b>。物件の評価 × ご自身の属性で、あなたに合っている物件かを診断します。</p>
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
@@ -303,9 +363,10 @@ def _parse_banner(p):
 RESULT = """
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+FONT_LINK_PLACEHOLDER
 <title>HOME INDEX｜{{s.address}}</title>
 <style>
- :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#6b7280;--acc:#16a34a;--line:#e5e7eb}
+ :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#6b7280;--acc:#111111;--line:#e5e5e5}
  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
   font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
  .wrap{max-width:760px;margin:0 auto;padding:24px 16px}
@@ -313,7 +374,7 @@ RESULT = """
  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;
   box-shadow:0 1px 2px rgba(0,0,0,.04);margin-top:16px}
  h1{font-size:20px;margin:10px 0 2px} .sub{color:var(--sub);font-size:14px;margin:0 0 6px}
- .hero{background:linear-gradient(135deg,#ffffff 0%,#f0fdf4 100%)}
+ .hero{background:#fff}
  .hero-score{display:flex;align-items:center;gap:24px;margin-top:14px;flex-wrap:wrap}
  .ring{position:relative;width:132px;height:132px;flex:0 0 auto}
  .ring .num{position:absolute;inset:0;display:flex;flex-direction:column;
@@ -344,6 +405,10 @@ RESULT = """
  .hz-warn{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
  .hz-muted{background:#f3f4f6;color:#6b7280}
  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+ ul.seen{list-style:none;padding:0;margin:6px 0 0}
+ ul.seen li{display:flex;gap:10px;font-size:13px;line-height:1.75;margin:0;
+  padding:8px 0;border-top:1px solid var(--line)}
+ ul.seen li b{flex:0 0 38px;color:var(--ink)}
  @media (max-width:560px){
   .wrap{padding:16px 12px} h1{font-size:18px} .card{padding:16px}
   .score{font-size:44px} .gletter{font-size:48px}
@@ -351,11 +416,13 @@ RESULT = """
   table{font-size:12px} th,td{padding:6px 5px;white-space:nowrap}
  }
  BRAND_CSS_PLACEHOLDER
-</style></head><body><div class="wrap" id="report">
- BRAND_HEADER
+</style></head><body>
+BRAND_BAR
+<div class="wrap" id="report">
  <a class="back" href="/">← 別の物件を診断</a>
 
  <div class="card hero">
+  BRAND_LOCKUP
   <p class="sub">{{s.address}}</p>
   <h1>{{s.ptype}}　売出 {{price_man}}</h1>
   <p class="muted">土地 {{s.land}}㎡ ・ 建物 {{s.building}}㎡ ・ 築{{age}}年 ・ 駅徒歩{{s.station}}分</p>
@@ -437,6 +504,17 @@ RESULT = """
   <p class="foot">{{d.comment}}</p>
  </div>
 
+ <div class="card">
+  <h2>この診断が見ているもの</h2>
+  <ul class="seen">
+   <li><b>価格</b><span>近隣の実際の取引価格から推定レンジを出し、割安・適正・割高を判定</span></li>
+   <li><b>防災</b><span>洪水・土砂災害・津波・高潮の指定区域と用途地域を確認</span></li>
+   <li><b>資金</b><span>年収と頭金から月々の返済額と返済負担率を試算</span></li>
+  </ul>
+  <p class="foot">点数はすべてルール計算で、AIが価格や点数を決めることはありません。
+   取得できなかった項目は点数に反映せず、上の「要確認」に表示しています。</p>
+ </div>
+
  {% if warnings %}<p class="foot">{% for w in warnings %}・{{w}}<br>{% endfor %}</p>{% endif %}
  <div class="foot" style="background:#f9fafb;border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:8px">
   <b>免責</b>：本サービスはAIと公的データにもとづく<b>参考情報</b>であり、不動産の価値・適法性・
@@ -445,7 +523,7 @@ RESULT = """
   掲載データは取得時点のもので、最新性・正確性を保証しません。
  </div>
  <p class="foot" style="text-align:center">HOME INDEX｜購入診断 — 全国対応。周辺施設・建物内部状態など一部は今後拡充</p>
-</div></div>
+</div>
 <div class="card" style="text-align:center">
   <button onclick="saveReport()" class="sub" type="button">📷 画像を保存</button>
   <button onclick="shareReport()" class="sub" type="button" style="margin-left:8px">🔗 共有する</button>
@@ -483,10 +561,13 @@ async function shareReport(){
 
 # ブランドのCSS/ヘッダー・フッターをテンプレートへ差し込む
 FORM = (FORM.replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
-        .replace("BRAND_HEADER", brand_header())
+        .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
+        .replace("BRAND_BAR", brand_bar())
         .replace("</div></body></html>", FOOTER + "</div></body></html>"))
 RESULT = (RESULT.replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
-          .replace("BRAND_HEADER", brand_header())
+          .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
+          .replace("BRAND_BAR", brand_bar())
+          .replace("BRAND_LOCKUP", brand_lockup())
           .replace("</div></body></html>", FOOTER + "</div></body></html>"))
 
 

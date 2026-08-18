@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="HOME INDEX">
+  <defs>
+    <clipPath id="hiHouse">
+      <path d="M60 5 108 48 108 112 12 112 12 48Z"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#hiHouse)">
+    <g stroke="#111111" stroke-width="2.2" fill="none">
+      <path d="M28 0V112M44 0V112M60 0V112M76 0V112M92 0V112"/>
+      <path d="M0 16H120M0 32H120M0 48H120M0 64H120M0 80H120M0 96H120"/>
+    </g>
+    <g fill="#111111">
+      <rect x="12" y="104" width="96" height="8"/>
+      <rect x="18" y="92" width="9" height="12"/>
+      <rect x="33" y="84" width="9" height="20"/>
+      <rect x="48" y="74" width="9" height="30"/>
+      <rect x="63" y="67" width="9" height="37"/>
+      <rect x="78" y="88" width="9" height="16"/>
+      <rect x="93" y="80" width="9" height="24"/>
+    </g>
+  </g>
+  <path d="M60 5 108 48 108 112 12 112 12 48Z" fill="none" stroke="#111111" stroke-width="7" stroke-linejoin="miter"/>
+</svg>
