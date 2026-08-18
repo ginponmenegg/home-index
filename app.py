@@ -31,7 +31,7 @@ def _resolver():
 
 app = Flask(__name__)
 
-# ブランド：おうちの通信簿（マーク：案C スコアリング×家 / C4 グリーン×アンバー）
+# ブランド：HOME INDEX（マーク：案C スコアリング×家 / C4 グリーン×アンバー）
 LOGO = ('<svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true" style="flex:0 0 auto">'
         '<circle cx="32" cy="32" r="22" fill="none" stroke="#e5e7eb" stroke-width="5"/>'
         '<circle cx="32" cy="32" r="22" fill="none" stroke="#16a34a" stroke-width="5" stroke-linecap="round" stroke-dasharray="104 139" transform="rotate(-90 32 32)"/>'
@@ -48,9 +48,10 @@ BRAND_CSS = ('.brand{margin-bottom:10px}'
 
 
 def brand_header(chip="購入診断"):
-    # ロゴ画像に「おうちの通信簿」の文字が含まれるため、テキストは重ねない
+    # ロゴ画像にサービス名の文字が含まれるため、テキストは重ねない
+    # ※ static/logo.png は旧名（おうちの通信簿）のワードマークのまま。要差し替え
     return (f'<div class="brand"><div class="cc-top">かっていい？</div>'
-            f'<div class="nmrow"><img src="/static/logo.png" alt="おうちの通信簿" class="logo-img"/>'
+            f'<div class="nmrow"><img src="/static/logo.png" alt="HOME INDEX" class="logo-img"/>'
             f'<span class="chip">{chip}</span></div></div>')
 
 
@@ -62,7 +63,7 @@ FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#6
           '<a href="/terms" style="color:#15803d">利用規約</a>　・　'
           '<a href="/privacy" style="color:#15803d">プライバシーポリシー</a><br>'
           '出典：国土交通省 不動産情報ライブラリ／総務省 e-Stat／国土地理院／Google<br>'
-          '© おうちの通信簿</div>')
+          '© HOME INDEX</div>')
 
 # ---- 負荷・不正対策（プロセス内・簡易） ----
 _RATE: dict = {}
@@ -90,7 +91,7 @@ def _rate_ok(ip):
 def _legal_page(title, body):
     return (f'<!doctype html><html lang="ja"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
-            f'<title>{title}｜おうちの通信簿</title><style>'
+            f'<title>{title}｜HOME INDEX</title><style>'
             'body{margin:0;background:#f5f7fa;color:#1f2937;'
             'font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}'
             '.wrap{max-width:720px;margin:0 auto;padding:24px 16px}'
@@ -138,7 +139,7 @@ def to_float(s):
 FORM = """
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>おうちの通信簿｜購入診断</title>
+<title>HOME INDEX｜購入診断</title>
 <style>
  :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#6b7280;--acc:#16a34a;--line:#e5e7eb}
  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
@@ -302,7 +303,7 @@ def _parse_banner(p):
 RESULT = """
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>おうちの通信簿｜{{s.address}}</title>
+<title>HOME INDEX｜{{s.address}}</title>
 <style>
  :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#6b7280;--acc:#16a34a;--line:#e5e7eb}
  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
@@ -443,7 +444,7 @@ RESULT = """
   実際の価格・契約条件・重要事項は、宅地建物取引士など有資格の専門家の確認を前提としてください。
   掲載データは取得時点のもので、最新性・正確性を保証しません。
  </div>
- <p class="foot" style="text-align:center">おうちの通信簿｜購入診断 — 全国対応。周辺施設・建物内部状態など一部は今後拡充</p>
+ <p class="foot" style="text-align:center">HOME INDEX｜購入診断 — 全国対応。周辺施設・建物内部状態など一部は今後拡充</p>
 </div></div>
 <div class="card" style="text-align:center">
   <button onclick="saveReport()" class="sub" type="button">📷 画像を保存</button>
@@ -461,15 +462,15 @@ async function saveReport(){
   const blob=await makeReportImage();
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href=url;a.download='おうちの通信簿_診断結果.png';a.click();
+  a.href=url;a.download='HOME INDEX_診断結果.png';a.click();
   URL.revokeObjectURL(url);
 }
 async function shareReport(){
   try{
     const blob=await makeReportImage();
-    const file=new File([blob],'おうちの通信簿_診断結果.png',{type:'image/png'});
+    const file=new File([blob],'HOME INDEX_診断結果.png',{type:'image/png'});
     if(navigator.canShare&&navigator.canShare({files:[file]})){
-      await navigator.share({files:[file],title:'おうちの通信簿 診断結果'});
+      await navigator.share({files:[file],title:'HOME INDEX 診断結果'});
     }else{
       await saveReport();
       alert('この端末は共有に未対応のため、画像を保存しました。');
@@ -518,7 +519,7 @@ def healthz():
 _TERMS_BODY = ("""
 <p class="sub">最終改定日：2026年8月13日</p>
 <h2>第1条（本サービス）</h2>
-<p>「おうちの通信簿（購入診断）」（以下「本サービス」）は、利用者が入力・貼り付けした物件情報と、
+<p>「HOME INDEX（購入診断）」（以下「本サービス」）は、利用者が入力・貼り付けした物件情報と、
 国土交通省 不動産情報ライブラリ・総務省 e-Stat・国土地理院等の公的データにもとづき、
 住まいに関する<b>参考情報</b>を提供するものです。本サービスは不動産の売買・交換・貸借の
 媒介・代理・査定・鑑定を行うものではなく、宅地建物取引業法上の取引・査定に該当しません。</p>

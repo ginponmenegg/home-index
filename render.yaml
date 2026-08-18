@@ -1,4 +1,4 @@
-# Render.com Blueprint（おうちの通信簿）
+# Render.com Blueprint（HOME INDEX）
 # 使い方：GitHubにこのリポジトリを置き、Renderで「New + → Blueprint」から本ファイルを読み込む。
 # 環境変数（APIキー）はRenderのダッシュボードで設定する（このファイルには書かない）。
 services:
