@@ -1,0 +1,22 @@
+# Render.com Blueprint（おうちの通信簿）
+# 使い方：GitHubにこのリポジトリを置き、Renderで「New + → Blueprint」から本ファイルを読み込む。
+# 環境変数（APIキー）はRenderのダッシュボードで設定する（このファイルには書かない）。
+services:
+  - type: web
+    name: ouchi-tsushinbo
+    runtime: python
+    plan: free                # 無料枠（一定時間アクセスが無いとスリープ／初回アクセスは起動待ち）
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 300
+    healthCheckPath: /healthz
+    envVars:
+      - key: REINFOLIB_KEY
+        sync: false           # ダッシュボードで手入力（値はコミットしない）
+      - key: ESTAT_APPID
+        sync: false
+      - key: ESTAT_TABLE
+        value: "0000020201"
+      - key: GOOGLE_KEY       # 使う場合のみ。未設定ならGSI（無料）を使用
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.12.7"
