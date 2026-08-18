@@ -245,7 +245,7 @@ BRAND_BAR
     <label>① 販売図面PDFから読み取る（文字が選択できるPDF）</label>
     <input type="file" name="pdf" accept="application/pdf">
     <button class="sub" type="submit">PDFから自動入力する</button>
-    <div class="hint">※ スキャン（画像）のPDFは読み取れません。文字がコピーできるPDFをお使いください。
+    <div class="hint">※ スキャン（画像）のPDFは読み取れません。文字がコピーできるPDFをお使いください。</div>
  </form>
 
  <form class="card" method="post" action="/diagnose">
@@ -524,6 +524,7 @@ BRAND_BAR
  </div>
  <p class="foot" style="text-align:center">HOME INDEX｜購入診断 — 全国対応。周辺施設・建物内部状態など一部は今後拡充</p>
 </div>
+<div class="wrap" style="padding-top:0">
 <div class="card" style="text-align:center">
   <button onclick="saveReport()" class="sub" type="button">📷 画像を保存</button>
   <button onclick="shareReport()" class="sub" type="button" style="margin-left:8px">🔗 共有する</button>
@@ -556,7 +557,7 @@ async function shareReport(){
   }catch(e){}
 }
 </script>
-</body></html></body></html>
+</div></body></html>
 """
 
 # ブランドのCSS/ヘッダー・フッターをテンプレートへ差し込む
