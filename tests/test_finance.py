@@ -93,6 +93,33 @@ def test_stamp_duty_brackets():
     assert stamp_duty(10_000_001).amount == 10_000
 
 
+def test_registration_tax_matches_official_examples():
+    """法務局資料『登録免許税はどのように計算するのですか？』の計算例と一致すること。
+
+    課税標準は1,000円未満切捨、税額は100円未満切捨（最低1,000円）。
+    """
+    # 計算例1：土地 5,125,300円 × 15/1000 → 76,800円
+    land = registration_tax(land_assessed=5_125_300)[0]
+    assert land.amount == 76_800, land.amount
+    # 計算例2：建物 3,246,600円 × 20/1000（本則）→ 64,900円
+    bld = registration_tax(building_assessed=3_246_600, residential=False)[1]
+    assert bld.amount == 64_900, bld.amount
+    # 計算例（抵当権）：債権金額 15,000,000円 × 4/1000（本則）→ 60,000円
+    mtg = registration_tax(loan_amount=15_000_000, residential=False)[2]
+    assert mtg.amount == 60_000, mtg.amount
+
+
+def test_registration_tax_rounding_floors():
+    """端数処理：税額の100円未満切捨と、最低1,000円の下限。"""
+    # 評価額1,000円未満でも課税標準は1,000円、税額は下限1,000円
+    tiny = registration_tax(land_assessed=500)[0]
+    assert tiny.amount == 1_000
+    # 課税標準の1,000円未満は切り捨てられる（5,125,300 → 5,125,000）
+    a = registration_tax(land_assessed=5_125_300)[0].amount
+    b = registration_tax(land_assessed=5_125_000)[0].amount
+    assert a == b
+
+
 def test_registration_tax_estimates_and_flags():
     items = registration_tax(land_price=20_000_000, building_price=14_800_000,
                              loan_amount=30_000_000)
@@ -240,8 +267,8 @@ def test_registration_cost_subtotal():
                         build_year=2005, floor_area_m2=90.47,
                         quake_conforming=True)
     sub = registration_cost_total(pc)
-    # 登録免許税3件＋司法書士報酬
-    assert sub == 210_000 + 26_640 + 30_000 + 50_000
+    # 登録免許税3件（100円未満切捨後）＋司法書士報酬
+    assert sub == 210_000 + 26_600 + 30_000 + 50_000
 
 
 def test_rate_scenarios_monotonic():

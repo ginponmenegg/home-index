@@ -172,7 +172,24 @@ def registration_tax(land_price: Optional[int] = None,
     conf = (cfg or FCONFIG)
     c = conf.get("registration_tax", {})
     ratios = conf.get("assessed_value_ratio", {})
+    rnd = c.get("rounding", {})
     out: List[CostItem] = []
+
+    def _round_base(v: float) -> int:
+        """課税標準の端数処理。既定では1,000円未満切捨・最低1,000円。"""
+        step = rnd.get("base_floor_yen")
+        v = int(v)
+        if step:
+            v = v // step * step
+        return max(rnd.get("base_min_yen", 0), v)
+
+    def _round_tax(v: float) -> int:
+        """税額の端数処理。既定では100円未満切捨・最低1,000円。"""
+        step = rnd.get("tax_floor_yen")
+        v = int(v)
+        if step:
+            v = v // step * step
+        return max(rnd.get("tax_min_yen", 0), v)
 
     def _tax(label, part_cfg, assessed, estimated, part_name):
         rate = part_cfg.get("reduced") if residential else part_cfg.get("standard")
@@ -187,8 +204,9 @@ def registration_tax(land_price: Optional[int] = None,
             return CostItem(label, None,
                             f"{part_name}の固定資産税評価額が不明", UNKNOWN,
                             c.get("source"))
-        amount = int(round(assessed * rate))
-        basis = f"{part_name}の評価額 {assessed:,}円 × {rate * 100:.1f}%（{used}）"
+        base = _round_base(assessed)
+        amount = _round_tax(base * rate)
+        basis = f"{part_name}の評価額 {base:,}円 × {rate * 100:.1f}%（{used}）"
         if estimated:
             basis += "　※評価額は売買価格からの推定"
         return CostItem(label, amount, basis,
@@ -206,14 +224,16 @@ def registration_tax(land_price: Optional[int] = None,
 
     m = c.get("mortgage", {})
     rate = m.get("reduced") if residential else m.get("standard")
+    used = "軽減税率" if residential else "本則税率"
     if rate is None or not loan_amount:
         out.append(CostItem("登録免許税（抵当権の設定）", None,
                             "税率または借入額が未設定", UNKNOWN, c.get("source"),
                             m.get("note", "")))
     else:
+        base = _round_base(loan_amount)   # 課税標準は債権金額
         out.append(CostItem(
-            "登録免許税（抵当権の設定）", int(round(loan_amount * rate)),
-            f"借入額 {loan_amount:,}円 × {rate * 100:.1f}%", COMPUTED,
+            "登録免許税（抵当権の設定）", _round_tax(base * rate),
+            f"借入額 {base:,}円 × {rate * 100:.1f}%（{used}）", COMPUTED,
             c.get("source"), m.get("note", "")))
     return out
 
