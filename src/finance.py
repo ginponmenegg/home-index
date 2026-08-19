@@ -1,0 +1,344 @@
+# -*- coding: utf-8 -*-
+"""詳細な資金計画（PRO版）。既存の loan.py は変更しない。
+
+方針（PROJECT BRIEF 第13・14章）：
+- 税率・料率は finance_config.json に外出しし、コードに数値を埋め込まない。
+- 出典が確認できていない項目は金額を出さず status="unknown" を返す。
+  「たぶんこのくらい」を作らない。
+- 各項目は計算根拠(basis)と出典(source)を必ず持つ。
+
+無料版との棲み分け：loan.py は月々返済額・返済負担率まで。本モジュールは
+諸費用・金利シナリオ・繰上返済・適正借入額を扱う（第8章）。
+"""
+from __future__ import annotations
+from dataclasses import dataclass, field
+from typing import Optional, List, Tuple
+import os
+import json
+import math
+
+from .loan import monthly_payment
+
+_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "finance_config.json")
+
+
+def _load() -> dict:
+    try:
+        with open(_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+FCONFIG = _load()
+
+UNKNOWN = "unknown"        # 出典未確認のため金額を出さない
+ESTIMATED = "estimated"    # 推定値（前提を basis に明記）
+COMPUTED = "computed"      # 確認済みの根拠から計算
+
+
+@dataclass
+class CostItem:
+    """諸費用の1項目。金額が出せない場合 amount=None・status=unknown。"""
+    name: str
+    amount: Optional[int]
+    basis: str                  # 計算根拠（利用者に見せる）
+    status: str                 # computed / estimated / unknown
+    source: Optional[str] = None
+    note: str = ""
+
+
+@dataclass
+class PurchaseCosts:
+    """諸費用の総額と内訳。未確認項目があることを隠さない。"""
+    items: List[CostItem] = field(default_factory=list)
+    total: int = 0              # 金額が判明した項目の合計のみ
+    unknown_items: List[str] = field(default_factory=list)
+
+    @property
+    def is_complete(self) -> bool:
+        return not self.unknown_items
+
+
+# ---------------- 個別の費用項目 ----------------
+def brokerage_fee(price: int, cfg: dict = None) -> CostItem:
+    """仲介手数料（宅建業法の上限額）。速算式：価格×3%＋6万円＋消費税。"""
+    c = (cfg or FCONFIG).get("brokerage", {})
+    if not price or price <= 0:
+        return CostItem("仲介手数料", None, "売買価格が未入力", UNKNOWN)
+    th, rate, add = c.get("threshold"), c.get("rate"), c.get("add")
+    tax = c.get("consumption_tax")
+    if None in (th, rate, add, tax):
+        return CostItem("仲介手数料", None, "料率が未設定", UNKNOWN,
+                        c.get("source"), c.get("note", ""))
+    if price <= th:
+        # 400万円以下は区分計算が必要。速算式が使えないため出さない。
+        return CostItem("仲介手数料", None,
+                        f"売買価格が{th:,}円以下のため速算式の対象外", UNKNOWN,
+                        c.get("source"),
+                        "低廉な空き家等の特例を含め、別途確認が必要です。")
+    base = int(price * rate + add)
+    amount = int(round(base * (1 + tax)))
+    return CostItem(
+        "仲介手数料", amount,
+        f"売買価格 {price:,}円 × {rate * 100:.0f}% ＋ {add:,}円 ＝ {base:,}円"
+        f"（税込 {amount:,}円）",
+        COMPUTED, c.get("source"),
+        "宅建業法上の上限額です。実際の請求額は仲介会社により異なります。")
+
+
+def stamp_duty(price: int, cfg: dict = None) -> CostItem:
+    """売買契約書に貼る印紙税。契約金額の区分による定額。"""
+    c = (cfg or FCONFIG).get("stamp_duty", {})
+    table = c.get("table_reduced")
+    if not price or price <= 0 or not table:
+        return CostItem("印紙税", None, "契約金額または税額表が未設定", UNKNOWN,
+                        c.get("source"))
+    amount = None
+    for upper, tax in table:
+        if upper is None or price <= upper:
+            amount = tax
+            break
+    if amount is None:
+        return CostItem("印紙税", None, "税額表の範囲外", UNKNOWN, c.get("source"))
+    limit = c.get("reduced_until")
+    return CostItem(
+        "印紙税", int(amount),
+        f"契約金額 {price:,}円 の区分による定額（軽減後）",
+        COMPUTED, c.get("source"),
+        f"軽減措置は{limit}までに作成される契約書が対象です。" if limit else "")
+
+
+def _assessed(value: Optional[int], price_part: Optional[int],
+              ratio: Optional[float]) -> Tuple[Optional[int], bool]:
+    """固定資産税評価額。実額があれば優先、無ければ比率で推定。
+    戻り値=(評価額, 推定したか)。"""
+    if value:
+        return int(value), False
+    if price_part and ratio:
+        return int(round(price_part * ratio)), True
+    return None, False
+
+
+def registration_tax(land_price: Optional[int] = None,
+                     building_price: Optional[int] = None,
+                     loan_amount: Optional[int] = None,
+                     land_assessed: Optional[int] = None,
+                     building_assessed: Optional[int] = None,
+                     residential: bool = True,
+                     cfg: dict = None) -> List[CostItem]:
+    """登録免許税（所有権移転・抵当権設定）。課税標準は固定資産税評価額。
+
+    購入検討段階では評価額が不明なことが多いため、売買価格からの推定を許す。
+    推定した場合は status=estimated とし、前提を basis に明記する。
+    """
+    conf = (cfg or FCONFIG)
+    c = conf.get("registration_tax", {})
+    ratios = conf.get("assessed_value_ratio", {})
+    out: List[CostItem] = []
+
+    def _tax(label, part_cfg, assessed, estimated, part_name):
+        rate = part_cfg.get("reduced") if residential else part_cfg.get("standard")
+        used = "軽減税率" if residential else "本則税率"
+        if rate is None:
+            rate = part_cfg.get("standard")
+            used = "本則税率"
+        if rate is None:
+            return CostItem(label, None, "税率が未設定", UNKNOWN, c.get("source"),
+                            part_cfg.get("note", ""))
+        if assessed is None:
+            return CostItem(label, None,
+                            f"{part_name}の固定資産税評価額が不明", UNKNOWN,
+                            c.get("source"))
+        amount = int(round(assessed * rate))
+        basis = f"{part_name}の評価額 {assessed:,}円 × {rate * 100:.1f}%（{used}）"
+        if estimated:
+            basis += "　※評価額は売買価格からの推定"
+        return CostItem(label, amount, basis,
+                        ESTIMATED if estimated else COMPUTED, c.get("source"),
+                        part_cfg.get("requirement", ""))
+
+    la, la_est = _assessed(land_assessed, land_price, ratios.get("land"))
+    out.append(_tax("登録免許税（土地の所有権移転）", c.get("land_transfer", {}),
+                    la, la_est, "土地"))
+
+    ba, ba_est = _assessed(building_assessed, building_price,
+                           ratios.get("building"))
+    out.append(_tax("登録免許税（建物の所有権移転）", c.get("building_transfer", {}),
+                    ba, ba_est, "建物"))
+
+    m = c.get("mortgage", {})
+    rate = m.get("reduced") if residential else m.get("standard")
+    if rate is None or not loan_amount:
+        out.append(CostItem("登録免許税（抵当権の設定）", None,
+                            "税率または借入額が未設定", UNKNOWN, c.get("source"),
+                            m.get("note", "")))
+    else:
+        out.append(CostItem(
+            "登録免許税（抵当権の設定）", int(round(loan_amount * rate)),
+            f"借入額 {loan_amount:,}円 × {rate * 100:.1f}%", COMPUTED,
+            c.get("source"), m.get("note", "")))
+    return out
+
+
+def acquisition_tax(cfg: dict = None) -> CostItem:
+    """不動産取得税。税率・特例が未確認のため金額を出さない。"""
+    c = (cfg or FCONFIG).get("acquisition_tax", {})
+    return CostItem("不動産取得税", None,
+                    "税率・軽減特例が未確認のため算出していません", UNKNOWN,
+                    c.get("source"), c.get("note", ""))
+
+
+def _range_item(name: str, key: str, cfg: dict = None) -> CostItem:
+    c = (cfg or FCONFIG).get(key, {})
+    lo, hi = c.get("low"), c.get("high")
+    if lo is None or hi is None:
+        return CostItem(name, None, "相場が未設定", UNKNOWN, c.get("source"),
+                        c.get("note", ""))
+    mid = int((lo + hi) / 2)
+    return CostItem(name, mid, f"目安 {lo:,}〜{hi:,}円 の中央値", ESTIMATED,
+                    c.get("source"), c.get("note", ""))
+
+
+def purchase_costs(price: int,
+                   land_price: Optional[int] = None,
+                   building_price: Optional[int] = None,
+                   loan_amount: Optional[int] = None,
+                   land_assessed: Optional[int] = None,
+                   building_assessed: Optional[int] = None,
+                   residential: bool = True,
+                   cfg: dict = None) -> PurchaseCosts:
+    """購入諸費用の一式。判明した項目だけを合計し、未確認は明示する。"""
+    items: List[CostItem] = [
+        brokerage_fee(price, cfg),
+        stamp_duty(price, cfg),
+    ]
+    items += registration_tax(land_price, building_price, loan_amount,
+                              land_assessed, building_assessed, residential, cfg)
+    items.append(acquisition_tax(cfg))
+    items.append(_range_item("司法書士報酬", "judicial_scrivener", cfg))
+    items.append(_range_item("火災保険料", "fire_insurance", cfg))
+
+    total = sum(i.amount for i in items if i.amount)
+    unknown = [i.name for i in items if i.amount is None]
+    return PurchaseCosts(items, total, unknown)
+
+
+# ---------------- 金利シナリオ ----------------
+@dataclass
+class RateScenario:
+    label: str
+    annual_rate: float
+    monthly: int
+    total: int
+    diff_monthly: int      # 基準シナリオとの差額
+
+
+def rate_scenarios(principal: int, years: int, base_rate: float,
+                   deltas: List[float] = None) -> List[RateScenario]:
+    """金利が変動した場合の返済額。将来予測ではなく「いくらになるか」の試算。"""
+    if deltas is None:
+        deltas = [0.0, 0.005, 0.01, 0.02]
+    base = monthly_payment(principal, base_rate, years)
+    out = []
+    for d in deltas:
+        r = base_rate + d
+        m = monthly_payment(principal, r, years)
+        label = "現在の金利" if d == 0 else f"+{d * 100:.1f}%"
+        out.append(RateScenario(label, r, m, m * years * 12, m - base))
+    return out
+
+
+# ---------------- 繰上返済 ----------------
+@dataclass
+class PrepaymentResult:
+    kind: str                  # 期間短縮型 / 返済額軽減型
+    amount: int                # 繰上返済額
+    months_saved: int          # 短縮月数
+    interest_saved: int        # 軽減される利息
+    new_monthly: int           # 返済後の月額
+
+
+def remaining_balance(principal: int, annual_rate: float, years: int,
+                      paid_months: int) -> int:
+    """元利均等返済で paid_months 回返済した後の残高。"""
+    n = years * 12
+    r = annual_rate / 12.0
+    if r == 0:
+        return max(0, int(round(principal * (n - paid_months) / n)))
+    m = monthly_payment(principal, annual_rate, years)
+    bal = principal * (1 + r) ** paid_months - m * (((1 + r) ** paid_months - 1) / r)
+    return max(0, int(round(bal)))
+
+
+def prepayment(principal: int, annual_rate: float, years: int,
+               prepay_amount: int, after_months: int = 12,
+               kind: str = "期間短縮型") -> PrepaymentResult:
+    """繰上返済の効果。after_months 回返済した時点で prepay_amount を投入する。"""
+    n = years * 12
+    r = annual_rate / 12.0
+    m = monthly_payment(principal, annual_rate, years)
+    bal = remaining_balance(principal, annual_rate, years, after_months)
+    remain_months = n - after_months
+    interest_before = m * remain_months - bal
+
+    new_bal = max(0, bal - max(0, prepay_amount))
+    if kind == "返済額軽減型":
+        remain_years = max(1, remain_months // 12)
+        new_m = monthly_payment(new_bal, annual_rate, remain_years)
+        interest_after = new_m * remain_months - new_bal
+        return PrepaymentResult(kind, prepay_amount, 0,
+                                max(0, int(interest_before - interest_after)),
+                                int(new_m))
+    # 期間短縮型：月額は据え置き、返済回数が減る
+    if r == 0:
+        new_months = int(round(new_bal / m)) if m else 0
+    elif new_bal <= 0:
+        new_months = 0
+    elif m <= new_bal * r:
+        new_months = remain_months
+    else:
+        new_months = int(math.ceil(
+            -math.log(1 - new_bal * r / m) / math.log(1 + r)))
+    new_months = min(new_months, remain_months)
+    interest_after = m * new_months - new_bal
+    return PrepaymentResult(kind, prepay_amount,
+                            max(0, remain_months - new_months),
+                            max(0, int(interest_before - interest_after)), int(m))
+
+
+# ---------------- 適正借入額の逆算 ----------------
+@dataclass
+class Affordability:
+    annual_income: int
+    burden_limit: float        # 返済負担率の上限(%)
+    max_monthly: int
+    max_principal: int
+    max_price: int             # 頭金を足した購入可能額
+    note: str
+
+
+def affordable_loan(annual_income: int, annual_rate: float, years: int,
+                    down_payment: int = 0,
+                    burden_limit: Optional[float] = None) -> Affordability:
+    """年収から逆算した借入可能額。scoring.score_finance と同じ基準を使う。
+
+    年収400万円以上は35%、未満は30%（既存の score_finance と揃える）。
+    """
+    if burden_limit is None:
+        burden_limit = 35.0 if annual_income >= 4_000_000 else 30.0
+    max_annual = annual_income * burden_limit / 100.0
+    max_monthly = int(max_annual / 12)
+    n = years * 12
+    r = annual_rate / 12.0
+    if r == 0:
+        principal = max_monthly * n
+    else:
+        principal = max_monthly * (1 - (1 + r) ** (-n)) / r
+    principal = int(round(principal))
+    return Affordability(
+        annual_income, burden_limit, max_monthly, principal,
+        principal + (down_payment or 0),
+        f"返済負担率 {burden_limit:.0f}% を上限とした場合の試算です。"
+        "金融機関の審査基準・他の借入・諸費用は考慮していません。")
