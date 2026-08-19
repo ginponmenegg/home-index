@@ -950,7 +950,8 @@ BRAND_BAR
    <h2>物件と価格</h2>
    <p class="h2sub">金額はすべて万円で入力してください</p>
    <div class="row">
-    <div><label>売買価格（万円・必須）</label><input name="price" value="{{v.price}}" required></div>
+    <div><label>売買価格（万円・必須）</label>
+     <input name="price" id="price" value="{{v.price}}" placeholder="例）3480" required></div>
     <div><label>種別</label>
      <select name="newbuild">
       <option value="0" {{'selected' if not v.newbuild else ''}}>中古</option>
@@ -958,19 +959,29 @@ BRAND_BAR
      </select>
      <div class="hint">新築のときだけ表題登記・保存登記を計上します</div></div>
    </div>
+   <label>土地の割合（％）</label>
+   <input name="land_ratio" id="land_ratio" value="{{v.land_ratio}}" placeholder="60">
+   <div class="hint">売買価格を土地と建物に振り分ける割合です。下の内訳が自動で入ります。
+    実際の内訳が分かる場合は、下の欄を直接書き換えてください。</div>
    <div class="row">
-    <div><label>うち土地価格（万円・任意）</label><input name="land_price" value="{{v.land_price}}"></div>
-    <div><label>うち建物価格（万円・任意）</label><input name="building_price" value="{{v.building_price}}"></div>
+    <div><label>うち土地価格（万円）</label>
+     <input name="land_price" id="land_price" value="{{v.land_price}}" placeholder="自動計算"></div>
+    <div><label>うち建物価格（万円）</label>
+     <input name="building_price" id="building_price" value="{{v.building_price}}" placeholder="自動計算"></div>
    </div>
-   <div class="hint">内訳が不明なら空欄で構いません。その場合、登録免許税と不動産取得税は「未確認」と表示されます。</div>
+   <div class="hint">内訳は登録免許税と不動産取得税の計算に使います。割合による推定であることは根拠欄に明記されます。</div>
    <div class="row">
-    <div><label>土地の固定資産税評価額（万円・任意）</label><input name="land_assessed" value="{{v.land_assessed}}"></div>
-    <div><label>建物の固定資産税評価額（万円・任意）</label><input name="building_assessed" value="{{v.building_assessed}}"></div>
+    <div><label>土地の固定資産税評価額（万円・任意）</label>
+     <input name="land_assessed" value="{{v.land_assessed}}" placeholder="分かれば入力"></div>
+    <div><label>建物の固定資産税評価額（万円・任意）</label>
+     <input name="building_assessed" value="{{v.building_assessed}}" placeholder="分かれば入力"></div>
    </div>
-   <div class="hint">課税明細書があれば入力してください。未入力なら価格から推定し、その旨を根拠に明記します。</div>
+   <div class="hint">課税明細書があれば入力してください。未入力なら上の内訳から推定し、その旨を根拠に明記します。</div>
    <div class="row">
-    <div><label>土地面積（㎡）</label><input name="land_area" value="{{v.land_area}}"></div>
-    <div><label>建物の床面積（㎡）</label><input name="floor_area" value="{{v.floor_area}}"></div>
+    <div><label>土地面積（㎡）</label>
+     <input name="land_area" value="{{v.land_area}}" placeholder="例）147.07"></div>
+    <div><label>建物の床面積（㎡）</label>
+     <input name="floor_area" value="{{v.floor_area}}" placeholder="例）90.47"></div>
    </div>
   </div>
 
@@ -978,9 +989,9 @@ BRAND_BAR
    <h2>建物の新築時期</h2>
    <p class="h2sub">不動産取得税の控除額が新築時期で変わります</p>
    <div class="row">
-    <div><label>新築年（西暦・必須級）</label><input name="byear" value="{{v.byear}}"></div>
-    <div><label>月（任意）</label><input name="bmonth" value="{{v.bmonth}}"></div>
-    <div><label>日（任意）</label><input name="bday" value="{{v.bday}}"></div>
+    <div><label>新築年（西暦）</label><input name="byear" value="{{v.byear}}" placeholder="例）2005"></div>
+    <div><label>月（任意）</label><input name="bmonth" value="{{v.bmonth}}" placeholder="不明なら空欄"></div>
+    <div><label>日（任意）</label><input name="bday" value="{{v.bday}}" placeholder="不明なら空欄"></div>
    </div>
    <div class="hint">月日が不明なら空欄で構いません。その場合は<b>不利側（控除額の小さい方）</b>で試算します。</div>
    <label>耐震基準への適合</label>
@@ -994,12 +1005,12 @@ BRAND_BAR
   <div class="card">
    <h2>借入とご自身の条件</h2>
    <div class="row">
-    <div><label>頭金（万円）</label><input name="down" value="{{v.down}}"></div>
-    <div><label>世帯年収（万円）</label><input name="income" value="{{v.income}}"></div>
+    <div><label>頭金（万円）</label><input name="down" value="{{v.down}}" placeholder="0"></div>
+    <div><label>世帯年収（万円）</label><input name="income" value="{{v.income}}" placeholder="例）800"></div>
    </div>
    <div class="row">
-    <div><label>借入年数（年）</label><input name="loan_years" value="{{v.loan_years}}"></div>
-    <div><label>金利（％）</label><input name="rate" value="{{v.rate}}"></div>
+    <div><label>借入年数（年）</label><input name="loan_years" value="{{v.loan_years}}" placeholder="35"></div>
+    <div><label>金利（％）</label><input name="rate" value="{{v.rate}}" placeholder="1.25"></div>
    </div>
    <div class="row">
     <div><label>地震保険</label>
@@ -1041,8 +1052,8 @@ BRAND_BAR
   <div class="card">
    <h2>繰上返済のシミュレーション（任意）</h2>
    <div class="row">
-    <div><label>繰上返済額（万円）</label><input name="prepay" value="{{v.prepay}}"></div>
-    <div><label>何年後に返済するか</label><input name="prepay_after" value="{{v.prepay_after}}"></div>
+    <div><label>繰上返済額（万円）</label><input name="prepay" value="{{v.prepay}}" placeholder="使わないなら空欄"></div>
+    <div><label>何年後に返済するか</label><input name="prepay_after" value="{{v.prepay_after}}" placeholder="10"></div>
     <div><label>方式</label>
      <select name="prepay_kind">
       <option value="期間短縮型" {{'selected' if v.prepay_kind=='期間短縮型' else ''}}>期間短縮型</option>
@@ -1053,6 +1064,30 @@ BRAND_BAR
 
   <button type="submit">資金計画を試算する</button>
  </form>
+<script>
+(function(){
+  var price = document.getElementById('price');
+  var ratio = document.getElementById('land_ratio');
+  var land  = document.getElementById('land_price');
+  var bldg  = document.getElementById('building_price');
+  if(!price || !ratio || !land || !bldg) return;
+  var manual = false;
+  function num(el){ var n = parseFloat((el.value||'').replace(/,/g,'')); return isNaN(n) ? null : n; }
+  function split(){
+    if(manual) return;
+    var p = num(price), r = num(ratio);
+    if(p === null || r === null){ return; }
+    var l = Math.round(p * r / 100);
+    land.value = l;
+    bldg.value = Math.round(p - l);
+  }
+  price.addEventListener('input', split);
+  ratio.addEventListener('input', split);
+  function markManual(){ manual = true; }
+  land.addEventListener('input', markManual);
+  bldg.addEventListener('input', markManual);
+})();
+</script>
  <p class="hint" style="text-align:center;margin-top:12px">
   ※ 税率・料率は公的資料にもとづきますが、試算結果は目安です。実際の金額は金融機関・仲介会社・所管の税務署および都道府県にご確認ください。</p>
 </div></body></html>
@@ -1200,14 +1235,22 @@ _STATUS_JA = {"computed": "計算", "estimated": "推定", "unknown": "未確認
 
 
 def _pro_defaults():
-    return dict(price="3480", newbuild=False, land_price="2000",
-                building_price="1480", land_assessed="", building_assessed="",
-                land_area="147.07", floor_area="90.47",
-                byear="2005", bmonth="", bday="", quake="yes",
-                down="500", income="800", loan_years="35", rate="1.25",
+    """フォームの初期値。数値は空にし、目安はプレースホルダで示す。
+
+    土地の割合だけは設定値（finance_config.json）を初期表示する。
+    これは物件データではなく按分の設定のため。
+    """
+    from src.finance import FCONFIG
+    ratio = FCONFIG.get("price_split", {}).get("land_ratio")
+    return dict(price="", newbuild=False, land_price="", building_price="",
+                land_assessed="", building_assessed="",
+                land_ratio=(f"{ratio * 100:.0f}" if ratio else ""),
+                land_area="", floor_area="",
+                byear="", bmonth="", bday="", quake="yes",
+                down="", income="", loan_years="", rate="",
                 quake_ins=False, option_cost=False,
                 deduction_cat="その他", resale=False, kosodate=False,
-                prepay="", prepay_after="10", prepay_kind="期間短縮型")
+                prepay="", prepay_after="", prepay_kind="期間短縮型")
 
 
 @app.route("/pro/finance", methods=["GET", "POST"])
@@ -1238,11 +1281,22 @@ def pro_finance():
     rate = (to_float(f.get("rate")) or 1.25) / 100.0
     quake_map = {"yes": True, "no": False, "unknown": None}
 
+    # 内訳が空なら土地の割合で按分する（JSが動かない場合の保険）
+    land_price = to_yen(f.get("land_price"))
+    building_price = to_yen(f.get("building_price"))
+    if land_price is None and building_price is None and price:
+        pct = to_float(f.get("land_ratio"))
+        if pct is None:
+            pct = (FCONFIG.get("price_split", {}).get("land_ratio") or 0) * 100
+        if pct:
+            land_price = int(round(price * pct / 100.0))
+            building_price = price - land_price
+
     def _costs(principal):
         return purchase_costs(
             price,
-            land_price=to_yen(f.get("land_price")),
-            building_price=to_yen(f.get("building_price")),
+            land_price=land_price,
+            building_price=building_price,
             loan_amount=principal or None,
             land_assessed=to_yen(f.get("land_assessed")),
             building_assessed=to_yen(f.get("building_assessed")),
