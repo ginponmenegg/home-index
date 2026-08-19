@@ -182,23 +182,196 @@ def registration_tax(land_price: Optional[int] = None,
     return out
 
 
-def acquisition_tax(cfg: dict = None) -> CostItem:
-    """不動産取得税。税率・特例が未確認のため金額を出さない。"""
+def _ymd(s: Optional[str]) -> Optional[Tuple[int, int, int]]:
+    """'1981-07-01' -> (1981, 7, 1)。None や不正値は None。"""
+    if not s:
+        return None
+    try:
+        y, m, d = str(s).split("-")
+        return int(y), int(m), int(d)
+    except (ValueError, AttributeError):
+        return None
+
+
+def _in_span(date: Tuple[int, int, int], lo: Optional[str],
+             hi: Optional[str]) -> bool:
+    lo_t, hi_t = _ymd(lo), _ymd(hi)
+    if lo_t and date < lo_t:
+        return False
+    if hi_t and date > hi_t:
+        return False
+    return True
+
+
+def _band_value(table: list, year: int, month: Optional[int],
+                day: Optional[int]) -> Tuple[Optional[int], bool]:
+    """新築時期の区分表から該当額を引く。
+
+    月日が不明な場合、その年に該当し得る区分が複数あれば
+    「不利側（額の小さい方）」を採る（運営方針）。
+    戻り値=(額, 月日不明のため不利側を採ったか)。
+    """
+    if month and day:
+        for lo, hi, val in table:
+            if _in_span((year, month, day), lo, hi):
+                return int(val), False
+        return None, False
+    # 月日不明：その年と重なる区分を全部集める
+    cands = []
+    for lo, hi, val in table:
+        lo_t, hi_t = _ymd(lo), _ymd(hi)
+        if (lo_t is None or lo_t[0] <= year) and (hi_t is None or hi_t[0] >= year):
+            cands.append(int(val))
+    if not cands:
+        return None, False
+    return min(cands), len(cands) > 1
+
+
+def acquisition_tax(building_assessed: Optional[int] = None,
+                    land_assessed: Optional[int] = None,
+                    land_area_m2: Optional[float] = None,
+                    floor_area_m2: Optional[float] = None,
+                    build_year: Optional[int] = None,
+                    build_month: Optional[int] = None,
+                    build_day: Optional[int] = None,
+                    quake_conforming: Optional[bool] = None,
+                    residential_land: bool = True,
+                    cfg: dict = None) -> List[CostItem]:
+    """不動産取得税（建物・土地）。
+
+    建物：(評価額 − 控除額) × 3%。耐震基準不適合の場合は控除ではなく税額から減額。
+    土地：評価額 × 1/2（宅地）× 3% − 軽減額。
+          軽減額 = max(45,000円, 1㎡単価 × min(床面積×2, 200㎡) × 3%)
+    """
     c = (cfg or FCONFIG).get("acquisition_tax", {})
-    return CostItem("不動産取得税", None,
-                    "税率・軽減特例が未確認のため算出していません", UNKNOWN,
-                    c.get("source"), c.get("note", ""))
+    src = c.get("source")
+    juris = c.get("jurisdiction")
+    prefix = f"【{juris}基準】" if juris else ""
+    rates = c.get("rates", {})
+    out: List[CostItem] = []
+
+    r_b = rates.get("residential_building")
+    r_l = rates.get("land")
+    if r_b is None or r_l is None:
+        return [CostItem("不動産取得税", None, "税率が未設定", UNKNOWN, src,
+                         c.get("note", ""))]
+
+    # ---- 床面積要件 ----
+    fmin, fmax = c.get("floor_area_min"), c.get("floor_area_max")
+    eligible = True
+    area_note = ""
+    if floor_area_m2 is None:
+        eligible = False
+        area_note = "床面積が未入力のため軽減の適用可否を判定できません"
+    elif fmin and floor_area_m2 < fmin:
+        eligible = False
+        area_note = f"床面積が{fmin}㎡未満のため軽減の対象外"
+    elif fmax and floor_area_m2 > fmax:
+        eligible = False
+        area_note = f"床面積が{fmax}㎡超のため軽減の対象外"
+
+    # ---- 建物 ----
+    if building_assessed is None or build_year is None:
+        out.append(CostItem("不動産取得税（建物）", None,
+                            "建物の評価額または新築時期が不明", UNKNOWN, src))
+    elif not eligible:
+        tax = int(round(building_assessed * r_b))
+        out.append(CostItem(
+            "不動産取得税（建物）", tax,
+            f"{prefix}評価額 {building_assessed:,}円 × {r_b*100:.0f}%（軽減なし）",
+            ESTIMATED, src, area_note))
+    elif quake_conforming is False:
+        # 耐震基準不適合：控除は無く、税額から定額を減額
+        tbl = c.get("reduction_nonconforming", {}).get("table", [])
+        red, ambiguous = _band_value(tbl, build_year, build_month, build_day)
+        tax = int(round(building_assessed * r_b))
+        final = max(0, tax - (red or 0))
+        basis = (f"{prefix}評価額 {building_assessed:,}円 × {r_b*100:.0f}% "
+                 f"＝ {tax:,}円 − 軽減 {(red or 0):,}円（耐震基準不適合）")
+        if ambiguous:
+            basis += "　※新築の月日が不明なため不利側（軽減額の小さい方）で試算"
+        out.append(CostItem("不動産取得税（建物）", final, basis, ESTIMATED, src,
+                            "取得後に耐震改修し証明を受けた場合の軽減です。"))
+    else:
+        key = "after_s57" if build_year >= 1982 else "before_s56_certified"
+        tbl = c.get("deduction_conforming", {}).get(key, [])
+        ded, ambiguous = _band_value(tbl, build_year, build_month, build_day)
+        if ded is None:
+            out.append(CostItem("不動産取得税（建物）", None,
+                                f"{build_year}年築は控除額の区分表の範囲外",
+                                UNKNOWN, src))
+        else:
+            base = max(0, building_assessed - ded)
+            tax = int(round(base * r_b))
+            basis = (f"{prefix}(評価額 {building_assessed:,}円 − 控除 {ded:,}円)"
+                     f" × {r_b*100:.0f}%")
+            if ambiguous:
+                basis += "　※新築の月日が不明なため不利側（控除額の小さい方）で試算"
+            note = ""
+            if build_year <= 1981:
+                note = "耐震基準適合証明（取得日前2年以内の調査）が必要です。"
+            out.append(CostItem("不動産取得税（建物）", tax, basis, ESTIMATED,
+                                src, note))
+
+    # ---- 土地 ----
+    if land_assessed is None:
+        out.append(CostItem("不動産取得税（土地）", None,
+                            "土地の評価額が不明", UNKNOWN, src))
+        return out
+
+    half = 0.5 if residential_land else 1.0
+    taxable = int(round(land_assessed * half))
+    land_tax = int(round(taxable * r_l))
+    lr = c.get("land_reduction", {})
+    reduction = 0
+    detail = ""
+    if eligible and land_area_m2 and floor_area_m2 and land_area_m2 > 0:
+        unit = taxable / land_area_m2          # 1㎡単価（1/2適用後）
+        cap = lr.get("floor_area_cap_m2", 200)
+        mult = lr.get("floor_area_multiplier", 2)
+        target = min(floor_area_m2 * mult, cap)
+        calc = int(round(unit * target * lr.get("rate", r_l)))
+        flat = int(lr.get("flat", 0))
+        reduction = max(flat, calc)
+        detail = (f"　軽減 = max({flat:,}円, 1㎡単価 {int(unit):,}円 × "
+                  f"{target:.0f}㎡ × {lr.get('rate', r_l)*100:.0f}% "
+                  f"＝ {calc:,}円) ＝ {reduction:,}円")
+    final = max(0, land_tax - reduction)
+    basis = (f"{prefix}評価額 {land_assessed:,}円"
+             f"{' × 1/2（宅地）' if residential_land else ''}"
+             f" × {r_l*100:.0f}% ＝ {land_tax:,}円{detail}")
+    out.append(CostItem("不動産取得税（土地）", final, basis, ESTIMATED, src,
+                        area_note if not eligible else ""))
+    return out
 
 
-def _range_item(name: str, key: str, cfg: dict = None) -> CostItem:
-    c = (cfg or FCONFIG).get(key, {})
-    lo, hi = c.get("low"), c.get("high")
+def judicial_scrivener(cfg: dict = None) -> CostItem:
+    """司法書士報酬。登録免許税とあわせて登記費用を構成する。"""
+    c = (cfg or FCONFIG).get("judicial_scrivener", {})
+    flat = c.get("flat")
+    if flat is None:
+        return CostItem("司法書士報酬", None, "報酬額が未設定", UNKNOWN,
+                        c.get("source"), c.get("note", ""))
+    return CostItem("司法書士報酬", int(flat), f"定額 {int(flat):,}円",
+                    ESTIMATED, c.get("source"), c.get("note", ""))
+
+
+def fire_insurance(earthquake: bool = False, cfg: dict = None) -> CostItem:
+    """火災保険料。地震保険の有無で金額帯が変わる。"""
+    c = (cfg or FCONFIG).get("fire_insurance", {})
+    key = "with_earthquake" if earthquake else "without_earthquake"
+    band = c.get(key, {})
+    lo, hi = band.get("low"), band.get("high")
+    term = c.get("term_years")
     if lo is None or hi is None:
-        return CostItem(name, None, "相場が未設定", UNKNOWN, c.get("source"),
-                        c.get("note", ""))
+        return CostItem("火災保険料", None, "相場が未設定", UNKNOWN,
+                        c.get("source"), c.get("note", ""))
+    label = "火災保険料（地震保険あり）" if earthquake else "火災保険料（地震保険なし）"
     mid = int((lo + hi) / 2)
-    return CostItem(name, mid, f"目安 {lo:,}〜{hi:,}円 の中央値", ESTIMATED,
-                    c.get("source"), c.get("note", ""))
+    term_txt = f"{term}年一括の" if term else ""
+    return CostItem(label, mid,
+                    f"{term_txt}目安 {lo:,}〜{hi:,}円 の中央値",
+                    ESTIMATED, c.get("source"), c.get("note", ""))
 
 
 def purchase_costs(price: int,
@@ -207,22 +380,45 @@ def purchase_costs(price: int,
                    loan_amount: Optional[int] = None,
                    land_assessed: Optional[int] = None,
                    building_assessed: Optional[int] = None,
+                   land_area_m2: Optional[float] = None,
+                   floor_area_m2: Optional[float] = None,
+                   build_year: Optional[int] = None,
+                   build_month: Optional[int] = None,
+                   build_day: Optional[int] = None,
+                   quake_conforming: Optional[bool] = None,
+                   earthquake_insurance: bool = False,
                    residential: bool = True,
                    cfg: dict = None) -> PurchaseCosts:
     """購入諸費用の一式。判明した項目だけを合計し、未確認は明示する。"""
+    conf = cfg or FCONFIG
+    ratios = conf.get("assessed_value_ratio", {})
+    # 評価額は実額優先。無ければ売買価格から推定（推定した旨は各項目に出る）。
+    la, _ = _assessed(land_assessed, land_price, ratios.get("land"))
+    ba, _ = _assessed(building_assessed, building_price, ratios.get("building"))
+
     items: List[CostItem] = [
         brokerage_fee(price, cfg),
         stamp_duty(price, cfg),
     ]
     items += registration_tax(land_price, building_price, loan_amount,
                               land_assessed, building_assessed, residential, cfg)
-    items.append(acquisition_tax(cfg))
-    items.append(_range_item("司法書士報酬", "judicial_scrivener", cfg))
-    items.append(_range_item("火災保険料", "fire_insurance", cfg))
+    items.append(judicial_scrivener(cfg))
+    items += acquisition_tax(ba, la, land_area_m2, floor_area_m2,
+                             build_year, build_month, build_day,
+                             quake_conforming, residential, cfg)
+    items.append(fire_insurance(earthquake_insurance, cfg))
 
     total = sum(i.amount for i in items if i.amount)
     unknown = [i.name for i in items if i.amount is None]
     return PurchaseCosts(items, total, unknown)
+
+
+def registration_cost_total(costs: PurchaseCosts) -> Optional[int]:
+    """登記費用（登録免許税＋司法書士報酬）の小計。合算表示用。"""
+    vals = [i.amount for i in costs.items
+            if i.amount is not None
+            and (i.name.startswith("登録免許税") or i.name == "司法書士報酬")]
+    return sum(vals) if vals else None
 
 
 # ---------------- 金利シナリオ ----------------
@@ -306,6 +502,86 @@ def prepayment(principal: int, annual_rate: float, years: int,
     return PrepaymentResult(kind, prepay_amount,
                             max(0, remain_months - new_months),
                             max(0, int(interest_before - interest_after)), int(m))
+
+
+# ---------------- 住宅ローン減税 ----------------
+@dataclass
+class LoanDeduction:
+    """住宅ローン控除の試算。実際の控除額は納税額が上限になる点に注意。"""
+    category: str              # 長期優良・低炭素 / ZEH水準省エネ / 省エネ基準適合 / その他
+    limit: Optional[int]       # 借入限度額
+    years: Optional[int]       # 控除期間
+    yearly: List[int] = field(default_factory=list)   # 各年の控除額
+    total: int = 0
+    status: str = UNKNOWN
+    basis: str = ""
+    source: Optional[str] = None
+    notes: List[str] = field(default_factory=list)
+
+
+def loan_deduction(principal: int, annual_rate: float, years: int,
+                   category: str = "その他",
+                   is_resale: bool = False,
+                   is_kosodate: bool = False,
+                   annual_income: Optional[int] = None,
+                   floor_area_m2: Optional[float] = None,
+                   build_year: Optional[int] = None,
+                   cfg: dict = None) -> LoanDeduction:
+    """住宅ローン控除の最大額。各年末残高と借入限度額の小さい方に控除率を掛ける。
+
+    実際の控除額はその人の所得税・住民税の範囲内に限られるため、ここで出るのは
+    「制度上の上限」。個別の税額計算には踏み込まない（§8-6）。
+    """
+    c = (cfg or FCONFIG).get("loan_deduction", {})
+    rate = c.get("rate")
+    table = c.get("resale" if is_resale else "existing", {})
+    band = table.get(category)
+    src = c.get("source")
+    notes: List[str] = []
+
+    if rate is None or not band:
+        return LoanDeduction(category, None, None, [], 0, UNKNOWN,
+                             "控除率または区分が未設定", src)
+
+    # 要件チェック（満たさない場合は算出しない）
+    income_limit = c.get("income_limit")
+    if annual_income is not None and income_limit and annual_income > income_limit:
+        return LoanDeduction(category, None, None, [], 0, UNKNOWN,
+                             f"合計所得金額が{income_limit:,}円を超えるため対象外", src)
+
+    fmin = c.get("floor_area_min")
+    if annual_income is not None and c.get("high_income_threshold") and \
+            annual_income > c["high_income_threshold"]:
+        fmin = c.get("floor_area_min_high_income", fmin)
+    if floor_area_m2 is not None and fmin and floor_area_m2 < fmin:
+        return LoanDeduction(category, None, None, [], 0, UNKNOWN,
+                             f"床面積が{fmin}㎡未満のため対象外", src)
+
+    cert_before = _ymd(c.get("quake_cert_required_before"))
+    if build_year and cert_before and build_year <= cert_before[0]:
+        notes.append(c.get("quake_cert_note", ""))
+
+    limit = band.get("limit")
+    if is_kosodate and band.get("limit_kosodate"):
+        limit = band["limit_kosodate"]
+        notes.append("子育て世帯・若者夫婦世帯の上乗せを適用しています。")
+    elif is_kosodate:
+        notes.append("この区分には子育て世帯の上乗せがありません。")
+    n_years = band.get("years")
+    if limit is None or n_years is None:
+        return LoanDeduction(category, None, None, [], 0, UNKNOWN,
+                             "借入限度額または控除期間が未設定", src)
+
+    yearly = []
+    for y in range(1, n_years + 1):
+        bal = remaining_balance(principal, annual_rate, years, y * 12)
+        yearly.append(int(round(min(bal, limit) * rate)))
+    total = sum(yearly)
+    basis = (f"{category}（{'買取再販' if is_resale else '既存住宅'}）"
+             f"／借入限度額 {limit:,}円 × 控除率 {rate*100:.1f}% × {n_years}年")
+    notes.append("実際の控除額は、その年の所得税・住民税の額が上限になります。")
+    return LoanDeduction(category, limit, n_years, yearly, total,
+                         ESTIMATED, basis, src, notes)
 
 
 # ---------------- 適正借入額の逆算 ----------------
