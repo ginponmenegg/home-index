@@ -15,6 +15,29 @@ from src.finance import (brokerage_fee, stamp_duty, registration_tax,
 from src.loan import monthly_payment
 
 
+def test_man_yen_notation():
+    """金額表記：1万円以上は万円、端数は小数で残し、1万円未満は円。"""
+    from src.finance import man_yen
+    assert man_yen(20_000_000) == "2,000万円"
+    assert man_yen(1_214_400) == "121.44万円"
+    assert man_yen(8_880_000) == "888万円"
+    assert man_yen(10_000) == "1万円"
+    assert man_yen(200) == "200円"
+    assert man_yen(0) == "0円"
+    assert man_yen(None) == "—"
+
+
+def test_basis_uses_man_yen():
+    """根拠欄も万円表記に揃っていること（円のべた書きが残っていない）。"""
+    it = brokerage_fee(34_800_000)
+    assert "万円" in it.basis and "34,800,000円" not in it.basis
+    reg = registration_tax(land_price=20_000_000, loan_amount=30_000_000)
+    assert "1,400万円" in reg[0].basis
+    d = loan_deduction(30_000_000, 0.0125, 35, category="その他",
+                       annual_income=8_000_000, floor_area_m2=90.0)
+    assert "2,000万円" in d.basis
+
+
 def test_brokerage_fee():
     # 3,480万円 → 200万×5.5% + 200万×4.4% + 3,080万×3.3% = 121.44万円
     it = brokerage_fee(34_800_000)
@@ -33,7 +56,7 @@ def test_brokerage_fee():
 def test_brokerage_vacant_house_note():
     """800万円以下は空家特例に触れる可能性を注記する（自動適用ではない）。"""
     low = brokerage_fee(5_000_000)
-    assert "330,000円" in (low.note or "") and "特例" in (low.note or "")
+    assert "33万円" in (low.note or "") and "特例" in (low.note or "")
     high = brokerage_fee(34_800_000)
     assert "特例により" not in (high.note or "")
 

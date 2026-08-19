@@ -1106,7 +1106,9 @@ BRAND_BAR
   <div class="kv"><span>借入額</span><b>{{s.principal}}</b></div>
   <p class="big">月々 約 {{s.monthly}}{% if s.burden %}<span class="sub" style="font-size:14px"> ／ 返済負担率 {{s.burden}}%</span>{% endif %}</p>
   <p class="sub">金利 {{s.rate}}％ ／ {{s.years}}年 ／ 元利均等返済</p>
-  <div class="warn">諸費用は借入額に含めていません。頭金とは別に現金で用意する前提の試算です。</div>
+  <div class="warn">借入額は<b>必要総額から頭金を差し引いた額</b>です（諸費用を借入に含める前提）。
+   保証料と抵当権設定の登録免許税は借入額に比例するため、借入額と諸費用が釣り合うまで計算を繰り返しています。
+   諸費用を現金で用意する場合は、その分を頭金に加えて入力してください。</div>
  </div>
 
  <div class="card">
@@ -1212,7 +1214,7 @@ def _pro_defaults():
 def pro_finance():
     from src.finance import (purchase_costs, registration_cost_total,
                              rate_scenarios, prepayment, loan_deduction,
-                             affordable_loan, FCONFIG)
+                             affordable_loan, man_yen, FCONFIG)
     from src.loan import compute_loan
 
     cats = list(FCONFIG.get("loan_deduction", {}).get("existing", {}).keys())
@@ -1234,35 +1236,45 @@ def pro_finance():
     income = to_yen(f.get("income"))
     years = max(1, min(50, to_int(f.get("loan_years")) or 35))
     rate = (to_float(f.get("rate")) or 1.25) / 100.0
-    principal = max(0, price - down)
     quake_map = {"yes": True, "no": False, "unknown": None}
 
-    costs = purchase_costs(
-        price,
-        land_price=to_yen(f.get("land_price")),
-        building_price=to_yen(f.get("building_price")),
-        loan_amount=principal or None,
-        land_assessed=to_yen(f.get("land_assessed")),
-        building_assessed=to_yen(f.get("building_assessed")),
-        land_area_m2=to_float(f.get("land_area")),
-        floor_area_m2=to_float(f.get("floor_area")),
-        build_year=to_int(f.get("byear")),
-        build_month=to_int(f.get("bmonth")),
-        build_day=to_int(f.get("bday")),
-        quake_conforming=quake_map.get(f.get("quake"), None),
-        earthquake_insurance=v["quake_ins"],
-        new_build=v["newbuild"],
-        option_cost=v["option_cost"])
+    def _costs(principal):
+        return purchase_costs(
+            price,
+            land_price=to_yen(f.get("land_price")),
+            building_price=to_yen(f.get("building_price")),
+            loan_amount=principal or None,
+            land_assessed=to_yen(f.get("land_assessed")),
+            building_assessed=to_yen(f.get("building_assessed")),
+            land_area_m2=to_float(f.get("land_area")),
+            floor_area_m2=to_float(f.get("floor_area")),
+            build_year=to_int(f.get("byear")),
+            build_month=to_int(f.get("bmonth")),
+            build_day=to_int(f.get("bday")),
+            quake_conforming=quake_map.get(f.get("quake"), None),
+            earthquake_insurance=v["quake_ins"],
+            new_build=v["newbuild"],
+            option_cost=v["option_cost"])
 
-    L = compute_loan(price, down, rate, years, income)
-    sctx = dict(price=man(price), costs=man(costs.total),
-                total=man(price + costs.total), down=man(down),
-                principal=man(principal), monthly=f"{L.monthly_payment:,}円",
+    # 借入額＝必要総額−頭金。ただし諸費用のうち保証料と抵当権の登録免許税は
+    # 借入額に比例するため、借入額と諸費用が相互に依存する。反復して収束させる。
+    principal = max(0, price - down)
+    for _ in range(8):
+        costs = _costs(principal)
+        nxt = max(0, price + costs.total - down)
+        if nxt == principal:
+            break
+        principal = nxt
+    costs = _costs(principal)
+
+    L = compute_loan(price + costs.total, down, rate, years, income)
+    sctx = dict(price=man_yen(price), costs=man_yen(costs.total),
+                total=man_yen(price + costs.total), down=man_yen(down),
+                principal=man_yen(principal), monthly=f"{L.monthly_payment:,}円",
                 burden=L.burden_ratio, rate=f.get("rate") or "1.25",
                 years=years, newbuild=v["newbuild"])
 
-    cctx = [dict(name=c.name,
-                 amount=(man(c.amount) if c.amount is not None else "—"),
+    cctx = [dict(name=c.name, amount=man_yen(c.amount),
                  basis=c.basis, status=c.status,
                  status_ja=_STATUS_JA.get(c.status, c.status))
             for c in costs.items]
@@ -1271,7 +1283,7 @@ def pro_finance():
     scen = [dict(label=s.label, rate=f"{s.annual_rate*100:.2f}",
                  monthly=f"{s.monthly:,}円",
                  diff=("—" if s.diff_monthly == 0 else f"{s.diff_monthly:+,}円"),
-                 total=man(s.total))
+                 total=man_yen(s.total))
             for s in rate_scenarios(principal, years, rate)]
 
     pctx = None
@@ -1280,10 +1292,10 @@ def pro_finance():
         after_y = max(1, to_int(f.get("prepay_after")) or 10)
         pr = prepayment(principal, rate, years, pre_yen, after_y * 12,
                         f.get("prepay_kind") or "期間短縮型")
-        pctx = dict(after=after_y, amount=man(pre_yen), kind=pr.kind,
+        pctx = dict(after=after_y, amount=man_yen(pre_yen), kind=pr.kind,
                     months_saved=(f"{pr.months_saved // 12}年{pr.months_saved % 12}ヶ月"
                                   if pr.months_saved else None),
-                    interest_saved=man(pr.interest_saved),
+                    interest_saved=man_yen(pr.interest_saved),
                     new_monthly=f"{pr.new_monthly:,}円")
 
     d = loan_deduction(principal, rate, years,
@@ -1292,15 +1304,15 @@ def pro_finance():
                        annual_income=income,
                        floor_area_m2=to_float(f.get("floor_area")),
                        build_year=to_int(f.get("byear")))
-    dctx = dict(ok=(d.total > 0), basis=d.basis, total=man(d.total),
-                limit=(man(d.limit) if d.limit else "—"), years=d.years,
-                yearly=[man(y) for y in d.yearly], notes=d.notes)
+    dctx = dict(ok=(d.total > 0), basis=d.basis, total=man_yen(d.total),
+                limit=man_yen(d.limit), years=d.years,
+                yearly=[man_yen(y) for y in d.yearly], notes=d.notes)
 
     actx = None
     if income:
         a = affordable_loan(income, rate, years, down)
         actx = dict(limit=f"{a.burden_limit:.0f}", monthly=f"{a.max_monthly:,}円",
-                    principal=man(a.max_principal), price=man(a.max_price),
+                    principal=man_yen(a.max_principal), price=man_yen(a.max_price),
                     note=a.note)
 
     seen, sources = set(), []
