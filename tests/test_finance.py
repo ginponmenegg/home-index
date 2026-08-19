@@ -30,7 +30,7 @@ def test_man_yen_notation():
 def test_basis_uses_man_yen():
     """根拠欄も万円表記に揃っていること（円のべた書きが残っていない）。"""
     it = brokerage_fee(34_800_000)
-    assert "万円" in it.basis and "34,800,000円" not in it.basis
+    assert "3,480万円" in it.basis and "34,800,000円" not in it.basis
     reg = registration_tax(land_price=20_000_000, loan_amount=30_000_000)
     assert "1,400万円" in reg[0].basis
     d = loan_deduction(30_000_000, 0.0125, 35, category="その他",
@@ -39,14 +39,21 @@ def test_basis_uses_man_yen():
 
 
 def test_brokerage_fee():
-    # 3,480万円 → 200万×5.5% + 200万×4.4% + 3,080万×3.3% = 121.44万円
+    """価格帯ごとの速算式（×5% / ×4%＋2万円 / ×3%＋6万円）に消費税を加える。"""
+    # 400万円超：3,480万×3%＋6万＝110.4万（税抜）→ 121.44万円
     it = brokerage_fee(34_800_000)
     assert it.status == COMPUTED
     assert it.amount == 1_214_400, it.amount
-    # 段階計算：200万円以下は5.5%のみ
-    assert brokerage_fee(1_500_000).amount == 82_500
-    # 200万円超400万円以下
-    assert brokerage_fee(3_000_000).amount == 154_000
+    assert "× 3% ＋ 6万円" in it.basis
+    # 200万円以下：150万×5%＝7.5万 → 8.25万円
+    low = brokerage_fee(1_500_000)
+    assert low.amount == 82_500 and "× 5%" in low.basis
+    # 200万円超400万円以下：300万×4%＋2万＝14万 → 15.4万円
+    mid = brokerage_fee(3_000_000)
+    assert mid.amount == 154_000 and "× 4% ＋ 2万円" in mid.basis
+    # 境界値：200万円ちょうどは5%区分、400万円ちょうどは4%区分
+    assert brokerage_fee(2_000_000).amount == 110_000
+    assert brokerage_fee(4_000_000).amount == 198_000
     # 800万円ちょうどは空家特例の上限33万円と一致する
     assert brokerage_fee(8_000_000).amount == 330_000
     # 価格未入力
@@ -297,6 +304,8 @@ def test_registration_cost_subtotal():
 def test_rate_scenarios_monotonic():
     sc = rate_scenarios(30_000_000, 35, 0.0125)
     assert sc[0].label == "現在の金利" and sc[0].diff_monthly == 0
+    # 現在／+0.5%／+1.0%／+1.5% の4段階
+    assert [s.label for s in sc] == ["現在の金利", "+0.5%", "+1.0%", "+1.5%"]
     # 金利が上がるほど月額も上がる
     monthlies = [s.monthly for s in sc]
     assert monthlies == sorted(monthlies)

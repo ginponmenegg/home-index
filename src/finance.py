@@ -79,33 +79,35 @@ class PurchaseCosts:
 
 # ---------------- 個別の費用項目 ----------------
 def brokerage_fee(price: int, cfg: dict = None) -> CostItem:
-    """仲介手数料（宅建業法の上限額）。税込料率で段階計算する。
+    """仲介手数料（宅建業法の上限額）。価格帯に応じた速算式で算出する。
 
-    200万円以下5.5% / 200万円超400万円以下4.4% / 400万円超3.3%。
+    200万円以下：価格×5%＋税
+    200万円超400万円以下：価格×4%＋2万円＋税
+    400万円超：価格×3%＋6万円＋税
     800万円以下は低廉な空家等の特例（上限33万円）に触れる可能性を注記する。
     """
     c = (cfg or FCONFIG).get("brokerage", {})
     if not price or price <= 0:
         return CostItem("仲介手数料", None, "売買価格が未入力", UNKNOWN)
-    tiers = c.get("tiers")
-    if not tiers:
+    formula = c.get("formula")
+    tax = c.get("consumption_tax")
+    if not formula or tax is None:
         return CostItem("仲介手数料", None, "料率が未設定", UNKNOWN,
                         c.get("source"), c.get("note", ""))
-    amount = 0.0
-    lower = 0
-    parts = []
-    for upper, rate in tiers:
-        cap = price if upper is None else min(price, upper)
-        if cap <= lower:
-            continue
-        span = cap - lower
-        amount += span * rate
-        parts.append(f"{man_yen(span)}×{rate * 100:.1f}%")
-        lower = cap
-        if lower >= price:
+    rate = add = None
+    for upper, r, a in formula:
+        if upper is None or price <= upper:
+            rate, add = r, a
             break
-    amount = int(round(amount))
-    basis = f"{' ＋ '.join(parts)} ＝ {man_yen(amount)}（税込）"
+    if rate is None:
+        return CostItem("仲介手数料", None, "適用する速算式が特定できません",
+                        UNKNOWN, c.get("source"), c.get("note", ""))
+    net = int(round(price * rate + add))
+    amount = int(round(net * (1 + tax)))
+    add_txt = f" ＋ {man_yen(add)}" if add else ""
+    basis = (f"売買価格 {man_yen(price)} × {rate * 100:.0f}%{add_txt}"
+             f" ＝ {man_yen(net)}（税抜）／消費税{tax * 100:.0f}%を加えて"
+             f" {man_yen(amount)}")
 
     note = c.get("note", "")
     vh = c.get("vacant_house_special", {})
@@ -522,7 +524,7 @@ def rate_scenarios(principal: int, years: int, base_rate: float,
                    deltas: List[float] = None) -> List[RateScenario]:
     """金利が変動した場合の返済額。将来予測ではなく「いくらになるか」の試算。"""
     if deltas is None:
-        deltas = [0.0, 0.005, 0.01, 0.02]
+        deltas = [0.0, 0.005, 0.01, 0.015]
     base = monthly_payment(principal, base_rate, years)
     out = []
     for d in deltas:
