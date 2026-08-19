@@ -912,6 +912,411 @@ def _run_diagnose(f, datetime):
         grade_color=grade_color, grade_comment=grade_comment)
 
 
+PRO_FINANCE_FORM = """
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+FONT_LINK_PLACEHOLDER
+<title>詳細な資金計画｜HOME INDEX PRO</title>
+<style>
+ :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#6b7280;--acc:#111111;--line:#e5e5e5}
+ *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
+ .wrap{max-width:760px;margin:0 auto;padding:20px 16px}
+ h1{font-size:21px;margin:8px 0 2px} .lead{color:var(--sub);margin:0 0 16px;font-size:13.5px;line-height:1.8}
+ .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:16px}
+ h2{font-size:14px;margin:0 0 4px;letter-spacing:.04em}
+ .h2sub{font-size:12px;color:var(--sub);margin:0 0 10px}
+ label{display:block;font-size:12.5px;color:var(--sub);margin:11px 0 4px}
+ input,select{width:100%;padding:12px;border:1px solid var(--line);border-radius:9px;
+  font-size:16px;font-family:inherit;background:#fff}
+ .row{display:flex;gap:12px}.row>div{flex:1;min-width:0}
+ .hint{font-size:11.5px;color:var(--sub);margin-top:3px;line-height:1.7}
+ button{margin-top:18px;width:100%;padding:15px;background:var(--acc);color:#fff;border:0;
+  border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;min-height:50px}
+ button:hover{background:#333}
+ .tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.06em;
+  background:#e5e5e5;color:#111;border-radius:999px;padding:3px 9px;margin-left:6px}
+ BRAND_CSS_PLACEHOLDER
+ @media (max-width:560px){.row{flex-direction:column;gap:0}}
+</style></head><body>
+BRAND_BAR
+<div class="wrap">
+ <h1>詳細な資金計画<span class="tag">PRO</span></h1>
+ <p class="lead">購入にかかる諸費用、金利が上がったときの返済額、繰上返済の効果、住宅ローン控除の見込みを、
+  公的な税率と料率にもとづいて試算します。<b>物件の価格を評価するものではありません。</b></p>
+
+ <form method="post" action="/pro/finance">
+  <div class="card">
+   <h2>物件と価格</h2>
+   <p class="h2sub">金額はすべて万円で入力してください</p>
+   <div class="row">
+    <div><label>売買価格（万円・必須）</label><input name="price" value="{{v.price}}" required></div>
+    <div><label>種別</label>
+     <select name="newbuild">
+      <option value="0" {{'selected' if not v.newbuild else ''}}>中古</option>
+      <option value="1" {{'selected' if v.newbuild else ''}}>新築</option>
+     </select>
+     <div class="hint">新築のときだけ表題登記・保存登記を計上します</div></div>
+   </div>
+   <div class="row">
+    <div><label>うち土地価格（万円・任意）</label><input name="land_price" value="{{v.land_price}}"></div>
+    <div><label>うち建物価格（万円・任意）</label><input name="building_price" value="{{v.building_price}}"></div>
+   </div>
+   <div class="hint">内訳が不明なら空欄で構いません。その場合、登録免許税と不動産取得税は「未確認」と表示されます。</div>
+   <div class="row">
+    <div><label>土地の固定資産税評価額（万円・任意）</label><input name="land_assessed" value="{{v.land_assessed}}"></div>
+    <div><label>建物の固定資産税評価額（万円・任意）</label><input name="building_assessed" value="{{v.building_assessed}}"></div>
+   </div>
+   <div class="hint">課税明細書があれば入力してください。未入力なら価格から推定し、その旨を根拠に明記します。</div>
+   <div class="row">
+    <div><label>土地面積（㎡）</label><input name="land_area" value="{{v.land_area}}"></div>
+    <div><label>建物の床面積（㎡）</label><input name="floor_area" value="{{v.floor_area}}"></div>
+   </div>
+  </div>
+
+  <div class="card">
+   <h2>建物の新築時期</h2>
+   <p class="h2sub">不動産取得税の控除額が新築時期で変わります</p>
+   <div class="row">
+    <div><label>新築年（西暦・必須級）</label><input name="byear" value="{{v.byear}}"></div>
+    <div><label>月（任意）</label><input name="bmonth" value="{{v.bmonth}}"></div>
+    <div><label>日（任意）</label><input name="bday" value="{{v.bday}}"></div>
+   </div>
+   <div class="hint">月日が不明なら空欄で構いません。その場合は<b>不利側（控除額の小さい方）</b>で試算します。</div>
+   <label>耐震基準への適合</label>
+   <select name="quake">
+    <option value="yes" {{'selected' if v.quake=='yes' else ''}}>適合（1982年以降の新築、または適合証明あり）</option>
+    <option value="no" {{'selected' if v.quake=='no' else ''}}>不適合（取得後に耐震改修する）</option>
+    <option value="unknown" {{'selected' if v.quake=='unknown' else ''}}>不明</option>
+   </select>
+  </div>
+
+  <div class="card">
+   <h2>借入とご自身の条件</h2>
+   <div class="row">
+    <div><label>頭金（万円）</label><input name="down" value="{{v.down}}"></div>
+    <div><label>世帯年収（万円）</label><input name="income" value="{{v.income}}"></div>
+   </div>
+   <div class="row">
+    <div><label>借入年数（年）</label><input name="loan_years" value="{{v.loan_years}}"></div>
+    <div><label>金利（％）</label><input name="rate" value="{{v.rate}}"></div>
+   </div>
+   <div class="row">
+    <div><label>地震保険</label>
+     <select name="quake_ins">
+      <option value="0" {{'selected' if not v.quake_ins else ''}}>付けない</option>
+      <option value="1" {{'selected' if v.quake_ins else ''}}>付ける</option>
+     </select></div>
+    <div><label>オプション費用（カーテン・照明・外構など）</label>
+     <select name="option_cost">
+      <option value="0" {{'selected' if not v.option_cost else ''}}>計上しない</option>
+      <option value="1" {{'selected' if v.option_cost else ''}}>計上する</option>
+     </select></div>
+   </div>
+  </div>
+
+  <div class="card">
+   <h2>住宅ローン控除</h2>
+   <p class="h2sub">住宅の省エネ性能によって借入限度額と控除期間が変わります</p>
+   <label>住宅の区分</label>
+   <select name="deduction_cat">
+    {% for c in categories %}<option value="{{c}}" {{'selected' if v.deduction_cat==c else ''}}>{{c}}</option>{% endfor %}
+   </select>
+   <div class="hint">性能の証明書が無い一般的な中古住宅は「その他」です。</div>
+   <div class="row">
+    <div><label>買取再販住宅</label>
+     <select name="resale">
+      <option value="0" {{'selected' if not v.resale else ''}}>いいえ</option>
+      <option value="1" {{'selected' if v.resale else ''}}>はい（宅建業者がリフォームして販売）</option>
+     </select></div>
+    <div><label>子育て世帯・若者夫婦世帯</label>
+     <select name="kosodate">
+      <option value="0" {{'selected' if not v.kosodate else ''}}>いいえ</option>
+      <option value="1" {{'selected' if v.kosodate else ''}}>はい</option>
+     </select>
+     <div class="hint">19歳未満の扶養親族がいる、または夫婦のいずれかが40歳未満</div></div>
+   </div>
+  </div>
+
+  <div class="card">
+   <h2>繰上返済のシミュレーション（任意）</h2>
+   <div class="row">
+    <div><label>繰上返済額（万円）</label><input name="prepay" value="{{v.prepay}}"></div>
+    <div><label>何年後に返済するか</label><input name="prepay_after" value="{{v.prepay_after}}"></div>
+    <div><label>方式</label>
+     <select name="prepay_kind">
+      <option value="期間短縮型" {{'selected' if v.prepay_kind=='期間短縮型' else ''}}>期間短縮型</option>
+      <option value="返済額軽減型" {{'selected' if v.prepay_kind=='返済額軽減型' else ''}}>返済額軽減型</option>
+     </select></div>
+   </div>
+  </div>
+
+  <button type="submit">資金計画を試算する</button>
+ </form>
+ <p class="hint" style="text-align:center;margin-top:12px">
+  ※ 税率・料率は公的資料にもとづきますが、試算結果は目安です。実際の金額は金融機関・仲介会社・所管の税務署および都道府県にご確認ください。</p>
+</div></body></html>
+"""
+
+PRO_FINANCE_RESULT = """
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+FONT_LINK_PLACEHOLDER
+<title>資金計画の結果｜HOME INDEX PRO</title>
+<style>
+ :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#6b7280;--acc:#111111;--line:#e5e5e5}
+ *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
+ .wrap{max-width:760px;margin:0 auto;padding:20px 16px}
+ a.back{color:var(--acc);text-decoration:none;font-size:13.5px}
+ .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-top:16px}
+ h1{font-size:20px;margin:10px 0 2px}
+ h2{font-size:15px;margin:0 0 10px}
+ .sub{color:var(--sub);font-size:13px;margin:0 0 8px}
+ .big{font-size:26px;font-weight:700;margin:6px 0}
+ .kv{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+ .kv:last-child{border-bottom:0}
+ .kv b{font-weight:700}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+ th{color:var(--sub);font-weight:600;white-space:nowrap}
+ td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+ .basis{font-size:11.5px;color:var(--sub);line-height:1.7;margin-top:2px}
+ .st{display:inline-block;font-size:10px;border-radius:5px;padding:2px 6px;white-space:nowrap}
+ .st-computed{background:#e8f0e8;color:#2f5233}
+ .st-estimated{background:#eef2f7;color:#3f4a5a}
+ .st-unknown{background:#f3f4f6;color:#6b7280}
+ .foot{color:var(--sub);font-size:11.5px;line-height:1.9;margin-top:10px}
+ .warn{background:#fafafa;border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+  font-size:12px;color:var(--sub);line-height:1.85}
+ .tablewrap{overflow-x:auto}
+ BRAND_CSS_PLACEHOLDER
+ @media (max-width:560px){.wrap{padding:16px 12px}.card{padding:16px}table{font-size:12px}}
+</style></head><body>
+BRAND_BAR
+<div class="wrap">
+ <a class="back" href="/pro/finance">← 条件を変えて試算</a>
+
+ <div class="card">
+  <h2>資金の全体像</h2>
+  <div class="kv"><span>物件価格</span><b>{{s.price}}</b></div>
+  <div class="kv"><span>諸費用（判明分）</span><b>{{s.costs}}</b></div>
+  <div class="kv"><span>必要総額</span><b>{{s.total}}</b></div>
+  <div class="kv"><span>頭金</span><b>{{s.down}}</b></div>
+  <div class="kv"><span>借入額</span><b>{{s.principal}}</b></div>
+  <p class="big">月々 約 {{s.monthly}}{% if s.burden %}<span class="sub" style="font-size:14px"> ／ 返済負担率 {{s.burden}}%</span>{% endif %}</p>
+  <p class="sub">金利 {{s.rate}}％ ／ {{s.years}}年 ／ 元利均等返済</p>
+  <div class="warn">諸費用は借入額に含めていません。頭金とは別に現金で用意する前提の試算です。</div>
+ </div>
+
+ <div class="card">
+  <h2>諸費用の内訳</h2>
+  <div class="tablewrap">
+  <table><tr><th>項目</th><th style="text-align:right">金額</th><th>区分</th></tr>
+  {% for c in costs %}
+   <tr><td>{{c.name}}<div class="basis">{{c.basis}}</div></td>
+    <td class="num">{{c.amount}}</td>
+    <td><span class="st st-{{c.status}}">{{c.status_ja}}</span></td></tr>
+  {% endfor %}
+  </table></div>
+  {% if reg_total %}<p class="sub" style="margin-top:10px">登記費用の小計（登録免許税＋司法書士報酬{% if s.newbuild %}＋表題・保存登記{% endif %}）：<b>{{reg_total}}</b></p>{% endif %}
+  {% if unknown %}<div class="warn" style="margin-top:10px"><b>算出していない項目</b>：{{unknown}}<br>
+   情報が足りないため金額を出していません。合計にも含めていません。</div>{% endif %}
+ </div>
+
+ <div class="card">
+  <h2>金利が上がったら</h2>
+  <p class="sub">将来の予測ではなく、その金利になった場合の返済額です。</p>
+  <div class="tablewrap">
+  <table><tr><th>金利</th><th style="text-align:right">月々</th><th style="text-align:right">現在との差</th><th style="text-align:right">総返済額</th></tr>
+  {% for r in scenarios %}<tr><td>{{r.label}}（{{r.rate}}％）</td><td class="num">{{r.monthly}}</td>
+   <td class="num">{{r.diff}}</td><td class="num">{{r.total}}</td></tr>{% endfor %}
+  </table></div>
+ </div>
+
+ {% if prepay %}
+ <div class="card">
+  <h2>繰上返済の効果</h2>
+  <p class="sub">{{prepay.after}}年後に {{prepay.amount}} を繰上返済した場合（{{prepay.kind}}）</p>
+  {% if prepay.months_saved %}<div class="kv"><span>返済期間の短縮</span><b>{{prepay.months_saved}}</b></div>{% endif %}
+  <div class="kv"><span>軽減される利息</span><b>{{prepay.interest_saved}}</b></div>
+  <div class="kv"><span>繰上返済後の月々</span><b>{{prepay.new_monthly}}</b></div>
+ </div>
+ {% endif %}
+
+ <div class="card">
+  <h2>住宅ローン控除</h2>
+  {% if deduction.ok %}
+   <p class="sub">{{deduction.basis}}</p>
+   <p class="big">最大 {{deduction.total}}</p>
+   <div class="kv"><span>借入限度額</span><b>{{deduction.limit}}</b></div>
+   <div class="kv"><span>控除期間</span><b>{{deduction.years}}年</b></div>
+   <div class="tablewrap" style="margin-top:10px">
+   <table><tr><th>年目</th>{% for y in deduction.yearly %}<th style="text-align:right">{{loop.index}}</th>{% endfor %}</tr>
+    <tr><td>控除額</td>{% for y in deduction.yearly %}<td class="num">{{y}}</td>{% endfor %}</tr></table></div>
+  {% else %}
+   <p class="sub">{{deduction.basis}}</p>
+  {% endif %}
+  {% for n in deduction.notes %}<p class="foot">・{{n}}</p>{% endfor %}
+ </div>
+
+ {% if afford %}
+ <div class="card">
+  <h2>年収からみた借入の目安</h2>
+  <div class="kv"><span>返済負担率の上限</span><b>{{afford.limit}}％</b></div>
+  <div class="kv"><span>月々返済の上限</span><b>{{afford.monthly}}</b></div>
+  <div class="kv"><span>借入可能額</span><b>{{afford.principal}}</b></div>
+  <div class="kv"><span>頭金を加えた購入可能額</span><b>{{afford.price}}</b></div>
+  <p class="foot">{{afford.note}}</p>
+ </div>
+ {% endif %}
+
+ <div class="card">
+  <h2>この試算の根拠</h2>
+  {% for s in sources %}<p class="foot">・{{s}}</p>{% endfor %}
+  <div class="warn" style="margin-top:10px">
+   税率・料率は取得時点の公的資料にもとづきます。法改正で変わること、また不動産取得税の税率は
+   <b>標準税率</b>であり都道府県の条例で異なり得ることにご注意ください。
+   実際の金額は金融機関・仲介会社・所管の税務署および都道府県にご確認ください。
+   本試算は物件の価格を評価するものではありません。
+  </div>
+ </div>
+</div></body></html>
+"""
+
+PRO_FINANCE_FORM = (PRO_FINANCE_FORM
+                    .replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
+                    .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
+                    .replace("BRAND_BAR", brand_bar("PRO")))
+PRO_FINANCE_RESULT = (PRO_FINANCE_RESULT
+                      .replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
+                      .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
+                      .replace("BRAND_BAR", brand_bar("PRO"))
+                      .replace("</div></body></html>", FOOTER + "</div></body></html>"))
+
+_STATUS_JA = {"computed": "計算", "estimated": "推定", "unknown": "未確認"}
+
+
+def _pro_defaults():
+    return dict(price="3480", newbuild=False, land_price="2000",
+                building_price="1480", land_assessed="", building_assessed="",
+                land_area="147.07", floor_area="90.47",
+                byear="2005", bmonth="", bday="", quake="yes",
+                down="500", income="800", loan_years="35", rate="1.25",
+                quake_ins=False, option_cost=False,
+                deduction_cat="その他", resale=False, kosodate=False,
+                prepay="", prepay_after="10", prepay_kind="期間短縮型")
+
+
+@app.route("/pro/finance", methods=["GET", "POST"])
+def pro_finance():
+    from src.finance import (purchase_costs, registration_cost_total,
+                             rate_scenarios, prepayment, loan_deduction,
+                             affordable_loan, FCONFIG)
+    from src.loan import compute_loan
+
+    cats = list(FCONFIG.get("loan_deduction", {}).get("existing", {}).keys())
+    cats = [c for c in cats if not c.startswith("_")]
+    if request.method == "GET":
+        return render_template_string(PRO_FINANCE_FORM, v=_pro_defaults(),
+                                      categories=cats)
+
+    f = request.form
+    v = {k: (f.get(k) or "") for k in _pro_defaults()}
+    v["newbuild"] = (f.get("newbuild") == "1")
+    v["quake_ins"] = (f.get("quake_ins") == "1")
+    v["option_cost"] = (f.get("option_cost") == "1")
+    v["resale"] = (f.get("resale") == "1")
+    v["kosodate"] = (f.get("kosodate") == "1")
+
+    price = to_yen(f.get("price")) or 0
+    down = to_yen(f.get("down")) or 0
+    income = to_yen(f.get("income"))
+    years = max(1, min(50, to_int(f.get("loan_years")) or 35))
+    rate = (to_float(f.get("rate")) or 1.25) / 100.0
+    principal = max(0, price - down)
+    quake_map = {"yes": True, "no": False, "unknown": None}
+
+    costs = purchase_costs(
+        price,
+        land_price=to_yen(f.get("land_price")),
+        building_price=to_yen(f.get("building_price")),
+        loan_amount=principal or None,
+        land_assessed=to_yen(f.get("land_assessed")),
+        building_assessed=to_yen(f.get("building_assessed")),
+        land_area_m2=to_float(f.get("land_area")),
+        floor_area_m2=to_float(f.get("floor_area")),
+        build_year=to_int(f.get("byear")),
+        build_month=to_int(f.get("bmonth")),
+        build_day=to_int(f.get("bday")),
+        quake_conforming=quake_map.get(f.get("quake"), None),
+        earthquake_insurance=v["quake_ins"],
+        new_build=v["newbuild"],
+        option_cost=v["option_cost"])
+
+    L = compute_loan(price, down, rate, years, income)
+    sctx = dict(price=man(price), costs=man(costs.total),
+                total=man(price + costs.total), down=man(down),
+                principal=man(principal), monthly=f"{L.monthly_payment:,}円",
+                burden=L.burden_ratio, rate=f.get("rate") or "1.25",
+                years=years, newbuild=v["newbuild"])
+
+    cctx = [dict(name=c.name,
+                 amount=(man(c.amount) if c.amount is not None else "—"),
+                 basis=c.basis, status=c.status,
+                 status_ja=_STATUS_JA.get(c.status, c.status))
+            for c in costs.items]
+    reg = registration_cost_total(costs)
+
+    scen = [dict(label=s.label, rate=f"{s.annual_rate*100:.2f}",
+                 monthly=f"{s.monthly:,}円",
+                 diff=("—" if s.diff_monthly == 0 else f"{s.diff_monthly:+,}円"),
+                 total=man(s.total))
+            for s in rate_scenarios(principal, years, rate)]
+
+    pctx = None
+    pre_yen = to_yen(f.get("prepay"))
+    if pre_yen and principal:
+        after_y = max(1, to_int(f.get("prepay_after")) or 10)
+        pr = prepayment(principal, rate, years, pre_yen, after_y * 12,
+                        f.get("prepay_kind") or "期間短縮型")
+        pctx = dict(after=after_y, amount=man(pre_yen), kind=pr.kind,
+                    months_saved=(f"{pr.months_saved // 12}年{pr.months_saved % 12}ヶ月"
+                                  if pr.months_saved else None),
+                    interest_saved=man(pr.interest_saved),
+                    new_monthly=f"{pr.new_monthly:,}円")
+
+    d = loan_deduction(principal, rate, years,
+                       category=f.get("deduction_cat") or "その他",
+                       is_resale=v["resale"], is_kosodate=v["kosodate"],
+                       annual_income=income,
+                       floor_area_m2=to_float(f.get("floor_area")),
+                       build_year=to_int(f.get("byear")))
+    dctx = dict(ok=(d.total > 0), basis=d.basis, total=man(d.total),
+                limit=(man(d.limit) if d.limit else "—"), years=d.years,
+                yearly=[man(y) for y in d.yearly], notes=d.notes)
+
+    actx = None
+    if income:
+        a = affordable_loan(income, rate, years, down)
+        actx = dict(limit=f"{a.burden_limit:.0f}", monthly=f"{a.max_monthly:,}円",
+                    principal=man(a.max_principal), price=man(a.max_price),
+                    note=a.note)
+
+    seen, sources = set(), []
+    for c in costs.items:
+        if c.source and c.source not in seen:
+            seen.add(c.source)
+            sources.append(c.source)
+    if d.source and d.source not in seen:
+        sources.append(d.source)
+
+    return render_template_string(
+        PRO_FINANCE_RESULT, s=sctx, costs=cctx, reg_total=(man(reg) if reg else None),
+        unknown="・".join(costs.unknown_items) if costs.unknown_items else None,
+        scenarios=scen, prepay=pctx, deduction=dctx, afford=actx, sources=sources)
+
+
 def open_browser():
     webbrowser.open("http://127.0.0.1:5000")
 
