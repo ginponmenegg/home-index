@@ -63,29 +63,65 @@ class PurchaseCosts:
 
 # ---------------- 個別の費用項目 ----------------
 def brokerage_fee(price: int, cfg: dict = None) -> CostItem:
-    """仲介手数料（宅建業法の上限額）。速算式：価格×3%＋6万円＋消費税。"""
+    """仲介手数料（宅建業法の上限額）。税込料率で段階計算する。
+
+    200万円以下5.5% / 200万円超400万円以下4.4% / 400万円超3.3%。
+    800万円以下は低廉な空家等の特例（上限33万円）に触れる可能性を注記する。
+    """
     c = (cfg or FCONFIG).get("brokerage", {})
     if not price or price <= 0:
         return CostItem("仲介手数料", None, "売買価格が未入力", UNKNOWN)
-    th, rate, add = c.get("threshold"), c.get("rate"), c.get("add")
-    tax = c.get("consumption_tax")
-    if None in (th, rate, add, tax):
+    tiers = c.get("tiers")
+    if not tiers:
         return CostItem("仲介手数料", None, "料率が未設定", UNKNOWN,
                         c.get("source"), c.get("note", ""))
-    if price <= th:
-        # 400万円以下は区分計算が必要。速算式が使えないため出さない。
-        return CostItem("仲介手数料", None,
-                        f"売買価格が{th:,}円以下のため速算式の対象外", UNKNOWN,
-                        c.get("source"),
-                        "低廉な空き家等の特例を含め、別途確認が必要です。")
-    base = int(price * rate + add)
-    amount = int(round(base * (1 + tax)))
-    return CostItem(
-        "仲介手数料", amount,
-        f"売買価格 {price:,}円 × {rate * 100:.0f}% ＋ {add:,}円 ＝ {base:,}円"
-        f"（税込 {amount:,}円）",
-        COMPUTED, c.get("source"),
-        "宅建業法上の上限額です。実際の請求額は仲介会社により異なります。")
+    amount = 0.0
+    lower = 0
+    parts = []
+    for upper, rate in tiers:
+        cap = price if upper is None else min(price, upper)
+        if cap <= lower:
+            continue
+        span = cap - lower
+        amount += span * rate
+        parts.append(f"{span:,}円×{rate * 100:.1f}%")
+        lower = cap
+        if lower >= price:
+            break
+    amount = int(round(amount))
+    basis = f"{' ＋ '.join(parts)} ＝ {amount:,}円（税込）"
+
+    note = c.get("note", "")
+    vh = c.get("vacant_house_special", {})
+    limit, cap_amt = vh.get("price_limit"), vh.get("cap")
+    if limit and cap_amt and price <= limit:
+        note = (f"売買価格が{limit:,}円以下のため、低廉な空家等の特例により"
+                f"最大{cap_amt:,}円（税込）まで請求され得ます。"
+                f"{vh.get('note', '')} " + note)
+    return CostItem("仲介手数料", amount, basis, COMPUTED, c.get("source"), note)
+
+
+def loan_guarantee_fee(loan_amount: Optional[int], cfg: dict = None) -> CostItem:
+    """住宅ローン保証料（一括前払い方式）。"""
+    c = (cfg or FCONFIG).get("loan_guarantee", {})
+    rate = c.get("rate")
+    if not loan_amount or rate is None:
+        return CostItem("住宅ローン保証料", None, "借入額または料率が未設定",
+                        UNKNOWN, c.get("source"), c.get("note", ""))
+    amount = int(round(loan_amount * rate))
+    return CostItem("住宅ローン保証料", amount,
+                    f"借入額 {loan_amount:,}円 × {rate * 100:.1f}%",
+                    ESTIMATED, c.get("source"), c.get("note", ""))
+
+
+def _flat_item(name: str, key: str, cfg: dict = None) -> CostItem:
+    c = (cfg or FCONFIG).get(key, {})
+    flat = c.get("flat")
+    if flat is None:
+        return CostItem(name, None, "金額が未設定", UNKNOWN, c.get("source"),
+                        c.get("note", ""))
+    return CostItem(name, int(flat), f"定額 {int(flat):,}円", ESTIMATED,
+                    c.get("source"), c.get("note", ""))
 
 
 def stamp_duty(price: int, cfg: dict = None) -> CostItem:
@@ -387,9 +423,15 @@ def purchase_costs(price: int,
                    build_day: Optional[int] = None,
                    quake_conforming: Optional[bool] = None,
                    earthquake_insurance: bool = False,
+                   new_build: bool = False,
+                   option_cost: bool = False,
                    residential: bool = True,
                    cfg: dict = None) -> PurchaseCosts:
-    """購入諸費用の一式。判明した項目だけを合計し、未確認は明示する。"""
+    """購入諸費用の一式。判明した項目だけを合計し、未確認は明示する。
+
+    new_build=True のときだけ表題登記・保存登記を計上する（中古では通常発生しない）。
+    option_cost=True のときだけオプション費用を計上する（任意項目）。
+    """
     conf = cfg or FCONFIG
     ratios = conf.get("assessed_value_ratio", {})
     # 評価額は実額優先。無ければ売買価格から推定（推定した旨は各項目に出る）。
@@ -402,22 +444,31 @@ def purchase_costs(price: int,
     ]
     items += registration_tax(land_price, building_price, loan_amount,
                               land_assessed, building_assessed, residential, cfg)
+    if new_build:
+        items.append(_flat_item("表題登記費用", "title_registration", cfg))
+        items.append(_flat_item("所有権保存登記費用", "preservation_registration", cfg))
     items.append(judicial_scrivener(cfg))
     items += acquisition_tax(ba, la, land_area_m2, floor_area_m2,
                              build_year, build_month, build_day,
                              quake_conforming, residential, cfg)
+    items.append(loan_guarantee_fee(loan_amount, cfg))
     items.append(fire_insurance(earthquake_insurance, cfg))
+    if option_cost:
+        items.append(_flat_item("オプション費用", "option_cost", cfg))
 
     total = sum(i.amount for i in items if i.amount)
     unknown = [i.name for i in items if i.amount is None]
     return PurchaseCosts(items, total, unknown)
 
 
+_REGISTRATION_NAMES = ("司法書士報酬", "表題登記費用", "所有権保存登記費用")
+
+
 def registration_cost_total(costs: PurchaseCosts) -> Optional[int]:
-    """登記費用（登録免許税＋司法書士報酬）の小計。合算表示用。"""
+    """登記費用（登録免許税＋司法書士報酬＋表題/保存登記）の小計。合算表示用。"""
     vals = [i.amount for i in costs.items
             if i.amount is not None
-            and (i.name.startswith("登録免許税") or i.name == "司法書士報酬")]
+            and (i.name.startswith("登録免許税") or i.name in _REGISTRATION_NAMES)]
     return sum(vals) if vals else None
 
 

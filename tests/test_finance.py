@@ -16,15 +16,69 @@ from src.loan import monthly_payment
 
 
 def test_brokerage_fee():
-    # 3,480万円 → (3480万×3%+6万)×1.1 = (104.4万+6万)×1.1 = 121.44万円
+    # 3,480万円 → 200万×5.5% + 200万×4.4% + 3,080万×3.3% = 121.44万円
     it = brokerage_fee(34_800_000)
     assert it.status == COMPUTED
     assert it.amount == 1_214_400, it.amount
-    # 400万円以下は速算式の対象外 → 金額を出さない
-    it2 = brokerage_fee(3_000_000)
-    assert it2.status == UNKNOWN and it2.amount is None
+    # 段階計算：200万円以下は5.5%のみ
+    assert brokerage_fee(1_500_000).amount == 82_500
+    # 200万円超400万円以下
+    assert brokerage_fee(3_000_000).amount == 154_000
+    # 800万円ちょうどは空家特例の上限33万円と一致する
+    assert brokerage_fee(8_000_000).amount == 330_000
     # 価格未入力
     assert brokerage_fee(0).amount is None
+
+
+def test_brokerage_vacant_house_note():
+    """800万円以下は空家特例に触れる可能性を注記する（自動適用ではない）。"""
+    low = brokerage_fee(5_000_000)
+    assert "330,000円" in (low.note or "") and "特例" in (low.note or "")
+    high = brokerage_fee(34_800_000)
+    assert "特例により" not in (high.note or "")
+
+
+def test_loan_guarantee_and_flat_items():
+    from src.finance import loan_guarantee_fee
+    g = loan_guarantee_fee(30_000_000)
+    assert g.amount == 660_000        # 3,000万円 × 2.2%
+    assert loan_guarantee_fee(None).amount is None
+
+
+def test_new_build_only_registration_items():
+    """表題登記・保存登記は新築のときだけ計上する。"""
+    kw = dict(land_price=20_000_000, building_price=14_800_000,
+              loan_amount=30_000_000, floor_area_m2=90.47, build_year=2005,
+              quake_conforming=True)
+    used = purchase_costs(34_800_000, **kw)
+    names = [i.name for i in used.items]
+    assert "表題登記費用" not in names and "所有権保存登記費用" not in names
+    new = purchase_costs(34_800_000, new_build=True, **kw)
+    names2 = [i.name for i in new.items]
+    assert "表題登記費用" in names2 and "所有権保存登記費用" in names2
+    # 登記費用の小計に表題・保存も含まれる
+    from src.finance import registration_cost_total
+    assert registration_cost_total(new) - registration_cost_total(used) == 200_000
+
+
+def test_option_cost_is_opt_in():
+    """オプション費用は任意。選択したときだけ計上する。"""
+    kw = dict(land_price=20_000_000, building_price=14_800_000,
+              loan_amount=30_000_000, floor_area_m2=90.47, build_year=2005,
+              quake_conforming=True)
+    off = purchase_costs(34_800_000, **kw)
+    on = purchase_costs(34_800_000, option_cost=True, **kw)
+    assert "オプション費用" not in [i.name for i in off.items]
+    assert on.total - off.total == 500_000
+
+
+def test_earthquake_insurance_changes_total():
+    kw = dict(land_price=20_000_000, building_price=14_800_000,
+              loan_amount=30_000_000, floor_area_m2=90.47, build_year=2005,
+              quake_conforming=True)
+    no_eq = purchase_costs(34_800_000, **kw)
+    eq = purchase_costs(34_800_000, earthquake_insurance=True, **kw)
+    assert eq.total - no_eq.total == 275_000 - 100_000
 
 
 def test_stamp_duty_brackets():
