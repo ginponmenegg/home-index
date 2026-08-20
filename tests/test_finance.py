@@ -15,6 +15,16 @@ from src.finance import (brokerage_fee, stamp_duty, registration_tax,
 from src.loan import monthly_payment
 
 
+def test_price_split_config():
+    """価格の按分設定：中古は割合、新築建売は建物を定額とする。"""
+    from src.finance import FCONFIG
+    ps = FCONFIG.get("price_split", {})
+    assert ps.get("land_ratio") == 0.60
+    assert ps.get("new_build_building_price") == 20_000_000
+    assert ps.get("old_building_hint_years") == 30
+    assert ps.get("old_building_hint_ratio") == 0.20
+
+
 def test_man_yen_notation():
     """金額表記：1万円以上は万円、端数は小数で残し、1万円未満は円。"""
     from src.finance import man_yen

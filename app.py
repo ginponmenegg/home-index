@@ -953,15 +953,21 @@ BRAND_BAR
     <div><label>売買価格（万円・必須）</label>
      <input name="price" id="price" value="{{v.price}}" placeholder="例）3480" required></div>
     <div><label>種別</label>
-     <select name="newbuild">
+     <select name="newbuild" id="newbuild">
       <option value="0" {{'selected' if not v.newbuild else ''}}>中古</option>
-      <option value="1" {{'selected' if v.newbuild else ''}}>新築</option>
+      <option value="1" {{'selected' if v.newbuild else ''}}>新築建売</option>
      </select>
      <div class="hint">新築のときだけ表題登記・保存登記を計上します</div></div>
    </div>
-   <label>土地の割合（％）</label>
-   <input name="land_ratio" id="land_ratio" value="{{v.land_ratio}}" placeholder="60">
-   <div class="hint">売買価格を土地と建物に振り分ける割合です。下の内訳が自動で入ります。
+   <div id="ratio_block">
+    <label>土地の割合（％）</label>
+    <input name="land_ratio" id="land_ratio" value="{{v.land_ratio}}" placeholder="60">
+    <div class="hint">売買価格を土地と建物に振り分ける割合です。下の内訳が自動で入ります。
+     実際の内訳が分かる場合は、下の欄を直接書き換えてください。<br>
+     <b>【築{{old_years}}年以上の建物については{{old_ratio}}％以下推奨】</b></div>
+   </div>
+   <div id="newbuild_block" class="hint" style="display:none;margin-top:11px">
+    新築建売は建物を一律 <b>{{nb_building}}万円</b> とし、売買価格から差し引いた額を土地価格とします。
     実際の内訳が分かる場合は、下の欄を直接書き換えてください。</div>
    <div class="row">
     <div><label>うち土地価格（万円）</label>
@@ -1070,22 +1076,41 @@ BRAND_BAR
   var ratio = document.getElementById('land_ratio');
   var land  = document.getElementById('land_price');
   var bldg  = document.getElementById('building_price');
-  if(!price || !ratio || !land || !bldg) return;
+  var nb    = document.getElementById('newbuild');
+  var rblk  = document.getElementById('ratio_block');
+  var nblk  = document.getElementById('newbuild_block');
+  var NB_BUILDING = {{nb_building}};
+  if(!price || !ratio || !land || !bldg || !nb) return;
   var manual = false;
   function num(el){ var n = parseFloat((el.value||'').replace(/,/g,'')); return isNaN(n) ? null : n; }
+  function isNew(){ return nb.value === '1'; }
+  function toggle(){
+    if(rblk) rblk.style.display = isNew() ? 'none' : '';
+    if(nblk) nblk.style.display = isNew() ? '' : 'none';
+  }
   function split(){
     if(manual) return;
-    var p = num(price), r = num(ratio);
-    if(p === null || r === null){ return; }
+    var p = num(price);
+    if(p === null){ return; }
+    if(isNew()){
+      var b = Math.min(NB_BUILDING, p);
+      bldg.value = Math.round(b);
+      land.value = Math.round(Math.max(0, p - b));
+      return;
+    }
+    var r = num(ratio);
+    if(r === null){ return; }
     var l = Math.round(p * r / 100);
     land.value = l;
     bldg.value = Math.round(p - l);
   }
   price.addEventListener('input', split);
   ratio.addEventListener('input', split);
+  nb.addEventListener('change', function(){ toggle(); split(); });
   function markManual(){ manual = true; }
   land.addEventListener('input', markManual);
   bldg.addEventListener('input', markManual);
+  toggle();
 })();
 </script>
  <p class="hint" style="text-align:center;margin-top:12px">
@@ -1262,9 +1287,15 @@ def pro_finance():
 
     cats = list(FCONFIG.get("loan_deduction", {}).get("existing", {}).keys())
     cats = [c for c in cats if not c.startswith("_")]
+    ps = FCONFIG.get("price_split", {})
+    tmpl_kw = dict(
+        categories=cats,
+        nb_building=int((ps.get("new_build_building_price") or 0) / 10000),
+        old_years=ps.get("old_building_hint_years", 30),
+        old_ratio=int((ps.get("old_building_hint_ratio") or 0) * 100))
     if request.method == "GET":
         return render_template_string(PRO_FINANCE_FORM, v=_pro_defaults(),
-                                      categories=cats)
+                                      **tmpl_kw)
 
     f = request.form
     v = {k: (f.get(k) or "") for k in _pro_defaults()}
@@ -1285,12 +1316,20 @@ def pro_finance():
     land_price = to_yen(f.get("land_price"))
     building_price = to_yen(f.get("building_price"))
     if land_price is None and building_price is None and price:
-        pct = to_float(f.get("land_ratio"))
-        if pct is None:
-            pct = (FCONFIG.get("price_split", {}).get("land_ratio") or 0) * 100
-        if pct:
-            land_price = int(round(price * pct / 100.0))
-            building_price = price - land_price
+        ps = FCONFIG.get("price_split", {})
+        if v["newbuild"]:
+            # 新築建売は建物を定額とし、残りを土地とする
+            fixed = ps.get("new_build_building_price")
+            if fixed:
+                building_price = min(int(fixed), price)
+                land_price = max(0, price - building_price) or None
+        else:
+            pct = to_float(f.get("land_ratio"))
+            if pct is None:
+                pct = (ps.get("land_ratio") or 0) * 100
+            if pct:
+                land_price = int(round(price * pct / 100.0))
+                building_price = price - land_price
 
     def _costs(principal):
         return purchase_costs(
