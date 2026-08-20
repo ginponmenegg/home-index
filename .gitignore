@@ -12,3 +12,6 @@ citycode_cache.json
 
 # 生成物
 *.pdf
+
+# ローカルのプレビュー設定
+.claude/

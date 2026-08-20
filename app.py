@@ -91,15 +91,20 @@ BRAND_CSS = (
     'background:#e5e5e5;border-radius:999px;padding:3px 9px;white-space:nowrap}'
     # --- 三本線メニュー ---
     '.hi-right{display:flex;align-items:center;gap:10px}'
-    '.hi-burger{width:26px;height:30px;padding:6px 4px;background:none;border:0;'
-    'cursor:pointer;display:flex;flex-direction:column;justify-content:space-between}'
+    # 各ページの汎用 button 指定（min-height:50px 等）を打ち消してから組み立てる
+    '.hi-burger{width:26px;min-width:26px;height:28px;min-height:28px;'
+    'padding:7px 4px;margin:0;background:none;border:0;border-radius:0;'
+    'flex:0 0 auto;cursor:pointer;display:flex;flex-direction:column;'
+    'justify-content:space-between}'
     '.hi-burger span{display:block;height:2px;background:#111;border-radius:2px;'
     'transition:transform .18s ease,opacity .18s ease}'
-    '.hi-burger.is-open span:nth-child(1){transform:translateY(8px) rotate(45deg)}'
+    '.hi-burger.is-open span:nth-child(1){transform:translateY(6px) rotate(45deg)}'
     '.hi-burger.is-open span:nth-child(2){opacity:0}'
-    '.hi-burger.is-open span:nth-child(3){transform:translateY(-8px) rotate(-45deg)}'
+    '.hi-burger.is-open span:nth-child(3){transform:translateY(-6px) rotate(-45deg)}'
     '.hi-menu{max-width:760px;margin:0 auto;padding:4px 16px 10px;'
     'display:flex;flex-direction:column;border-top:1px solid #e5e5e5}'
+    # hidden属性を効かせる。指定しないと上の display:flex に負けて開いたままになる
+    '.hi-menu[hidden]{display:none}'
     '.hi-menu a{display:block;padding:11px 2px;font-size:14px;color:#111;'
     'text-decoration:none;border-bottom:1px solid #f0f0f0}'
     '.hi-menu a:last-child{border-bottom:0}'
@@ -145,6 +150,9 @@ def brand_bar(chip="購入診断"):
             # メニュー内のリンク：押したら閉じる（同じページを選んだときも閉じる）
             'Array.prototype.forEach.call(m.querySelectorAll("a"),function(a){'
             'a.addEventListener("click",function(){set(false);});});'
+            # メニューの外側をクリックしても閉じる
+            'document.addEventListener("click",function(e){'
+            'if(!m.hidden&&!m.contains(e.target)&&!b.contains(e.target))set(false);});'
             'document.addEventListener("keydown",function(e){'
             'if(e.key==="Escape"&&!m.hidden)set(false);});'
             '})();</script>')
@@ -1198,6 +1206,10 @@ FONT_LINK_PLACEHOLDER
  .warn{background:#fafafa;border:1px solid var(--line);border-radius:10px;padding:12px 14px;
   font-size:12px;color:var(--sub);line-height:1.85}
  .tablewrap{overflow-x:auto}
+ button{width:100%;padding:15px;background:var(--acc);color:#fff;border:0;
+  border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;min-height:50px;
+  font-family:inherit}
+ button:hover{background:#333}
  BRAND_CSS_PLACEHOLDER
  @media (max-width:560px){.wrap{padding:16px 12px}.card{padding:16px}table{font-size:12px}}
 </style></head><body>
