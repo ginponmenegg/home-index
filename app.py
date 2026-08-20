@@ -39,6 +39,18 @@ FONT_LINK = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
              '<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;700'
              '&display=swap" rel="stylesheet">')
 
+# LPだけは本文にNoto Sans JP、見出しに明朝（Zen Old Mincho）、数値にIBM Plex Monoを使う。
+# 欧文ワードマークのJostは共通。
+LP_FONT_LINK = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
+                '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+                '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?'
+                'family=Jost:wght@300;700'
+                '&family=Zen+Kaku+Gothic+New:wght@400;500;700;900'
+                '&family=Zen+Old+Mincho:wght@600;700'
+                '&family=Noto+Sans+JP:wght@400;500;700'
+                '&family=IBM+Plex+Mono:wght@400;500'
+                '&display=swap">')
+
 
 def symbol(uid, cls="hi-sym"):
     """HOME INDEX シンボル（単色・currentColor）。uid は clipPath の重複回避用。"""
@@ -115,7 +127,8 @@ BRAND_CSS = (
     '.hi-lock-sm .hi-wm{font-size:13px}')
 
 
-MENU_ITEMS = [("/", "購入診断（戸建）"),
+MENU_ITEMS = [("/", "トップ"),
+              ("/buy", "購入診断（戸建）"),
               ("/pro/finance", "詳細な資金計画（PRO）"),
               ("/terms", "利用規約"),
               ("/privacy", "プライバシーポリシー")]
@@ -628,6 +641,738 @@ RESULT = (RESULT.replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
           .replace("</div></body></html>", FOOTER + "</div></body></html>"))
 
 
+# ---- トップページ（LP）----------------------------------------------
+# 診断そのものは /buy。ここは「何のサービスか」を説明して診断へ送る入口。
+# 背景の地形図はcanvasで毎回描いている（画像ファイルを持たない）。
+LP = """<!doctype html><html lang="ja"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>この家、かっていい？｜中古戸建を無料で100点診断 HOME INDEX</title>
+<meta name="description" content="気になる中古戸建の価格・災害リスク・住宅ローン返済を、国土交通省の成約データなど公的データから100点で採点します。会員登録不要・無料。物件は売りません。">
+<link rel="canonical" href="CANONICAL_URL">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="HOME INDEX">
+<meta property="og:title" content="この家、かっていい？｜中古戸建を無料で100点診断 HOME INDEX">
+<meta property="og:description" content="気になる中古戸建の価格・災害リスク・住宅ローン返済を、国土交通省の成約データなど公的データから100点で採点します。会員登録不要・無料。物件は売りません。">
+<meta property="og:url" content="CANONICAL_URL">
+<meta name="twitter:card" content="summary">
+LP_FONT_LINK_PLACEHOLDER
+
+<style>
+:root{
+  --ground:#F1F3F6; --surface:#FFFFFF; --surface-2:#F6F8FA;
+  --ink:#14181D; --sub:#68707B; --line:#E1E5EB; --line-strong:#C6CED7;
+  --accent:#14395C; --accent-ink:#F0EEE9; --accent-soft:#E6EDF4;
+  --spark:#9A6A12; --good:#2E6F4E; --warn:#8A6512;
+  --shadow:0 1px 2px rgba(20,24,29,.05);
+  --shadow-lift:0 10px 30px -18px rgba(12,27,42,.45);
+  /* ヒーローは明暗どちらでも同じ表情にする（意図的な単一テーマ） */
+  --hero-bg:#0C1B2A; --hero-bg-2:#112537;
+  --paper:#F0EEE9; --paper-dim:rgba(240,238,233,.70);
+  --pin:#E0A83F;
+}
+/* サイトの他ページ（/buy・結果・規約）が明るい配色のみなので、LPも明るい配色に固定する。
+   ヒーローとCTAバンドの濃紺は、テーマ切替ではなく意匠として常に濃紺。 */
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"Noto Sans JP","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;
+  font-size:15px; line-height:1.9; -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{margin:0; text-wrap:balance}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--spark); outline-offset:3px; border-radius:4px}
+
+.wrap{max-width:780px; margin:0 auto; padding:0 20px}
+.eyebrow{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11px; letter-spacing:.16em; color:var(--sub);
+  text-transform:uppercase; margin:0 0 14px;
+}
+
+/* ---------- 固定ヘッダー（ヒーロー上では透過） ---------- */
+.bar{
+  position:fixed; top:0; left:0; right:0; z-index:30;
+  background:var(--surface); color:var(--ink);
+  border-bottom:1px solid var(--line);
+  transition:background .25s ease, color .25s ease, border-color .25s ease;
+}
+.bar.is-top{background:transparent; color:var(--paper); border-bottom-color:transparent}
+.bar-in{max-width:780px; margin:0 auto; padding:10px 20px; display:flex; align-items:center; justify-content:space-between; gap:10px}
+.lock{display:flex; align-items:center; gap:8px; text-decoration:none; color:inherit}
+.hi-sym{width:24px; height:24px; flex:0 0 auto}
+.hi-wm{font-family:Jost,"Century Gothic",Futura,"Avenir Next","Helvetica Neue",Arial,sans-serif;
+  letter-spacing:.16em; white-space:nowrap; line-height:1; font-size:15px; color:inherit}
+.hi-wm b{font-weight:700}
+.hi-wm i{font-style:normal; font-weight:300}
+.bar-right{display:flex; align-items:center; gap:10px}
+.chip{
+  font-size:10.5px; font-weight:700; letter-spacing:.06em; color:inherit;
+  border:1px solid currentColor; border-radius:999px; padding:3px 9px; white-space:nowrap; opacity:.8;
+}
+.burger{width:26px; height:24px; padding:5px 3px; background:none; border:0; cursor:pointer; display:flex; flex-direction:column; justify-content:space-between; color:inherit}
+.burger span{display:block; height:2px; background:currentColor; border-radius:2px; transition:transform .18s ease,opacity .18s ease}
+.burger.is-open span:nth-child(1){transform:translateY(6px) rotate(45deg)}
+.burger.is-open span:nth-child(2){opacity:0}
+.burger.is-open span:nth-child(3){transform:translateY(-6px) rotate(-45deg)}
+.menu{max-width:780px; margin:0 auto; padding:2px 20px 10px; display:flex; flex-direction:column; border-top:1px solid var(--line)}
+.menu[hidden]{display:none}
+.menu a{padding:11px 2px; font-size:14px; text-decoration:none; border-bottom:1px solid var(--line)}
+.menu a:last-child{border-bottom:0}
+.menu a.is-cta{color:var(--accent); font-weight:700}
+
+/* ---------- ヒーロー ---------- */
+.hero{
+  position:relative; isolation:isolate; overflow:hidden;
+  background:radial-gradient(120% 90% at 78% 18%, var(--hero-bg-2) 0%, var(--hero-bg) 62%);
+  color:var(--paper);
+  padding-top:56px;
+}
+#map{position:absolute; inset:0; width:100%; height:100%; opacity:0; transition:opacity 1.1s ease .15s}
+#map.is-in{opacity:1}
+.hero::after{
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background:
+    linear-gradient(to bottom, rgba(12,27,42,.55) 0%, rgba(12,27,42,.15) 34%, rgba(12,27,42,.92) 100%),
+    linear-gradient(to right, rgba(12,27,42,.86) 0%, rgba(12,27,42,.35) 58%, rgba(12,27,42,0) 100%);
+}
+.hero .wrap{position:relative; z-index:2; padding-top:44px; padding-bottom:46px}
+.hero .eyebrow{color:var(--paper-dim)}
+.hero h1{
+  font-family:"Zen Kaku Gothic New",sans-serif; font-weight:900;
+  font-size:clamp(26px,7.9vw,58px); letter-spacing:-.02em; line-height:1.18;
+  white-space:nowrap; margin:0 0 14px;
+}
+.hero .tag{
+  font-family:"Zen Old Mincho",serif; font-weight:600;
+  font-size:clamp(16px,4.2vw,22px); letter-spacing:.02em;
+  margin:0 0 20px; color:var(--paper);
+}
+.hero .tag em{font-style:normal; border-bottom:1px solid var(--pin); padding-bottom:2px}
+.hero .lead{font-size:15px; line-height:1.95; color:var(--paper-dim); max-width:32em; margin:0 0 28px}
+.hero .lead b{color:var(--paper); font-weight:700}
+
+/* ピン（地図上の物件マーカー） */
+.pin{position:absolute; left:72%; top:34%; z-index:1; width:14px; height:14px; margin:-7px 0 0 -7px}
+.pin i{position:absolute; inset:4px; border-radius:50%; background:var(--pin); display:block}
+.pin b, .pin s{position:absolute; inset:0; border-radius:50%; border:1px solid var(--pin); opacity:0; animation:ping 3.6s ease-out infinite}
+.pin s{animation-delay:1.8s}
+@keyframes ping{0%{transform:scale(1); opacity:.85}70%{transform:scale(3.6); opacity:0}100%{opacity:0}}
+.pin-label{
+  position:absolute; left:calc(72% + 16px); top:calc(34% - 9px); z-index:1;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.1em;
+  color:var(--pin); white-space:nowrap; opacity:.9;
+}
+
+.cta-row{display:flex; flex-wrap:wrap; gap:12px; align-items:center}
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:9px;
+  padding:15px 26px; border-radius:11px; font-size:16px; font-weight:700;
+  text-decoration:none; border:1px solid transparent; min-height:53px; cursor:pointer;
+  transition:transform .14s ease, background .18s ease, box-shadow .18s ease;
+}
+.btn svg{width:15px; height:15px; flex:0 0 auto}
+.hero .btn-primary{background:var(--paper); color:var(--hero-bg); box-shadow:0 12px 28px -16px rgba(0,0,0,.9)}
+.hero .btn-primary:hover{transform:translateY(-2px)}
+.hero .btn-ghost{color:var(--paper); border-color:rgba(240,238,233,.38); background:rgba(240,238,233,.04)}
+.hero .btn-ghost:hover{background:rgba(240,238,233,.11)}
+.micro{font-size:12.5px; margin:16px 0 0; color:var(--paper-dim)}
+
+.sources{position:relative; z-index:2; border-top:1px solid rgba(240,238,233,.14); background:rgba(8,18,29,.5)}
+.sources .wrap{padding:13px 20px; display:flex; flex-wrap:wrap; gap:5px 18px; align-items:baseline}
+.sources span{font-size:12px; color:var(--paper-dim)}
+.sources .k{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.14em; color:var(--pin); opacity:.85}
+
+/* ---------- セクション共通 ---------- */
+section{padding:52px 0; scroll-margin-top:56px}
+section + section{border-top:1px solid var(--line)}
+section h2{
+  font-family:"Zen Old Mincho",serif; font-weight:600;
+  font-size:clamp(21px,5.2vw,29px); line-height:1.62; letter-spacing:.01em; margin:0 0 10px;
+}
+section .sub{color:var(--sub); font-size:14px; margin:0 0 26px; max-width:36em}
+
+.rows{display:flex; flex-direction:column; border-top:1px solid var(--line)}
+.rowitem{display:flex; flex-direction:column; gap:5px; padding:19px 0; border-bottom:1px solid var(--line)}
+.rowitem .q{font-family:"Zen Kaku Gothic New",sans-serif; font-size:17px; font-weight:700; margin:0}
+.rowitem .a{font-size:14px; color:var(--sub); margin:0}
+.rowitem .tagline{
+  font-family:"IBM Plex Mono",ui-monospace,monospace; margin:0;
+  font-size:10.5px; letter-spacing:.14em; color:var(--spark);
+}
+
+/* ---------- 結果サンプル ---------- */
+.sample{background:var(--surface); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow-lift); overflow:hidden}
+.sample-head{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 18px; border-bottom:1px solid var(--line); background:var(--surface-2)}
+.sample-head .t{font-size:12px; color:var(--sub)}
+.stamp{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.14em; border:1px solid var(--line-strong); color:var(--sub); border-radius:4px; padding:2px 7px; white-space:nowrap}
+.sample-body{padding:22px 18px}
+.score{display:flex; align-items:flex-end; gap:12px; margin-bottom:6px}
+.score .n{font-family:"Zen Kaku Gothic New",sans-serif; font-weight:900; font-size:60px; line-height:.92; letter-spacing:-.03em; font-variant-numeric:tabular-nums}
+.score .d{font-size:14px; color:var(--sub); padding-bottom:9px}
+.verdict{font-size:14px; font-weight:700; color:var(--good); margin:0 0 20px}
+.bars{display:flex; flex-direction:column; gap:10px; margin-bottom:22px}
+.b{display:grid; grid-template-columns:66px 1fr 52px; gap:10px; align-items:center}
+.b .lbl{font-size:12.5px; color:var(--sub)}
+.b .track{height:7px; background:var(--surface-2); border:1px solid var(--line); border-radius:999px; overflow:hidden}
+.b .fill{display:block; height:100%; background:var(--accent); border-radius:999px}
+.rangefig{margin:0 0 22px}
+.rangefig svg{display:block; width:100%; height:auto}
+/* SVG内の色はクラス経由で当てる（presentation属性のvar()は環境差がある） */
+.r-band{fill:var(--accent-soft)}
+.r-axis{stroke:var(--line)}
+.r-cap{stroke:var(--line-strong)}
+.r-med{stroke:var(--accent)}
+.r-lbl{fill:var(--sub)}
+.r-dot{fill:var(--spark)}
+.r-ring{fill:none; stroke:var(--spark)}
+.r-dotlbl{fill:var(--spark)}
+.f-node{fill:var(--accent)}
+.f-node-t{fill:var(--accent-ink)}
+.f-box{fill:var(--surface-2); stroke:var(--line)}
+.f-flow{fill:none; stroke:var(--line-strong)}
+.f-t{fill:var(--ink)}
+.f-s{fill:var(--sub)}
+.f-rule{fill:none; stroke:var(--spark)}
+.b .val{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11.5px; color:var(--sub); text-align:right; font-variant-numeric:tabular-nums}
+.facts{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden}
+.fact{background:var(--surface); padding:13px 14px}
+.fact .k{font-size:11px; color:var(--sub)}
+.fact .v{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:16px; font-weight:500; margin-top:3px; font-variant-numeric:tabular-nums}
+.fact .v .u{font-size:11px}
+.fact .v.warn{color:var(--warn)}
+.fact .v.good{color:var(--good)}
+.fact .n{font-size:11px; color:var(--sub); margin-top:2px}
+.sample-note{font-size:12px; color:var(--sub); margin:16px 0 0}
+
+/* ---------- ステップ ---------- */
+.steps{display:flex; flex-direction:column}
+.step{display:grid; grid-template-columns:34px 1fr; gap:16px; padding:20px 0; border-bottom:1px solid var(--line)}
+.step:first-child{border-top:1px solid var(--line)}
+.step .num{
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:13px;
+  color:var(--accent-ink); background:var(--accent); border-radius:9px;
+  width:34px; height:34px; display:flex; align-items:center; justify-content:center; margin-top:4px;
+}
+.step h3{font-family:"Zen Kaku Gothic New",sans-serif; font-size:16px; font-weight:700; margin:4px 0}
+.step p{margin:0; font-size:14px; color:var(--sub)}
+
+/* ---------- 仕組み図 ---------- */
+.figure{background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:20px 18px; box-shadow:var(--shadow); margin-bottom:22px}
+.figure svg{display:block; width:100%; height:auto}
+.figure figcaption{font-size:12px; color:var(--sub); margin-top:12px}
+
+.grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px}
+.card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:19px; box-shadow:var(--shadow)}
+.card h3{font-family:"Zen Kaku Gothic New",sans-serif; font-size:15px; font-weight:700; margin:0 0 6px}
+.card p{margin:0; font-size:13.5px; color:var(--sub)}
+
+/* ---------- CTAバンド ---------- */
+.band{position:relative; overflow:hidden; background:var(--hero-bg); color:var(--paper)}
+.band::before{
+  content:""; position:absolute; inset:0;
+  background:radial-gradient(90% 120% at 12% 0%, rgba(158,195,230,.16) 0%, rgba(12,27,42,0) 60%);
+}
+.band .wrap{position:relative; padding:46px 20px}
+.band h2{font-family:"Zen Old Mincho",serif; font-weight:600; font-size:clamp(20px,5vw,27px); line-height:1.6; margin:0 0 10px}
+.band p{margin:0 0 22px; font-size:14px; color:var(--paper-dim); max-width:32em}
+.band .btn-primary{background:var(--paper); color:var(--hero-bg)}
+.band .btn-primary:hover{transform:translateY(-2px)}
+.band .btn-ghost{color:var(--paper); border-color:rgba(240,238,233,.38)}
+.band .btn-ghost:hover{background:rgba(240,238,233,.11)}
+.soon{margin:24px 0 0; padding-top:16px; border-top:1px solid rgba(240,238,233,.18); font-size:13px; color:var(--paper-dim)}
+
+/* ---------- FAQ ---------- */
+details{border-bottom:1px solid var(--line)}
+details:first-of-type{border-top:1px solid var(--line)}
+summary{
+  cursor:pointer; list-style:none; padding:17px 30px 17px 0; position:relative;
+  font-family:"Zen Kaku Gothic New",sans-serif; font-size:15px; font-weight:700;
+}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"＋"; position:absolute; right:2px; top:16px; color:var(--sub); font-weight:400}
+details[open] summary::after{content:"−"}
+details p{margin:0 0 18px; font-size:14px; color:var(--sub); max-width:40em}
+
+/* ---------- 免責・フッター ---------- */
+.note{background:var(--surface-2); border:1px solid var(--line); border-radius:14px; padding:19px}
+.note p{margin:0; font-size:13px; color:var(--sub)}
+footer{padding:30px 0 46px; text-align:center}
+footer p{margin:0 0 6px; font-size:12px; color:var(--sub); line-height:1.9}
+footer a{color:var(--ink)}
+
+.reveal{opacity:0; transform:translateY(14px); transition:opacity .7s ease, transform .7s ease}
+.reveal.is-in{opacity:1; transform:none}
+
+@media (max-width:560px){
+  .hero .wrap{padding-top:34px; padding-bottom:38px}
+  .pin{left:78%; top:26%}
+  .pin-label{left:auto; right:20px; top:calc(26% + 14px)}
+  section{padding:42px 0}
+  .cta-row .btn{width:100%}
+  .b{grid-template-columns:56px 1fr 48px}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *{animation:none !important; transition:none !important}
+  .reveal{opacity:1; transform:none}
+  #map{opacity:1}
+}
+</style>
+</head><body>
+
+<div class="bar is-top" id="bar">
+  <div class="bar-in">
+    <a class="lock" href="/">
+      HI_SYMBOL_PLACEHOLDER
+      HI_WORDMARK_PLACEHOLDER
+    </a>
+    <div class="bar-right">
+      <span class="chip">住宅購入診断</span>
+      <button type="button" class="burger" id="burger" aria-label="メニューを開く" aria-expanded="false" aria-controls="menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </div>
+  <nav class="menu" id="menu" hidden>
+    <a class="is-cta" href="/buy">無料で診断する（戸建）</a>
+    <a href="/pro/finance">詳細な資金計画（PRO）</a>
+    <a href="#wakaru">診断でわかること</a>
+    <a href="#shikumi">仕組みと中立性</a>
+    <a href="#faq">よくある質問</a>
+    <a href="/terms">利用規約</a>
+    <a href="/privacy">プライバシーポリシー</a>
+  </nav>
+</div>
+
+<header class="hero">
+  <canvas id="map" aria-hidden="true"></canvas>
+  <span class="pin" aria-hidden="true"><b></b><s></s><i></i></span>
+  <span class="pin-label" aria-hidden="true">検討中の物件</span>
+  <div class="wrap">
+    <p class="eyebrow">住宅購入 セカンドオピニオン</p>
+    <h1>この家、かっていい？</h1>
+    <p class="tag">買う前に、<em>データで答え合わせ。</em></p>
+    <p class="lead">気になっている物件の情報を貼り付けるだけ。<b>国土交通省の成約価格データ</b>と公的統計をもとに、価格・立地・災害リスク・返済までを<b>100点で採点</b>します。物件は売りません。売り込みもしません。</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="/buy">
+        無料で診断する（戸建）
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h11M9 4l4.2 4L9 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <a class="btn btn-ghost" href="#wakaru">診断でわかることを見る</a>
+    </div>
+    <p class="micro">会員登録なし ／ 料金なし ／ 入力から結果まで約3分</p>
+  </div>
+  <div class="sources">
+    <div class="wrap">
+      <span class="k">DATA SOURCE</span>
+      <span>国土交通省 不動産情報ライブラリ</span>
+      <span>総務省 e-Stat</span>
+      <span>国土地理院</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section>
+    <div class="wrap reveal">
+      <p class="eyebrow">この3つが決められない</p>
+      <h2>数千万円の買い物なのに、<br>判断材料は営業さんの言葉だけ。</h2>
+      <p class="sub">内見して、気に入って、でも決め手がない。HOME INDEX は、その迷いを公的データで裏取りするためのツールです。</p>
+      <div class="rows">
+        <div class="rowitem">
+          <p class="tagline">PRICE</p>
+          <p class="q">この価格、高いのか安いのか分からない</p>
+          <p class="a">周辺で実際にいくらで売買されたのか。近隣・同規模・同築年の成約事例から適正レンジを復元し、提示価格がその中のどこに位置するかを示します。</p>
+        </div>
+        <div class="rowitem">
+          <p class="tagline">RISK</p>
+          <p class="q">災害リスクを、後から知るのが怖い</p>
+          <p class="a">洪水・高潮・津波・土砂災害の指定状況を住所から自動で照合。用途地域や周辺施設（学校・医療・駅）もあわせて確認します。</p>
+        </div>
+        <div class="rowitem">
+          <p class="tagline">LOAN</p>
+          <p class="q">この返済、本当に続けられるのか</p>
+          <p class="a">年収・頭金・金利から毎月の返済額と返済比率を計算。物件の点数だけでなく、あなたの家計に対して無理がないかまで含めて診断します。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="wakaru">
+    <div class="wrap reveal">
+      <p class="eyebrow">診断でわかること</p>
+      <h2>結果は、こう返ってきます。</h2>
+      <p class="sub">総合点だけでなく、6つの観点それぞれの内訳と、その点数になった根拠（採点に使った成約事例の一覧）まで表示します。</p>
+
+      <div class="sample">
+        <div class="sample-head">
+          <span class="t">中古戸建／神奈川県小田原市・築19年・3,880万円</span>
+          <span class="stamp">SAMPLE</span>
+        </div>
+        <div class="sample-body">
+          <div class="score">
+            <span class="n">75</span>
+            <span class="d">／ 100点</span>
+          </div>
+          <p class="verdict">総合判定：条件を詰めれば買ってよい水準</p>
+
+          <div class="rangefig">
+            <svg viewBox="0 0 620 92" role="img" aria-label="推定価格レンジ3,520万円から3,980万円に対し、提示価格3,880万円はレンジ内の上寄り。中央値は3,760万円。">
+              <rect class="r-band" x="120" y="44" width="380" height="14" rx="7"/>
+              <line class="r-axis" x1="30" y1="51" x2="590" y2="51" stroke-width="1"/>
+              <line class="r-cap" x1="120" y1="38" x2="120" y2="64" stroke-width="1"/>
+              <line class="r-cap" x1="500" y1="38" x2="500" y2="64" stroke-width="1"/>
+              <line class="r-med" x1="322" y1="40" x2="322" y2="62" stroke-width="2" stroke-dasharray="3 3"/>
+              <text class="r-lbl" x="322" y="80" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11">中央値 3,760</text>
+              <text class="r-lbl" x="120" y="30" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11">3,520</text>
+              <text class="r-lbl" x="500" y="30" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11">3,980</text>
+              <circle class="r-dot" cx="440" cy="51" r="9"/>
+              <circle class="r-ring" cx="440" cy="51" r="15" stroke-width="1" opacity=".45"/>
+              <text class="r-dotlbl" x="440" y="22" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12">提示 3,880万円</text>
+            </svg>
+          </div>
+
+          <div class="bars">
+            <div class="b"><span class="lbl">物件</span><span class="track"><span class="fill" style="width:76%"></span></span><span class="val">19/25</span></div>
+            <div class="b"><span class="lbl">立地</span><span class="track"><span class="fill" style="width:80%"></span></span><span class="val">16/20</span></div>
+            <div class="b"><span class="lbl">価格</span><span class="track"><span class="fill" style="width:85%"></span></span><span class="val">17/20</span></div>
+            <div class="b"><span class="lbl">リスク</span><span class="track"><span class="fill" style="width:60%"></span></span><span class="val">9/15</span></div>
+            <div class="b"><span class="lbl">資金</span><span class="track"><span class="fill" style="width:80%"></span></span><span class="val">8/10</span></div>
+            <div class="b"><span class="lbl">資産性</span><span class="track"><span class="fill" style="width:60%"></span></span><span class="val">6/10</span></div>
+          </div>
+
+          <div class="facts">
+            <div class="fact">
+              <div class="k">推定価格レンジ</div>
+              <div class="v good">3,520–3,980<span class="u">万円</span></div>
+              <div class="n">近隣の成約6件から復元</div>
+            </div>
+            <div class="fact">
+              <div class="k">提示価格の位置</div>
+              <div class="v">レンジ内・上寄り</div>
+              <div class="n">中央値比 ＋3.2%</div>
+            </div>
+            <div class="fact">
+              <div class="k">洪水浸水想定</div>
+              <div class="v warn">0.5–3.0<span class="u">m</span></div>
+              <div class="n">土砂・津波の指定はなし</div>
+            </div>
+            <div class="fact">
+              <div class="k">毎月返済／返済比率</div>
+              <div class="v">10.4<span class="u">万円</span> ／ 21.4<span class="u">%</span></div>
+              <div class="n">金利1.25%・35年・頭金300万円</div>
+            </div>
+          </div>
+
+          <p class="sample-note">※ 表示はサンプルです。実際の結果には、採点に使った成約事例が1件ずつ（所在・面積・築年・成約価格・類似度）並びます。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap reveal">
+      <p class="eyebrow">使い方</p>
+      <h2>入力は3分。物件ページのコピペから。</h2>
+      <p class="sub">物件のURLではなく、ページに書かれている説明文をそのままコピーして貼り付けてください。</p>
+      <div class="steps">
+        <div class="step">
+          <span class="num">1</span>
+          <div>
+            <h3>物件説明を貼り付ける</h3>
+            <p>SUUMO等の物件ページの説明文をコピペすると、価格・所在地・土地／建物面積・間取り・築年・駅徒歩を自動で読み取ります。物件チラシのPDFもそのまま使えます。</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="num">2</span>
+          <div>
+            <h3>内容を確認して直す</h3>
+            <p>自動で埋まった項目を目視で確認。読み取れなかった欄だけ手で入力します。年収・頭金・借入条件もここで指定します。</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="num">3</span>
+          <div>
+            <h3>診断する</h3>
+            <p>公的データを照合して100点で採点。結果はPDFレポートとして持ち出せます。内見や商談の前に目を通しておく資料として使ってください。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="shikumi">
+    <div class="wrap reveal">
+      <p class="eyebrow">なぜ中立だと言えるのか</p>
+      <h2>物件を売らないから、<br>点数を盛る理由がない。</h2>
+      <p class="sub">住所を起点に4系統の公的データを取り寄せ、公開された配点ルールで計算します。機械学習は使いません。AIが点数を決めることもありません。</p>
+
+      <figure class="figure">
+        <svg viewBox="0 0 660 250" role="img" aria-label="住所を起点に、成約価格・ハザード・用途地域と周辺施設・人口統計の4系統の公的データを取得し、公開された配点ルールで計算して100点の採点票と根拠一覧を出力する流れ図。">
+          <g font-family="Noto Sans JP, sans-serif" font-size="12">
+            <rect class="f-node" x="8" y="98" width="96" height="54" rx="10"/>
+            <text class="f-node-t" x="56" y="121" text-anchor="middle" font-size="13" font-weight="700">住所</text>
+            <text class="f-node-t" x="56" y="139" text-anchor="middle" font-size="10" opacity=".8">＋ 物件条件</text>
+
+            <g class="f-flow" stroke-width="1.2">
+              <path d="M104 125 C140 125 140 34 176 34"/>
+              <path d="M104 125 C140 125 140 95 176 95"/>
+              <path d="M104 125 C140 125 140 155 176 155"/>
+              <path d="M104 125 C140 125 140 216 176 216"/>
+            </g>
+
+            <g class="f-box" stroke-width="1">
+              <rect x="176" y="12" width="212" height="44" rx="9"/>
+              <rect x="176" y="73" width="212" height="44" rx="9"/>
+              <rect x="176" y="133" width="212" height="44" rx="9"/>
+              <rect x="176" y="194" width="212" height="44" rx="9"/>
+            </g>
+            <g class="f-t" font-size="12.5">
+              <text x="192" y="33">成約価格（近隣・同規模）</text>
+              <text x="192" y="94">ハザード（洪水・土砂・津波）</text>
+              <text x="192" y="154">用途地域・周辺施設</text>
+              <text x="192" y="215">人口・世帯の推移</text>
+            </g>
+            <g class="f-s" font-family="IBM Plex Mono, monospace" font-size="9" letter-spacing="1">
+              <text x="192" y="48">国土交通省</text>
+              <text x="192" y="109">国土交通省・国土地理院</text>
+              <text x="192" y="169">国土交通省</text>
+              <text x="192" y="230">総務省 e-Stat</text>
+            </g>
+
+            <g class="f-flow" stroke-width="1.2">
+              <path d="M388 34 C424 34 424 125 460 125"/>
+              <path d="M388 95 C424 95 424 125 460 125"/>
+              <path d="M388 155 C424 155 424 125 460 125"/>
+              <path d="M388 216 C424 216 424 125 460 125"/>
+            </g>
+
+            <rect class="f-rule" x="460" y="86" width="86" height="78" rx="10" stroke-width="1.4" stroke-dasharray="4 3"/>
+            <text class="f-t" x="503" y="116" text-anchor="middle" font-size="12" font-weight="700">配点ルール</text>
+            <text class="f-s" x="503" y="134" text-anchor="middle" font-size="10">公開・変更履歴あり</text>
+            <text class="f-s" x="503" y="150" text-anchor="middle" font-size="10">機械学習なし</text>
+
+            <path class="f-flow" d="M546 125 H588" stroke-width="1.2"/>
+            <path class="f-flow" d="M580 119 L588 125 L580 131" stroke-width="1.2"/>
+            <rect class="f-node" x="588" y="92" width="64" height="66" rx="10"/>
+            <text class="f-node-t" x="620" y="124" text-anchor="middle" font-size="20" font-weight="700" font-family="Zen Kaku Gothic New, sans-serif">100</text>
+            <text class="f-node-t" x="620" y="142" text-anchor="middle" font-size="10" opacity=".85">点＋根拠</text>
+          </g>
+        </svg>
+        <figcaption>住所から採点までの流れ。どの数値がどの出典から来たかは、結果画面で1項目ずつ確認できます。</figcaption>
+      </figure>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>物件を売らない・紹介しない</h3>
+          <p>仲介手数料も紹介料も受け取りません。特定の物件や不動産会社へ誘導する仕組みを持ちません。</p>
+        </div>
+        <div class="card">
+          <h3>使うのは公的データ</h3>
+          <p>国土交通省の成約価格、総務省の人口統計、国土地理院の地図・ハザード情報。出典はすべて結果画面に明示します。</p>
+        </div>
+        <div class="card">
+          <h3>計算はルールベースで、全部見せる</h3>
+          <p>点数は公開された配点ルールの計算結果です。採点に使った事例と類似度を並べ、なぜその価格なのかを再現できるようにしています。</p>
+        </div>
+        <div class="card">
+          <h3>推定であることを隠さない</h3>
+          <p>適正価格は推定であって絶対値ではありません。建物内部の劣化や液状化など、まだ取得していない要素は「未取得」と表示し、埋めた振りをしません。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="band">
+  <div class="wrap">
+    <h2>気になっている物件、いま採点してみますか。</h2>
+    <p>入力は物件説明のコピペから。会員登録も費用もかかりません。</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="/buy">
+        無料で診断する（戸建）
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h11M9 4l4.2 4L9 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <a class="btn btn-ghost" href="/pro/finance">資金計画だけ試す（PRO）</a>
+    </div>
+    <p class="soon">マンションの診断は準備中です。現在は中古・新築の戸建に対応しています。</p>
+  </div>
+</div>
+
+<section id="faq">
+  <div class="wrap reveal">
+    <p class="eyebrow">よくある質問</p>
+    <h2>先に聞かれることを、先に答えます。</h2>
+    <details open>
+      <summary>本当に無料ですか。あとから請求されませんか。</summary>
+      <p>無料です。会員登録も不要で、料金が発生する画面はありません。物件の仲介やローンの紹介も行わないため、診断後に営業の連絡が来ることもありません。</p>
+    </details>
+    <details>
+      <summary>入力した年収や住所は保存されますか。</summary>
+      <p>診断の計算に使うだけで、営業目的では利用しません。詳細はプライバシーポリシーに記載しています。気になる場合は、年収や頭金を概算で入力しても価格・リスクの診断は機能します。</p>
+    </details>
+    <details>
+      <summary>物件のURLを貼れば診断できますか。</summary>
+      <p>URLではなく、物件ページに書かれている説明文（価格・所在地・面積・築年・駅徒歩など）をコピーして貼り付けてください。ご自身がコピーした情報を解析する形をとっています。物件チラシのPDFのアップロードにも対応しています。</p>
+    </details>
+    <details>
+      <summary>新築でも診断できますか。</summary>
+      <p>できます。新築は近隣の新築成約事例を優先し、土地相当分と建物相当分を分けて価格を推定します。中古とは類似度の重み付けを変えています。</p>
+    </details>
+    <details>
+      <summary>マンションには対応していますか。</summary>
+      <p>現在は戸建（中古・新築）のみです。マンションは所在階・向き・管理状況など戸建と異なる評価軸が必要なため、別の診断として準備しています。</p>
+    </details>
+    <details>
+      <summary>点数が低い物件は、買ってはいけないということですか。</summary>
+      <p>違います。点数は「その価格と条件が、公的データから見てどのあたりに位置するか」を示すものです。低い点数は、値引き交渉の材料や、事前に確認すべき項目のリストとして使ってください。最終的な判断は、現地の確認と専門家への相談のうえで行ってください。</p>
+    </details>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="note">
+      <p><b>ご利用にあたって。</b>本サービスの診断結果は公的データにもとづく推定であり、物件の価値や安全性を保証するものではありません。建物内部の劣化状況、境界や権利関係、地盤の詳細などは診断に含まれていません。売買契約の判断にあたっては、必ず宅地建物取引士・建築士・ファイナンシャルプランナー等の専門家にご確認ください。</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p><a href="/terms">利用規約</a>　・　<a href="/privacy">プライバシーポリシー</a></p>
+    <p>出典：国土交通省 不動産情報ライブラリ／総務省 e-Stat／国土地理院／Google</p>
+    <p>© HOME INDEX</p>
+  </div>
+</footer>
+
+<script>
+/* ---- ヘッダー：ヒーロー上は透過、スクロールで白背景 ---- */
+(function(){
+  var bar=document.getElementById("bar"), b=document.getElementById("burger"), m=document.getElementById("menu");
+  function sync(){
+    var open = m && !m.hidden;
+    bar.classList.toggle("is-top", window.scrollY < 24 && !open);
+  }
+  window.addEventListener("scroll", sync, {passive:true});
+  if(b && m){
+    function set(open){
+      m.hidden=!open;
+      b.setAttribute("aria-expanded", open?"true":"false");
+      b.setAttribute("aria-label", open?"メニューを閉じる":"メニューを開く");
+      b.classList.toggle("is-open", open);
+      sync();
+    }
+    b.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); set(m.hidden); });
+    Array.prototype.forEach.call(m.querySelectorAll("a"), function(a){
+      a.addEventListener("click", function(){ set(false); });
+    });
+    document.addEventListener("click", function(e){
+      if(!m.hidden && !m.contains(e.target) && !b.contains(e.target)) set(false);
+    });
+    document.addEventListener("keydown", function(e){
+      if(e.key==="Escape" && !m.hidden) set(false);
+    });
+  }
+  sync();
+})();
+
+/* ---- ヒーロー背景：等高線と区画を手続き的に描く地形図 ---- */
+(function(){
+  var cv=document.getElementById("map");
+  if(!cv || !cv.getContext) return;
+  var ctx=cv.getContext("2d");
+
+  // 毎回同じ絵になるよう、乱数は固定シードの線形合同法で回す
+  function seeded(s){ return function(){ s=(s*1664525+1013904223)%4294967296; return s/4294967296; }; }
+
+  function draw(){
+    var dpr=Math.min(window.devicePixelRatio||1, 2);
+    var w=cv.clientWidth, h=cv.clientHeight;
+    if(!w || !h) return;
+    cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,h);
+
+    var rand=seeded(20260820);
+
+    // 等高線：3つの正弦波を重ねて地形の起伏をつくる
+    ctx.lineWidth=1;
+    for(var i=-6;i<26;i++){
+      var y0=h*0.12 + i*(h*0.052);
+      ctx.beginPath();
+      for(var x=-20;x<=w+20;x+=6){
+        var t=x/w;
+        var y=y0
+          + Math.sin(t*3.1 + i*0.22)*(h*0.075)
+          + Math.sin(t*7.4 + i*0.11)*(h*0.026)
+          + Math.sin(t*1.7 - i*0.30)*(h*0.045);
+        if(x<=-20) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle = (i%5===0) ? "rgba(168,203,233,.30)" : "rgba(150,187,220,.15)";
+      ctx.stroke();
+    }
+
+    // 区画：斜めに振った矩形のかたまり（宅地の割付のイメージ）
+    ctx.save();
+    ctx.translate(w*0.60, h*0.42);
+    ctx.rotate(-0.19);
+    ctx.lineWidth=1;
+    for(var r=0;r<5;r++){
+      for(var c=0;c<7;c++){
+        if(rand()<0.24) continue;
+        var pw=w*0.052*(0.7+rand()*0.6), ph=h*0.10*(0.7+rand()*0.5);
+        var px=(c-3)*(w*0.058), py=(r-2)*(h*0.115);
+        ctx.strokeStyle="rgba(198,222,244,.20)";
+        ctx.strokeRect(px,py,pw,ph);
+        if(rand()<0.22){ ctx.fillStyle="rgba(198,222,244,.06)"; ctx.fillRect(px,py,pw,ph); }
+      }
+    }
+    ctx.restore();
+
+    // 道路：太めの線を2本通して地図らしさを出す
+    ctx.lineWidth=2.4;
+    ctx.strokeStyle="rgba(226,238,250,.13)";
+    ctx.beginPath();
+    ctx.moveTo(-10,h*0.74); ctx.bezierCurveTo(w*0.3,h*0.62,w*0.55,h*0.58,w+10,h*0.30);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(w*0.36,-10); ctx.bezierCurveTo(w*0.42,h*0.35,w*0.66,h*0.52,w+10,h*0.80);
+    ctx.stroke();
+  }
+
+  var t=null;
+  function schedule(){ clearTimeout(t); t=setTimeout(draw,120); }
+  window.addEventListener("resize", schedule);
+  draw();
+  requestAnimationFrame(function(){ cv.classList.add("is-in"); });
+})();
+
+/* ---- スクロールでセクションをふわりと出す ---- */
+(function(){
+  var els=document.querySelectorAll(".reveal");
+  if(!("IntersectionObserver" in window)){
+    Array.prototype.forEach.call(els, function(e){ e.classList.add("is-in"); });
+    return;
+  }
+  var io=new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(en.isIntersecting){ en.target.classList.add("is-in"); io.unobserve(en.target); }
+    });
+  }, {rootMargin:"0px 0px -12% 0px"});
+  Array.prototype.forEach.call(els, function(e){ io.observe(e); });
+})();
+</script>
+</body></html>
+"""
+
+LP = (LP.replace("LP_FONT_LINK_PLACEHOLDER", LP_FONT_LINK)
+      .replace("HI_SYMBOL_PLACEHOLDER", symbol_small())
+      .replace("HI_WORDMARK_PLACEHOLDER", WORDMARK))
+
 GRADE_COLOR = {"A": "#15803d", "B": "#16a34a", "C": "#d97706",
                "D": "#dc2626", "E": "#b91c1c"}
 GRADE_COMMENT = {"A": "非常に検討価値が高い", "B": "検討価値あり",
@@ -729,6 +1474,14 @@ def privacy():
 
 @app.route("/")
 def index():
+    """トップページ。サービスの説明を置き、診断（/buy）へ送る。"""
+    base = request.url_root.rstrip("/")
+    return LP.replace("CANONICAL_URL", base + "/")
+
+
+@app.route("/buy")
+def buy():
+    """購入診断（戸建）の入力フォーム。以前の / がこのURLになった。"""
     return render_template_string(FORM, v=_example_v(), listing="", banner=None)
 
 
