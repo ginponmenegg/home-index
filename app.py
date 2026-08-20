@@ -91,13 +91,13 @@ BRAND_CSS = (
     'background:#e5e5e5;border-radius:999px;padding:3px 9px;white-space:nowrap}'
     # --- 三本線メニュー ---
     '.hi-right{display:flex;align-items:center;gap:10px}'
-    '.hi-burger{width:34px;height:30px;padding:6px 5px;background:none;border:0;'
+    '.hi-burger{width:26px;height:30px;padding:6px 4px;background:none;border:0;'
     'cursor:pointer;display:flex;flex-direction:column;justify-content:space-between}'
     '.hi-burger span{display:block;height:2px;background:#111;border-radius:2px;'
     'transition:transform .18s ease,opacity .18s ease}'
-    '.hi-burger.is-open span:nth-child(1){transform:translateY(7px) rotate(45deg)}'
+    '.hi-burger.is-open span:nth-child(1){transform:translateY(8px) rotate(45deg)}'
     '.hi-burger.is-open span:nth-child(2){opacity:0}'
-    '.hi-burger.is-open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}'
+    '.hi-burger.is-open span:nth-child(3){transform:translateY(-8px) rotate(-45deg)}'
     '.hi-menu{max-width:760px;margin:0 auto;padding:4px 16px 10px;'
     'display:flex;flex-direction:column;border-top:1px solid #e5e5e5}'
     '.hi-menu a{display:block;padding:11px 2px;font-size:14px;color:#111;'
@@ -139,9 +139,12 @@ def brand_bar(chip="購入診断"):
             'function set(open){m.hidden=!open;b.setAttribute("aria-expanded",open?"true":"false");'
             'b.setAttribute("aria-label",open?"メニューを閉じる":"メニューを開く");'
             'b.classList.toggle("is-open",open);}'
-            'b.addEventListener("click",function(e){e.stopPropagation();set(m.hidden);});'
-            'document.addEventListener("click",function(e){'
-            'if(!m.hidden&&!m.contains(e.target)&&e.target!==b)set(false);});'
+            # 三本線：押すたびに開閉を切り替える
+            'b.addEventListener("click",function(e){e.preventDefault();e.stopPropagation();'
+            'set(m.hidden);});'
+            # メニュー内のリンク：押したら閉じる（同じページを選んだときも閉じる）
+            'Array.prototype.forEach.call(m.querySelectorAll("a"),function(a){'
+            'a.addEventListener("click",function(){set(false);});});'
             'document.addEventListener("keydown",function(e){'
             'if(e.key==="Escape"&&!m.hidden)set(false);});'
             '})();</script>')
