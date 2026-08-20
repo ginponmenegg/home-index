@@ -9,6 +9,7 @@ import os
 import sys
 import time
 import threading
+import urllib.parse
 import webbrowser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -88,18 +89,62 @@ BRAND_CSS = (
     '.hi-sym{width:28px;height:28px;flex:0 0 auto}'
     '.chip{font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#111;'
     'background:#e5e5e5;border-radius:999px;padding:3px 9px;white-space:nowrap}'
+    # --- 三本線メニュー ---
+    '.hi-right{display:flex;align-items:center;gap:10px}'
+    '.hi-burger{width:34px;height:30px;padding:6px 5px;background:none;border:0;'
+    'cursor:pointer;display:flex;flex-direction:column;justify-content:space-between}'
+    '.hi-burger span{display:block;height:2px;background:#111;border-radius:2px;'
+    'transition:transform .18s ease,opacity .18s ease}'
+    '.hi-burger.is-open span:nth-child(1){transform:translateY(7px) rotate(45deg)}'
+    '.hi-burger.is-open span:nth-child(2){opacity:0}'
+    '.hi-burger.is-open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}'
+    '.hi-menu{max-width:760px;margin:0 auto;padding:4px 16px 10px;'
+    'display:flex;flex-direction:column;border-top:1px solid #e5e5e5}'
+    '.hi-menu a{display:block;padding:11px 2px;font-size:14px;color:#111;'
+    'text-decoration:none;border-bottom:1px solid #f0f0f0}'
+    '.hi-menu a:last-child{border-bottom:0}'
+    '.hi-menu a:hover{color:#6b7280}'
     # --- 結果画像用の小ロックアップ ---
     '.hi-lock-sm{margin-bottom:10px}'
     '.hi-lock-sm .hi-sym{width:22px;height:22px}'
     '.hi-lock-sm .hi-wm{font-size:13px}')
 
 
+MENU_ITEMS = [("/", "購入診断（戸建）"),
+              ("/pro/finance", "詳細な資金計画（PRO）"),
+              ("/terms", "利用規約"),
+              ("/privacy", "プライバシーポリシー")]
+
+
 def brand_bar(chip="購入診断"):
-    """ページ最上部の固定ヘッダーバー（全ページ共通）。"""
+    """ページ最上部の固定ヘッダーバー（全ページ共通）。
+
+    右端の三本線からページを切り替えられる。開閉のスクリプトはバー自身に
+    同梱しているので、テンプレート側で用意する必要はない。
+    """
+    links = "".join(f'<a href="{href}">{label}</a>' for href, label in MENU_ITEMS)
     return ('<div class="hi-bar"><div class="hi-bar-in">'
             f'<a class="hi-lock" href="/">{symbol_small()}{WORDMARK}</a>'
+            '<div class="hi-right">'
             f'<span class="chip">{chip}</span>'
-            '</div></div>')
+            '<button type="button" class="hi-burger" id="hiBurger"'
+            ' aria-label="メニューを開く" aria-expanded="false" aria-controls="hiMenu">'
+            '<span></span><span></span><span></span></button>'
+            '</div></div>'
+            f'<nav class="hi-menu" id="hiMenu" hidden>{links}</nav>'
+            '</div>'
+            '<script>(function(){'
+            'var b=document.getElementById("hiBurger"),m=document.getElementById("hiMenu");'
+            'if(!b||!m)return;'
+            'function set(open){m.hidden=!open;b.setAttribute("aria-expanded",open?"true":"false");'
+            'b.setAttribute("aria-label",open?"メニューを閉じる":"メニューを開く");'
+            'b.classList.toggle("is-open",open);}'
+            'b.addEventListener("click",function(e){e.stopPropagation();set(m.hidden);});'
+            'document.addEventListener("click",function(e){'
+            'if(!m.hidden&&!m.contains(e.target)&&e.target!==b)set(false);});'
+            'document.addEventListener("keydown",function(e){'
+            'if(e.key==="Escape"&&!m.hidden)set(false);});'
+            '})();</script>')
 
 
 def brand_lockup(uid="lock"):
@@ -1157,6 +1202,13 @@ BRAND_BAR
 <div class="wrap">
  <a class="back" href="/pro/finance">← 条件を変えて試算</a>
 
+ <form method="post" action="/pro/finance.pdf" class="card" style="text-align:center">
+  {% for k, val in form.items() %}<input type="hidden" name="{{k}}" value="{{val}}">{% endfor %}
+  <button type="submit" style="margin-top:0">PDFレポートを保存</button>
+  <p class="sub" style="margin:8px 0 0">
+   この試算結果を1つのPDFにまとめます。住宅ローンの相談や家族との共有にお使いください。</p>
+ </form>
+
  <div class="card">
   <h2>資金の全体像</h2>
   <div class="kv"><span>物件価格</span><b>{{s.price}}</b></div>
@@ -1280,10 +1332,7 @@ def _pro_defaults():
 
 @app.route("/pro/finance", methods=["GET", "POST"])
 def pro_finance():
-    from src.finance import (purchase_costs, registration_cost_total,
-                             rate_scenarios, prepayment, loan_deduction,
-                             affordable_loan, man_yen, FCONFIG)
-    from src.loan import compute_loan
+    from src.finance import FCONFIG
 
     cats = list(FCONFIG.get("loan_deduction", {}).get("existing", {}).keys())
     cats = [c for c in cats if not c.startswith("_")]
@@ -1297,7 +1346,16 @@ def pro_finance():
         return render_template_string(PRO_FINANCE_FORM, v=_pro_defaults(),
                                       **tmpl_kw)
 
-    f = request.form
+    return render_template_string(PRO_FINANCE_RESULT, **_pro_compute(request.form))
+
+
+def _pro_compute(f):
+    """フォーム値から試算結果のコンテキストを作る。HTMLとPDFで共用する。"""
+    from src.finance import (purchase_costs, registration_cost_total,
+                             rate_scenarios, prepayment, loan_deduction,
+                             affordable_loan, man_yen, FCONFIG)
+    from src.loan import compute_loan
+
     v = {k: (f.get(k) or "") for k in _pro_defaults()}
     v["newbuild"] = (f.get("newbuild") == "1")
     v["quake_ins"] = (f.get("quake_ins") == "1")
@@ -1416,10 +1474,23 @@ def pro_finance():
     if d.source and d.source not in seen:
         sources.append(d.source)
 
-    return render_template_string(
-        PRO_FINANCE_RESULT, s=sctx, costs=cctx, reg_total=(man(reg) if reg else None),
+    return dict(
+        s=sctx, costs=cctx, reg_total=(man_yen(reg) if reg else None),
         unknown="・".join(costs.unknown_items) if costs.unknown_items else None,
-        scenarios=scen, prepay=pctx, deduction=dctx, afford=actx, sources=sources)
+        scenarios=scen, prepay=pctx, deduction=dctx, afford=actx, sources=sources,
+        form={k: (f.get(k) or "") for k in _pro_defaults()})
+
+
+@app.route("/pro/finance.pdf", methods=["POST"])
+def pro_finance_pdf():
+    """試算結果をPDFレポートとして返す。計算はHTML版と同じ経路を使う。"""
+    from flask import Response
+    from src.report import build_finance_pdf
+    pdf = build_finance_pdf(_pro_compute(request.form))
+    quoted = urllib.parse.quote("HOME INDEX_資金計画.pdf")
+    return Response(pdf, mimetype="application/pdf", headers={
+        "Content-Disposition": ("attachment; filename=\"finance-plan.pdf\"; "
+                                f"filename*=UTF-8''{quoted}")})
 
 
 def open_browser():

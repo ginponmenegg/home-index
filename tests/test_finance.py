@@ -373,6 +373,53 @@ def test_free_tier_loan_untouched():
     assert L.burden_ratio is not None
 
 
+def test_pdf_report_renders_japanese():
+    """PDFレポートが生成でき、日本語と主要な数値が入っていること。"""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import app as webapp
+    c = webapp.app.test_client()
+    data = dict(price="3480", newbuild="0", land_price="2088",
+                building_price="1392", land_assessed="", building_assessed="",
+                land_ratio="60", land_area="147.07", floor_area="90.47",
+                byear="2005", bmonth="", bday="", quake="yes", down="500",
+                income="800", loan_years="35", rate="1.25", quake_ins="0",
+                option_cost="0", deduction_cat="その他", resale="0",
+                kosodate="0", prepay="300", prepay_after="10",
+                prepay_kind="期間短縮型")
+    r = c.post("/pro/finance.pdf", data=data)
+    assert r.status_code == 200
+    assert r.mimetype == "application/pdf"
+    assert r.data[:5] == b"%PDF-"
+    assert len(r.data) > 3000
+    # ファイル名がUTF-8で指定されている
+    assert "filename*=UTF-8''" in r.headers.get("Content-Disposition", "")
+    # 中身に日本語と金額が入っている
+    try:
+        import pdfplumber, io as _io
+        with pdfplumber.open(_io.BytesIO(r.data)) as pdf:
+            text = "".join((pg.extract_text() or "") for pg in pdf.pages)
+        assert "詳細な資金計画" in text
+        assert "諸費用の内訳" in text
+        assert "3,480万円" in text
+        assert "住宅ローン控除" in text
+    except ImportError:
+        pass  # pdfplumber が無い環境では中身の検証はスキップ
+
+
+def test_menu_on_every_page():
+    """三本線メニューが全ページの固定バーに出ること。"""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import app as webapp
+    c = webapp.app.test_client()
+    for path in ["/", "/terms", "/privacy", "/pro/finance"]:
+        h = c.get(path).get_data(as_text=True)
+        assert "hiBurger" in h, path
+        for href, label in webapp.MENU_ITEMS:
+            assert label in h, (path, label)
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0
