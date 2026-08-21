@@ -2506,11 +2506,17 @@ def pro_finance_pdf():
                                 f"filename*=UTF-8''{quoted}")})
 
 
+# ローカル起動のポート。5000が別のプロセスに使われているときは
+# 環境変数 PORT で変えられる（例: $env:PORT=5001; python app.py）。
+LOCAL_PORT = int(os.environ.get("PORT", "5000"))
+
+
 def open_browser():
-    webbrowser.open("http://127.0.0.1:5000")
+    webbrowser.open(f"http://127.0.0.1:{LOCAL_PORT}")
 
 
 if __name__ == "__main__":
     threading.Timer(1.3, open_browser).start()
-    print("ブラウザで http://127.0.0.1:5000 を開いてください（自動で開きます）")
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    print(f"ブラウザで http://127.0.0.1:{LOCAL_PORT} を開いてください（自動で開きます）")
+    print("停止するには Ctrl+C を押してください")
+    app.run(host="127.0.0.1", port=LOCAL_PORT, debug=False)
