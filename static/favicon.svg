@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="HOME INDEX">
+  <rect x="0" y="0" width="120" height="120" rx="24" fill="#0C1B2A"/>
+  <g transform="translate(60 62) scale(0.78) translate(-60 -58)">
+    <path d="M60 5 108 48 108 112 12 112 12 48Z" fill="none" stroke="#F0EEE9" stroke-width="9" stroke-linejoin="miter"/>
+    <g fill="#F0EEE9">
+      <rect x="12" y="100" width="96" height="12"/>
+      <rect x="30" y="84" width="12" height="16"/>
+      <rect x="48" y="72" width="12" height="28"/>
+      <rect x="66" y="62" width="12" height="38"/>
+      <rect x="84" y="78" width="12" height="22"/>
+    </g>
+  </g>
+</svg>

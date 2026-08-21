@@ -51,6 +51,10 @@ LP_FONT_LINK = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
                 '&family=IBM+Plex+Mono:wght@400;500'
                 '&display=swap">')
 
+# タブとホーム画面のアイコン（全ページ共通）。画像は tools/make_images.py で焼く。
+ICON_LINKS = ('<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">'
+              '<link rel="apple-touch-icon" href="/static/icon-180.png">')
+
 
 def symbol(uid, cls="hi-sym"):
     """HOME INDEX シンボル（単色・currentColor）。uid は clipPath の重複回避用。"""
@@ -212,7 +216,7 @@ def _rate_ok(ip):
 def _legal_page(title, body):
     return (f'<!doctype html><html lang="ja"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
-            f'{FONT_LINK}'
+            f'{FONT_LINK}{ICON_LINKS}'
             f'<title>{title}｜HOME INDEX</title><style>'
             'body{margin:0;background:#f5f7fa;color:#1f2937;'
             'font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}'
@@ -631,11 +635,11 @@ async function shareReport(){
 
 # ブランドのCSS/ヘッダー・フッターをテンプレートへ差し込む
 FORM = (FORM.replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
-        .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
+        .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
         .replace("BRAND_BAR", brand_bar())
         .replace("</div></body></html>", FOOTER + "</div></body></html>"))
 RESULT = (RESULT.replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
-          .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
+          .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
           .replace("BRAND_BAR", brand_bar())
           .replace("BRAND_LOCKUP", brand_lockup())
           .replace("</div></body></html>", FOOTER + "</div></body></html>"))
@@ -655,8 +659,13 @@ LP = """<!doctype html><html lang="ja"><head>
 <meta property="og:title" content="この家、かっていい？｜中古戸建を無料で100点診断 HOME INDEX">
 <meta property="og:description" content="気になる中古戸建の価格・災害リスク・住宅ローン返済を、国土交通省の成約データなど公的データから100点で採点します。会員登録不要・無料。物件は売りません。">
 <meta property="og:url" content="CANONICAL_URL">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="CANONICAL_URLstatic/ogp.png?v=1">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="この家、かっていい？ 買う前に、データで答え合わせ。HOME INDEX">
+<meta name="twitter:card" content="summary_large_image">
 LP_FONT_LINK_PLACEHOLDER
+ICON_LINKS_PLACEHOLDER
 
 <style>
 :root{
@@ -1242,11 +1251,7 @@ footer a{color:var(--ink)}
 </section>
 
 <footer>
-  <div class="wrap">
-    <p><a href="/terms">利用規約</a>　・　<a href="/privacy">プライバシーポリシー</a></p>
-    <p>出典：国土交通省 不動産情報ライブラリ／総務省 e-Stat／国土地理院／Google</p>
-    <p>© HOME INDEX</p>
-  </div>
+  <div class="wrap">FOOTER_PLACEHOLDER</div>
 </footer>
 
 <script>
@@ -1370,8 +1375,10 @@ footer a{color:var(--ink)}
 """
 
 LP = (LP.replace("LP_FONT_LINK_PLACEHOLDER", LP_FONT_LINK)
+      .replace("ICON_LINKS_PLACEHOLDER", ICON_LINKS)
       .replace("HI_SYMBOL_PLACEHOLDER", symbol_small())
-      .replace("HI_WORDMARK_PLACEHOLDER", WORDMARK))
+      .replace("HI_WORDMARK_PLACEHOLDER", WORDMARK)
+      .replace("FOOTER_PLACEHOLDER", FOOTER))
 
 GRADE_COLOR = {"A": "#15803d", "B": "#16a34a", "C": "#d97706",
                "D": "#dc2626", "E": "#b91c1c"}
@@ -1483,6 +1490,31 @@ def index():
 def buy():
     """購入診断（戸建）の入力フォーム。以前の / がこのURLになった。"""
     return render_template_string(FORM, v=_example_v(), listing="", banner=None)
+
+
+# サイトマップに載せるのはGETで開ける5ページだけ。
+# 診断結果はPOSTでしか生成されず、固有のURLを持たないのでクロール対象にならない。
+SITEMAP_PATHS = ["/", "/buy", "/pro/finance", "/terms", "/privacy"]
+
+
+@app.route("/robots.txt")
+def robots():
+    from flask import Response
+    base = request.url_root.rstrip("/")
+    body = f"User-agent: *\nAllow: /\n\nSitemap: {base}/sitemap.xml\n"
+    return Response(body, mimetype="text/plain")
+
+
+@app.route("/sitemap.xml")
+def sitemap():
+    """lastmod は書かない。毎回今日の日付にすると軽視され、固定値を書くと嘘になる。"""
+    from flask import Response
+    base = request.url_root.rstrip("/")
+    urls = "".join(f"<url><loc>{base}{p}</loc></url>" for p in SITEMAP_PATHS)
+    xml = ('<?xml version="1.0" encoding="UTF-8"?>'
+           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+           f"{urls}</urlset>")
+    return Response(xml, mimetype="application/xml")
 
 
 @app.route("/resolve_city", methods=["POST"])
@@ -2068,11 +2100,11 @@ BRAND_BAR
 
 PRO_FINANCE_FORM = (PRO_FINANCE_FORM
                     .replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
-                    .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
+                    .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
                     .replace("BRAND_BAR", brand_bar("PRO")))
 PRO_FINANCE_RESULT = (PRO_FINANCE_RESULT
                       .replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
-                      .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
+                      .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
                       .replace("BRAND_BAR", brand_bar("PRO"))
                       .replace("</div></body></html>", FOOTER + "</div></body></html>"))
 
