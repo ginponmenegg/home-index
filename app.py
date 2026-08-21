@@ -663,6 +663,27 @@ LP = """<!doctype html><html lang="ja"><head>
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="この家、かっていい？ 買う前に、データで答え合わせ。HOME INDEX">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Organization","@id":"CANONICAL_URL#org","name":"HOME INDEX","url":"CANONICAL_URL",
+ "logo":"CANONICAL_URLstatic/icon-180.png"},
+{"@type":"WebSite","@id":"CANONICAL_URL#site","name":"HOME INDEX","url":"CANONICAL_URL",
+ "inLanguage":"ja","publisher":{"@id":"CANONICAL_URL#org"}},
+{"@type":"WebApplication","name":"HOME INDEX 購入診断","url":"CANONICAL_URLbuy",
+ "applicationCategory":"FinanceApplication","operatingSystem":"Web","inLanguage":"ja",
+ "isAccessibleForFree":true,
+ "offers":{"@type":"Offer","price":"0","priceCurrency":"JPY"},
+ "description":"中古戸建の価格・立地・災害リスク・住宅ローン返済を公的データから100点で採点する無料の診断ツール。",
+ "publisher":{"@id":"CANONICAL_URL#org"}},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"本当に無料ですか。あとから請求されませんか。","acceptedAnswer":{"@type":"Answer","text":"無料です。会員登録も不要で、料金が発生する画面はありません。物件の仲介やローンの紹介も行わないため、診断後に営業の連絡が来ることもありません。"}},
+{"@type":"Question","name":"入力した年収や住所は保存されますか。","acceptedAnswer":{"@type":"Answer","text":"診断の計算に使うだけで、営業目的では利用しません。詳細はプライバシーポリシーに記載しています。気になる場合は、年収や頭金を概算で入力しても価格・リスクの診断は機能します。"}},
+{"@type":"Question","name":"物件のURLを貼れば診断できますか。","acceptedAnswer":{"@type":"Answer","text":"URLではなく、物件ページに書かれている説明文（価格・所在地・面積・築年・駅徒歩など）をコピーして貼り付けてください。ご自身がコピーした情報を解析する形をとっています。物件チラシのPDFのアップロードにも対応しています。"}},
+{"@type":"Question","name":"新築でも診断できますか。","acceptedAnswer":{"@type":"Answer","text":"できます。新築は近隣の新築成約事例を優先し、土地相当分と建物相当分を分けて価格を推定します。中古とは類似度の重み付けを変えています。"}},
+{"@type":"Question","name":"マンションには対応していますか。","acceptedAnswer":{"@type":"Answer","text":"現在は戸建（中古・新築）のみです。マンションは所在階・向き・管理状況など戸建と異なる評価軸が必要なため、別の診断として準備しています。"}},
+{"@type":"Question","name":"点数が低い物件は、買ってはいけないということですか。","acceptedAnswer":{"@type":"Answer","text":"違います。点数は「その価格と条件が、公的データから見てどのあたりに位置するか」を示すものです。低い点数は、値引き交渉の材料や、事前に確認すべき項目のリストとして使ってください。最終的な判断は、現地の確認と専門家への相談のうえで行ってください。"}}
+]}]}
+</script>
 <meta name="twitter:card" content="summary_large_image">
 LP_FONT_LINK_PLACEHOLDER
 ICON_LINKS_PLACEHOLDER
