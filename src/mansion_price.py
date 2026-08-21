@@ -41,7 +41,12 @@ def txn_area_m2(t: Transaction) -> Optional[float]:
 
 
 def is_mansion_txn(t: Transaction) -> bool:
-    return bool(t.type and any(k in t.type for k in MANSION_TYPES))
+    """マンションの成約かどうか。
+
+    区分は「中古マンション等」で入ってくるが、表記が揺れても拾えるよう
+    「マンション」を含むかで判定する。宅地・林地・農地はこれで落ちる。
+    """
+    return bool(t.type and "マンション" in t.type)
 
 
 def _year_similarity(a: Optional[int], b: Optional[int],

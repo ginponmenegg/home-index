@@ -14,8 +14,8 @@ import webbrowser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flask import Flask, request, render_template_string  # noqa: E402
-from src.models import SubjectProperty  # noqa: E402
-from src.pipeline import run_pipeline  # noqa: E402
+from src.models import SubjectProperty, MansionSubject  # noqa: E402
+from src.pipeline import run_pipeline, run_mansion_pipeline  # noqa: E402
 from src.extract import parse_listing_text, extract_from_url  # noqa: E402
 from src.citycode import CityCodeResolver  # noqa: E402
 
@@ -129,6 +129,7 @@ BRAND_CSS = (
 
 MENU_ITEMS = [("/", "トップ"),
               ("/buy", "購入診断（戸建）"),
+              ("/mansion", "購入診断（マンション）"),
               ("/pro/finance", "詳細な資金計画（PRO）"),
               ("/terms", "利用規約"),
               ("/privacy", "プライバシーポリシー")]
@@ -300,7 +301,7 @@ BRAND_BAR
 <div class="wrap">
  <h1>住まいを100点で採点します</h1>
  <p class="aim">「この価格は妥当か」「災害リスクはないか」「無理なく返せるか」。住まい選びで迷う点を<b>公的データ</b>から集め、ルール計算で100点に換算します。</p>
- <p class="lead">物件説明を貼り付けると自動で項目を埋めます。内容を確認・修正して診断してください。金額は<b>万円</b>。物件の評価 × ご自身の属性で、あなたに合っている物件かを診断します。</p>
+ <p class="lead">物件説明を貼り付けると自動で項目を埋めます。内容を確認・修正して診断してください。金額は<b>万円</b>。物件の評価 × ご自身の属性で、あなたに合っている物件かを診断します。<br><a href="/mansion">マンションの診断はこちら</a></p>
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
 
@@ -494,7 +495,7 @@ BRAND_BAR
   BRAND_LOCKUP
   <p class="sub">{{s.address}}</p>
   <h1>{{s.ptype}}　売出 {{price_man}}</h1>
-  <p class="muted">土地 {{s.land}}㎡ ・ 建物 {{s.building}}㎡ ・ 築{{age}}年 ・ 駅徒歩{{s.station}}分</p>
+  <p class="muted">{{s.specs}}</p>
   <div class="hero-score">
    <div class="ring">
     <svg viewBox="0 0 132 132" width="132" height="132">
@@ -938,6 +939,7 @@ footer a{color:var(--ink)}
   </div>
   <nav class="menu" id="menu" hidden>
     <a class="is-cta" href="/buy">無料で診断する（戸建）</a>
+    <a class="is-cta" href="/mansion">無料で診断する（マンション）</a>
     <a href="/pro/finance">詳細な資金計画（PRO）</a>
     <a href="#wakaru">診断でわかること</a>
     <a href="#shikumi">仕組みと中立性</a>
@@ -961,7 +963,7 @@ footer a{color:var(--ink)}
         無料で診断する（戸建）
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h11M9 4l4.2 4L9 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </a>
-      <a class="btn btn-ghost" href="#wakaru">診断でわかることを見る</a>
+      <a class="btn btn-ghost" href="/mansion">マンションを診断する</a>
     </div>
     <p class="micro">会員登録なし ／ 料金なし ／ 入力から結果まで約3分</p>
   </div>
@@ -1196,9 +1198,9 @@ footer a{color:var(--ink)}
         無料で診断する（戸建）
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h11M9 4l4.2 4L9 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </a>
-      <a class="btn btn-ghost" href="/pro/finance">資金計画だけ試す（PRO）</a>
+      <a class="btn btn-ghost" href="/mansion">マンションを診断する</a>
     </div>
-    <p class="soon">マンションの診断は準備中です。現在は中古・新築の戸建に対応しています。</p>
+    <p class="soon">マンションは<a href="/mansion" style="color:inherit">こちらの診断</a>へ。管理費・修繕積立金の評価は含みません。</p>
   </div>
 </div>
 
@@ -1224,7 +1226,7 @@ footer a{color:var(--ink)}
     </details>
     <details>
       <summary>マンションには対応していますか。</summary>
-      <p>現在は戸建（中古・新築）のみです。マンションは所在階・向き・管理状況など戸建と異なる評価軸が必要なため、別の診断として準備しています。</p>
+      <p>対応しています。マンションは所在階・向き・専有面積あたりの単価など戸建と評価軸が違うため、別の診断として用意しています。ただし管理費・修繕積立金・大規模修繕の履歴といった管理の健全性は、公的データから取得できないため評価に含まれていません。</p>
     </details>
     <details>
       <summary>点数が低い物件は、買ってはいけないということですか。</summary>
@@ -1583,47 +1585,13 @@ def diagnose():
         _SEM.release()
 
 
-def _run_diagnose(f, datetime):
-    address = (f.get("address") or "").strip()
-    city = (f.get("city") or "").strip()
-    district = (f.get("district") or "").strip()
-    # 手入力で市区町村コードが空でも、住所から自動補完（保険）
-    if not city and address:
-        try:
-            code, _nm, dist = _resolver().resolve_from_address(address)
-            if code:
-                city = code
-            if dist and not district:
-                district = dist
-        except Exception:
-            pass
+def _render_result(res, subject, sctx, down_yen, loan_years):
+    """診断結果ページを描画する。戸建とマンションで共通。
 
-    subject = SubjectProperty(
-        property_type=f.get("ptype") or "chuko_kodate",
-        price=to_yen(f.get("price")) or 0,
-        address=address,
-        land_area_m2=to_float(f.get("land")),
-        building_area_m2=to_float(f.get("building")),
-        build_year=to_int(f.get("byear")),
-        municipality_code=city or None,
-        district_name=district or None,
-        station_walk_min=to_int(f.get("station")),
-        bus_min=to_int(f.get("bus")),
-        renovated=((f.get("reno") or "0").strip() == "1"))
-
-    # 借入年数（未入力・範囲外は35年）
-    loan_years = to_int(f.get("loan_years")) or 35
-    loan_years = max(1, min(50, loan_years))
-
-    mock = os.environ.get("SHINDAN_MOCK") == "1"
-    res = run_pipeline(
-        subject, reinfolib_key=os.environ.get("REINFOLIB_KEY"),
-        google_key=os.environ.get("GOOGLE_KEY"), mock=mock,
-        annual_income=to_yen(f.get("income")), down_payment=to_yen(f.get("down")) or 0,
-        loan_years=loan_years,
-        estat_appid=os.environ.get("ESTAT_APPID"),
-        estat_table=os.environ.get("ESTAT_TABLE", "0000020201"))
-
+    res は run_pipeline / run_mansion_pipeline のどちらの戻り値でもよい。
+    sctx は物件の見出しに出す表示用の辞書（呼び出し側で組み立てる）。
+    """
+    import datetime
     p = res.price
     comps = []
     if p and p.comparables:
@@ -1657,18 +1625,13 @@ def _run_diagnose(f, datetime):
                        for r in d.critical_risks],
                 strengths=d.strengths, weaknesses=d.weaknesses, confirm=d.to_confirm)
     L = res.loan
-    loan = dict(principal=man(L.principal), down=man(to_yen(f.get("down")) or 0),
+    loan = dict(principal=man(L.principal), down=man(down_yen),
                 rate="1.25", years=str(loan_years), monthly=f"{L.monthly_payment:,}円",
                 burden=L.burden_ratio)
     age = (datetime.date.today().year - subject.build_year) if subject.build_year else "—"
 
-    # 表示用の subject（正しい項目名・日本語化・欠損は—）
-    ptype_ja = {"chuko_kodate": "中古戸建", "shinchiku_kodate": "新築戸建"}.get(
-        subject.property_type, subject.property_type)
-    dash = lambda v: v if v is not None else "—"
-    sctx = dict(address=subject.address, ptype=ptype_ja,
-                land=dash(subject.land_area_m2), building=dash(subject.building_area_m2),
-                station=dash(subject.station_walk_min))
+    # 見出しに出す物件情報（sctx）は呼び出し側が組み立てて渡す。
+    # 戸建は「土地/建物」、マンションは「専有/階数/向き」と中身が違うため。
 
     # 立地・防災・人口カード
     en = res.enrichment
@@ -1720,6 +1683,288 @@ def _run_diagnose(f, datetime):
         enr=enr, ring_circ=round(circ, 1), ring_off=ring_off,
         grade_color=grade_color, grade_comment=grade_comment)
 
+
+def _run_diagnose(f, datetime):
+    address = (f.get("address") or "").strip()
+    city = (f.get("city") or "").strip()
+    district = (f.get("district") or "").strip()
+    # 手入力で市区町村コードが空でも、住所から自動補完（保険）
+    if not city and address:
+        try:
+            code, _nm, dist = _resolver().resolve_from_address(address)
+            if code:
+                city = code
+            if dist and not district:
+                district = dist
+        except Exception:
+            pass
+
+    subject = SubjectProperty(
+        property_type=f.get("ptype") or "chuko_kodate",
+        price=to_yen(f.get("price")) or 0,
+        address=address,
+        land_area_m2=to_float(f.get("land")),
+        building_area_m2=to_float(f.get("building")),
+        build_year=to_int(f.get("byear")),
+        municipality_code=city or None,
+        district_name=district or None,
+        station_walk_min=to_int(f.get("station")),
+        bus_min=to_int(f.get("bus")),
+        renovated=((f.get("reno") or "0").strip() == "1"))
+
+    # 借入年数（未入力・範囲外は35年）
+    loan_years = to_int(f.get("loan_years")) or 35
+    loan_years = max(1, min(50, loan_years))
+
+    mock = os.environ.get("SHINDAN_MOCK") == "1"
+    res = run_pipeline(
+        subject, reinfolib_key=os.environ.get("REINFOLIB_KEY"),
+        google_key=os.environ.get("GOOGLE_KEY"), mock=mock,
+        annual_income=to_yen(f.get("income")), down_payment=to_yen(f.get("down")) or 0,
+        loan_years=loan_years,
+        estat_appid=os.environ.get("ESTAT_APPID"),
+        estat_table=os.environ.get("ESTAT_TABLE", "0000020201"))
+
+    ptype_ja = {"chuko_kodate": "中古戸建", "shinchiku_kodate": "新築戸建"}.get(
+        subject.property_type, subject.property_type)
+    dash = lambda v: v if v is not None else "—"
+    age = (datetime.date.today().year - subject.build_year) \
+        if subject.build_year else "—"
+    specs = (f"土地 {dash(subject.land_area_m2)}㎡ ・ 建物 "
+             f"{dash(subject.building_area_m2)}㎡ ・ 築{age}年 ・ "
+             f"駅徒歩{dash(subject.station_walk_min)}分")
+    sctx = dict(address=subject.address, ptype=ptype_ja, specs=specs)
+    return _render_result(res, subject, sctx,
+                          to_yen(f.get("down")) or 0, loan_years)
+
+
+
+# ---- マンション診断 --------------------------------------------------
+# 戸建とは別フロー。貼り付け自動入力はまだ無く、手入力だけ。
+MANSION_FORM = """
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+FONT_LINK_PLACEHOLDER
+<title>HOME INDEX｜マンション購入診断</title>
+<style>
+MANSION_CSS_PLACEHOLDER
+</style></head><body>
+BRAND_BAR
+<div class="wrap">
+ <h1>マンションを100点で採点します</h1>
+ <p class="aim">「この価格は妥当か」「資産価値は保てるか」「無理なく返せるか」。
+  近隣の<b>マンションの成約事例</b>から専有面積あたりの単価を出して、100点に換算します。</p>
+ <p class="lead">項目は手で入力してください。金額は<b>万円</b>。
+  <a href="/buy">戸建の診断はこちら</a></p>
+
+ {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
+
+ <div class="banner">
+  <b>この診断に含まれないもの：</b>管理費・修繕積立金の額、積立金の残高、大規模修繕の履歴、
+  管理形態。マンションの価値を左右する要素ですが、公的データからは取得できないため
+  評価に入れていません。重要事項説明でご確認ください。
+ </div>
+
+ <form class="card" method="post" action="/mansion_diagnose">
+  <label>所在地（必須）</label>
+  <input name="address" value="{{v.address}}" placeholder="例）神奈川県小田原市栄町1-1-1" required>
+  <div class="hint">住所を入れると市区町村コードを自動で判定します</div>
+
+  <div class="row">
+   <div><label>売出価格（万円・必須）</label>
+    <input name="price" value="{{v.price}}" placeholder="例）3480" required></div>
+   <div><label>専有面積（㎡・必須）</label>
+    <input name="area" value="{{v.area}}" placeholder="例）70.2" required>
+    <div class="hint">バルコニーは含めません</div></div>
+  </div>
+
+  <div class="row">
+   <div><label>築年（西暦）</label>
+    <input name="byear" value="{{v.byear}}" placeholder="例）2005"></div>
+   <div><label>駅まで徒歩（分）</label>
+    <input name="station" value="{{v.station}}" placeholder="例）8"></div>
+  </div>
+
+  <div class="row">
+   <div><label>所在階</label>
+    <input name="floor" value="{{v.floor}}" placeholder="例）5"></div>
+   <div><label>総階数</label>
+    <input name="total_floors" value="{{v.total_floors}}" placeholder="例）10"></div>
+   <div><label>向き</label>
+    <select name="direction">
+     {% for d in directions %}
+     <option value="{{d}}" {{'selected' if v.direction==d else ''}}>{{d}}</option>
+     {% endfor %}
+    </select></div>
+  </div>
+
+  <div class="row">
+   <div><label>市区町村コード</label>
+    <input name="city" value="{{v.city}}" placeholder="住所から自動判定"></div>
+   <div><label>町名</label>
+    <input name="district" value="{{v.district}}" placeholder="住所から自動判定"></div>
+  </div>
+
+  <h2>あなたの条件（返済の無理がないかを見ます）</h2>
+  <div class="row">
+   <div><label>世帯年収（万円）</label>
+    <input name="income" value="{{v.income}}" placeholder="例）800"></div>
+   <div><label>頭金（万円）</label>
+    <input name="down" value="{{v.down}}" placeholder="例）500"></div>
+   <div><label>借入年数（年）</label>
+    <input name="loan_years" value="{{v.loan_years}}" placeholder="35"></div>
+  </div>
+
+  <button type="submit">このマンションを診断する</button>
+  <div class="hint">診断結果は公的データにもとづく推定です。契約の判断は専門家の確認を前提としてください。</div>
+ </form>
+</div>
+<script>
+(function(){
+  var form = document.querySelector('form[action="/mansion_diagnose"]');
+  if(!form) return;
+  var addr = form.querySelector('input[name="address"]');
+  var city = form.querySelector('input[name="city"]');
+  var dist = form.querySelector('input[name="district"]');
+  if(!addr || !city) return;
+  var last = "";
+  function resolve(){
+    var a = (addr.value || "").trim();
+    if(!a || a === last) return;
+    last = a;
+    var fd = new FormData();
+    fd.append("address", a);
+    var ph = city.placeholder;
+    city.placeholder = "自動判定中…";
+    fetch("/resolve_city", {method:"POST", body: fd})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        city.placeholder = ph || "";
+        if(j && j.city){ city.value = j.city; }
+        if(j && j.district && dist && !dist.value){ dist.value = j.district; }
+      })
+      .catch(function(){ city.placeholder = ph || ""; });
+  }
+  addr.addEventListener("change", resolve);
+  addr.addEventListener("blur", resolve);
+})();
+</script>
+</div></body></html>
+"""
+
+DIRECTIONS = ["不明", "南", "南東", "南西", "東", "西", "北東", "北西", "北"]
+
+# 見た目は戸建フォームと同じにしたいので、CSSは FORM から借りる。
+# 片方だけ直して見た目がずれる事故を防ぐため、コピーではなく参照にしている。
+_FORM_CSS = FORM[FORM.index("<style>") + len("<style>"):FORM.index("</style>")]
+MANSION_FORM = (MANSION_FORM
+                .replace("MANSION_CSS_PLACEHOLDER", _FORM_CSS)
+                .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
+                .replace("BRAND_BAR", brand_bar("マンション診断"))
+                .replace("</div></body></html>", FOOTER + "</div></body></html>"))
+
+
+def _mansion_example_v():
+    return dict(address="", price="", area="", byear="", station="",
+                floor="", total_floors="", direction="不明", city="",
+                district="", income="", down="", loan_years="35")
+
+
+@app.route("/mansion")
+def mansion():
+    """マンション診断の入力フォーム。"""
+    return render_template_string(MANSION_FORM, v=_mansion_example_v(),
+                                  directions=DIRECTIONS, banner=None)
+
+
+@app.route("/mansion_diagnose", methods=["POST"])
+def mansion_diagnose():
+    f = request.form
+
+    if not _rate_ok(_client_ip()):
+        return render_template_string(
+            MANSION_FORM, v=_mansion_form_values(f), directions=DIRECTIONS,
+            banner=(f"本日の診断回数の上限（{_RATE_LIMIT}回）に達しました。"
+                    "時間をおいて再度お試しください。")), 429
+    if not _SEM.acquire(timeout=25):
+        return render_template_string(
+            MANSION_FORM, v=_mansion_form_values(f), directions=DIRECTIONS,
+            banner="ただいまアクセスが集中しています。少し時間をおいて再度お試しください。"), 503
+    try:
+        return _run_mansion_diagnose(f)
+    finally:
+        _SEM.release()
+
+
+def _mansion_form_values(f):
+    v = _mansion_example_v()
+    for k in v:
+        if f.get(k) is not None:
+            v[k] = f.get(k)
+    return v
+
+
+def _run_mansion_diagnose(f):
+    import datetime
+
+    address = (f.get("address") or "").strip()
+    city = (f.get("city") or "").strip()
+    district = (f.get("district") or "").strip()
+    if not city and address:
+        try:
+            code, _nm, dist = _resolver().resolve_from_address(address)
+            if code:
+                city = code
+            if dist and not district:
+                district = dist
+        except Exception:
+            pass
+
+    area = to_float(f.get("area"))
+    if not area or area <= 0:
+        return render_template_string(
+            MANSION_FORM, v=_mansion_form_values(f), directions=DIRECTIONS,
+            banner="専有面積を入力してください。㎡単価で比較するため必須です。")
+
+    direction = (f.get("direction") or "不明").strip()
+    subject = MansionSubject(
+        address=address,
+        price=to_yen(f.get("price")) or 0,
+        build_year=to_int(f.get("byear")),
+        station_walk_min=to_int(f.get("station")),
+        exclusive_area_m2=area,
+        floor=to_int(f.get("floor")),
+        total_floors=to_int(f.get("total_floors")),
+        direction=direction,
+        municipality_code=city or None,
+        district_name=district or None)
+
+    loan_years = max(1, min(50, to_int(f.get("loan_years")) or 35))
+    down_yen = to_yen(f.get("down")) or 0
+
+    res = run_mansion_pipeline(
+        subject, reinfolib_key=os.environ.get("REINFOLIB_KEY"),
+        google_key=os.environ.get("GOOGLE_KEY"),
+        mock=(os.environ.get("SHINDAN_MOCK") == "1"),
+        annual_income=to_yen(f.get("income")), down_payment=down_yen,
+        loan_years=loan_years,
+        estat_appid=os.environ.get("ESTAT_APPID"),
+        estat_table=os.environ.get("ESTAT_TABLE", "0000020201"))
+
+    age = (datetime.date.today().year - subject.build_year) \
+        if subject.build_year else None
+    bits = [f"専有 {area}㎡"]
+    if subject.floor:
+        bits.append(f"{subject.floor}階" + (f"/{subject.total_floors}階"
+                                            if subject.total_floors else ""))
+    if direction and direction != "不明":
+        bits.append(f"{direction}向き")
+    bits.append(f"築{age}年" if age is not None else "築年不明")
+    bits.append(f"駅徒歩{subject.station_walk_min}分"
+                if subject.station_walk_min is not None else "駅徒歩不明")
+    sctx = dict(address=subject.address, ptype="中古マンション",
+                specs=" ・ ".join(bits))
+    return _render_result(res, subject, sctx, down_yen, loan_years)
 
 PRO_FINANCE_FORM = """
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
