@@ -50,6 +50,29 @@ class SubjectProperty:
 
 
 @dataclass
+class MansionSubject:
+    """診断対象のマンション（手入力前提）。戸建とは別フローで扱う。
+
+    駅徒歩を `station_walk_min` としているのは、既存の score_location /
+    score_asset がこの名前を見るため。名前を合わせると流用が効く。
+    """
+    address: str
+    price: Optional[int] = None                 # 売出価格(円)
+    build_year: Optional[int] = None            # 西暦
+    station_walk_min: Optional[int] = None      # 駅まで徒歩(分)
+    exclusive_area_m2: Optional[float] = None   # 専有面積(㎡)。㎡単価の土台
+    floor: Optional[int] = None                 # 所在階
+    total_floors: Optional[int] = None          # 総階数
+    direction: Optional[str] = None             # 向き（南/南東/…/不明）
+    layout: Optional[str] = None                # 間取り（表示のみ）
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    municipality_code: Optional[str] = None
+    district_name: Optional[str] = None
+    property_type: str = "chuko_mansion"
+
+
+@dataclass
 class Transaction:
     """XIT001 の1取引レコードを正規化したもの。"""
     trade_price: Optional[int]        # 取引価格(円)

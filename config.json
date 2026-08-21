@@ -1,7 +1,43 @@
 {
-  "category_weights": {"物件": 25, "立地": 20, "価格": 20, "リスク": 15, "資金": 10, "資産性": 10},
-  "sim_weights": {"location": 0.25, "land_area": 0.12, "building_area": 0.11, "build_year": 0.12, "recency": 0.28, "city_planning": 0.06, "structure": 0.06},
-  "newbuild_sim_weights": {"location": 0.32, "land_area": 0.14, "building_area": 0.12, "build_year": 0.0, "recency": 0.32, "city_planning": 0.05, "structure": 0.05},
+  "category_weights": {
+    "物件": 25,
+    "立地": 20,
+    "価格": 20,
+    "リスク": 15,
+    "資金": 10,
+    "資産性": 10
+  },
+  "sim_weights": {
+    "location": 0.25,
+    "land_area": 0.12,
+    "building_area": 0.11,
+    "build_year": 0.12,
+    "recency": 0.28,
+    "city_planning": 0.06,
+    "structure": 0.06
+  },
+  "newbuild_sim_weights": {
+    "location": 0.32,
+    "land_area": 0.14,
+    "building_area": 0.12,
+    "build_year": 0.0,
+    "recency": 0.32,
+    "city_planning": 0.05,
+    "structure": 0.05
+  },
+  "mansion_category_weights": {
+    "価格": 35,
+    "資産性": 25,
+    "立地": 15,
+    "リスク": 15,
+    "資金": 10
+  },
+  "mansion_sim_weights": {
+    "location": 0.35,
+    "build_year": 0.3,
+    "recency": 0.2,
+    "area": 0.15
+  },
   "neighbor_radius_m": 2000,
   "k_nearest": 6,
   "max_year_gap": 25,
@@ -10,4 +46,4 @@
   "loan_years": 35,
   "reno_premium": 0.08,
   "reno_min_age": 15
-}
+}
