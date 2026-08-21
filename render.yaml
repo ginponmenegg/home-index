@@ -3,7 +3,7 @@
 # 環境変数（APIキー）はRenderのダッシュボードで設定する（このファイルには書かない）。
 services:
   - type: web
-    name: ouchi-tsushinbo
+    name: home-index
     runtime: python
     plan: free                # 無料枠（一定時間アクセスが無いとスリープ／初回アクセスは起動待ち）
     buildCommand: pip install -r requirements.txt
