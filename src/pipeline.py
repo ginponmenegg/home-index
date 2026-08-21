@@ -9,7 +9,8 @@ from typing import List, Optional
 import datetime
 
 from concurrent.futures import ThreadPoolExecutor
-from .models import SubjectProperty, Transaction, PriceAnalysis, now_iso
+from .models import (SubjectProperty, MansionSubject, Transaction,
+                     PriceAnalysis, now_iso)
 from .geocoding import make_geocoder, GsiGeocoder
 from .reinfolib import ReinfolibClient
 from .comparable import (extract_comparables, DEFAULT_WEIGHTS, NEWBUILD_WEIGHTS,
@@ -19,6 +20,9 @@ from .enrichment import enrich, haversine_m
 from .citycode import CityCodeResolver
 from .loan import compute_loan, LoanResult
 from .scoring import build_diagnosis, Diagnosis
+from .mansion_price import (analyze_mansion_price, extract_mansion_comparables,
+                            is_mansion_txn)
+from .mansion_scoring import build_mansion_diagnosis
 
 
 _DISTRICT_GEO: dict = {}   # (prefix, 町名) -> (lat, lon) プロセス内キャッシュ
@@ -81,6 +85,148 @@ class DiagnosisResult:
         self.diagnosis: Optional[Diagnosis] = None
         self.warnings: List[str] = []
         self.generated_at = now_iso()
+
+
+def _geocode_mansion_districts(subject, txns, reinfolib_key=None,
+                               max_unique: int = 120):
+    """マンション成約の町名に座標を付ける。戸建版と同じキャッシュを使う。"""
+    if subject.latitude is None or subject.longitude is None:
+        return
+    pref_name, city = CityCodeResolver(reinfolib_key).info(subject.municipality_code)
+    if not pref_name or not city:
+        return
+    prefix = f"{pref_name}{city}"
+    geocoder = GsiGeocoder()
+
+    targets = []
+    for t in txns:
+        if is_mansion_txn(t) and t.district_name and t.district_name not in targets:
+            targets.append(t.district_name)
+    targets = targets[:max_unique]
+    to_fetch = [n for n in targets if (prefix, n) not in _DISTRICT_GEO]
+
+    def gc(name):
+        try:
+            g = geocoder.geocode(f"{prefix}{name}")
+            return name, (g.latitude, g.longitude)
+        except Exception:
+            return name, (None, None)
+
+    for name, latlon in _p(gc, to_fetch, 8):
+        _DISTRICT_GEO[(prefix, name)] = latlon
+
+    for t in txns:
+        if not t.district_name:
+            continue
+        latlon = _DISTRICT_GEO.get((prefix, t.district_name))
+        if latlon and latlon[0] is not None:
+            t.latitude, t.longitude = latlon
+            t.distance_m = haversine_m(subject.latitude, subject.longitude,
+                                       latlon[0], latlon[1])
+
+
+def run_mansion_pipeline(subject: MansionSubject,
+                         reinfolib_key: Optional[str] = None,
+                         google_key: Optional[str] = None,
+                         trade_years: Optional[List[int]] = None,
+                         annual_rate: float = 0.0,
+                         mock: bool = False,
+                         k_nearest: int = 6,
+                         max_year_gap: int = 25,
+                         annual_income: Optional[int] = None,
+                         down_payment: int = 0,
+                         loan_rate: float = 0.0125,
+                         loan_years: int = 35,
+                         estat_appid: Optional[str] = None,
+                         estat_table: str = "0000020201") -> DiagnosisResult:
+    """マンション1件を診断する。戸建の run_pipeline とは独立した経路。
+
+    取引の取得・ジオコーディング・ハザードは戸建と同じ部品を使い、
+    価格分析（㎡単価）とスコアの組み立てだけマンション用に差し替えている。
+    """
+    result = DiagnosisResult()
+    result.subject = subject
+    current_year = datetime.date.today().year
+    if trade_years is None:
+        trade_years = [current_year - 1, current_year - 2, current_year - 3]
+
+    # 1) 住所 → 座標
+    if not mock:
+        try:
+            geocoder = make_geocoder(google_key)
+            gc = geocoder.geocode(subject.address)
+            result.geocode = gc
+            subject.latitude, subject.longitude = gc.latitude, gc.longitude
+        except Exception as e:
+            result.warnings.append(f"ジオコーディング失敗: {e}")
+
+    # 2) 成約事例の取得
+    txns: List[Transaction] = []
+    if mock:
+        from .mockdata import sample_transactions
+        txns = sample_transactions()
+        result.warnings.append("MOCKモード: サンプルデータを使用（実データではありません）")
+    elif not subject.municipality_code:
+        result.warnings.append("市区町村コードが解決できず取引取得をスキップ")
+    elif not reinfolib_key:
+        result.warnings.append("REINFOLIB_KEY 未設定のため取引取得をスキップ")
+    else:
+        try:
+            client = ReinfolibClient(reinfolib_key)
+            txns = client.get_transactions(subject.municipality_code, trade_years)
+        except Exception as e:
+            result.warnings.append(f"取引取得失敗: {e}")
+    result.transactions_count = len(txns)
+
+    # 3) 類似事例の抽出。近隣で足りなければ市内全域へ広げる
+    if not mock:
+        _geocode_mansion_districts(subject, txns, reinfolib_key)
+
+    comps = extract_mansion_comparables(subject, txns, current_year,
+                                        radius_m=NEIGHBOR_RADIUS_M,
+                                        max_year_gap=max_year_gap)
+    if len(comps) < 5:
+        wider = extract_mansion_comparables(subject, txns, current_year,
+                                            radius_m=5000,
+                                            max_year_gap=max_year_gap)
+        if len(wider) > len(comps):
+            comps = wider
+            result.warnings.append(
+                "同町・近接のマンション成約が少ないため、近接範囲を約5kmに拡大して算出")
+    if len(comps) < 3:
+        comps = extract_mansion_comparables(subject, txns, current_year,
+                                            radius_m=None,
+                                            max_year_gap=max_year_gap)
+        result.warnings.append(
+            "近接の類似成約が少ないため、市内全域のマンション事例で参考価格を算出")
+
+    # 4) ㎡単価による価格分析
+    result.price = analyze_mansion_price(subject, comps, current_year,
+                                         annual_rate, k_nearest=k_nearest)
+
+    # 5) 用途地域・ハザード・周辺施設（座標ベースなので戸建と共通）
+    if not mock:
+        result.enrichment = enrich(subject.latitude, subject.longitude,
+                                   reinfolib_key, estat_appid=estat_appid,
+                                   city_code=subject.municipality_code,
+                                   estat_table=estat_table)
+        if result.enrichment:
+            result.warnings.extend(result.enrichment.notes)
+
+    # 6) ローン
+    result.loan = compute_loan(subject.price or 0, down_payment, loan_rate,
+                               loan_years, annual_income)
+
+    # 7) 採点
+    e = result.enrichment
+    result.diagnosis = build_mansion_diagnosis(
+        subject, result.price, result.loan,
+        use_district=(e.use_district if e else None),
+        urbanization=(e.urbanization if e else None),
+        hazard=(e.hazard if e else None),
+        facility=(e.facility if e else None),
+        current_year=current_year)
+    return result
 
 
 def run_pipeline(subject: SubjectProperty,
