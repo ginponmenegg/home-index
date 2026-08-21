@@ -18,8 +18,15 @@ from .config import CONFIG
 from .price_analysis import (_percentile, _weighted_percentile, _iqr_filter,
                              time_adjust, SIM_POWER)
 
-# 不動産情報ライブラリ XIT001 の Type。マンションはこの区分で入ってくる。
+# 不動産情報ライブラリ XIT001 の Type。マンションはこの区分で入ってくる
+# （小田原市の実データで確認：宅地(土地と建物)561 / 宅地(土地)293 /
+#  中古マンション等217 / 林地10 / 農地3）。
 MANSION_TYPES = ("中古マンション等",)
+
+# 実データで見えた注意点：同一市内でも築年で㎡単価が5〜6倍違う
+# （1975年築 11.4万円/㎡ に対し 2009年築 69.3万円/㎡）。
+# 築年を軽く見ると推定が壊れるので、類似度の build_year と max_year_gap は
+# 下げないこと。
 
 SIM_WEIGHTS = CONFIG["mansion_sim_weights"]
 K_NEAREST = CONFIG["k_nearest"]
@@ -31,7 +38,8 @@ def txn_area_m2(t: Transaction) -> Optional[float]:
     """取引レコードの専有面積。
 
     XIT001 のマンションは面積が Area に入る（正規化時に land_area_m2 へ渡る）。
-    建物面積側に入っている個体もあり得るので、両方を見て拾えたほうを使う。
+    小田原市2024-2025の実データ217件で確認したところ、217件すべてが Area 側で、
+    TotalFloorArea は0件だった。将来変わっても落ちないよう両方を見ている。
     どちらも無ければ None を返し、その事例は使わない（埋めない）。
     """
     for v in (t.land_area_m2, t.building_area_m2):
