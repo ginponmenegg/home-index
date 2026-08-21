@@ -7,6 +7,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.models import MansionSubject, Transaction
 from src.mansion_price import (analyze_mansion_price, extract_mansion_comparables,
                                is_mansion_txn, txn_area_m2)
+from src.mansion_scoring import (is_new_quake_standard, score_mansion_asset,
+                                 build_mansion_diagnosis)
+from src.loan import compute_loan
 
 CURRENT_YEAR = 2026
 
@@ -119,6 +122,68 @@ def test_missing_area_is_undecidable():
     pa = analyze_mansion_price(subj, comps, CURRENT_YEAR)
     assert pa.verdict == "判定不可"
     assert "専有面積" in pa.note
+
+
+# ---- スコアリング ----
+def test_new_quake_standard_boundary():
+    """1981年築は旧耐震側、1982年築から新耐震（年単位運用・安全側）。"""
+    assert is_new_quake_standard(1981) is False
+    assert is_new_quake_standard(1982) is True
+    assert is_new_quake_standard(None) is None
+
+
+def test_old_quake_standard_is_penalised_and_flagged():
+    old = _subject(price=20_000_000, build_year=1978)
+    new = _subject(price=20_000_000, build_year=1990)
+    assert (score_mansion_asset(old, CURRENT_YEAR).raw
+            < score_mansion_asset(new, CURRENT_YEAR).raw)
+    d = build_mansion_diagnosis(old, None)
+    assert any(r.type == "旧耐震基準" for r in d.critical_risks)
+
+
+def test_floor_and_direction_are_small_adjustments():
+    base = _subject(price=35_000_000)
+    plain = score_mansion_asset(base, CURRENT_YEAR).raw
+    south = score_mansion_asset(_subject(price=35_000_000, direction="南"),
+                                CURRENT_YEAR).raw
+    north = score_mansion_asset(_subject(price=35_000_000, direction="北"),
+                                CURRENT_YEAR).raw
+    first = score_mansion_asset(_subject(price=35_000_000, floor=1),
+                                CURRENT_YEAR).raw
+    assert south > plain > north
+    assert abs(south - plain) <= 0.05 and abs(north - plain) <= 0.05
+    assert first < plain and abs(plain - first) <= 0.06
+
+
+def test_missing_inputs_lower_sufficiency_not_the_score():
+    """入力が無い項目は評価に反映せず、充足度を下げる（第14章）。"""
+    bare = MansionSubject(address="東京都渋谷区1-1-1")
+    cat = score_mansion_asset(bare, CURRENT_YEAR)
+    assert cat.sufficiency == 0.0
+    full = _subject(price=35_000_000, floor=5, direction="南", total_floors=10)
+    assert score_mansion_asset(full, CURRENT_YEAR).sufficiency == 1.0
+
+
+def test_diagnosis_uses_mansion_weights():
+    subj = _subject(price=35_000_000, floor=5, total_floors=10, direction="南")
+    comps = extract_mansion_comparables(subj, _market(500_000), CURRENT_YEAR)
+    pa = analyze_mansion_price(subj, comps, CURRENT_YEAR)
+    d = build_mansion_diagnosis(subj, pa, compute_loan(35_000_000, 3_000_000,
+                                                       0.0125, 35, 6_000_000))
+    names = [c.name for c in d.categories]
+    assert names == ["価格", "資産性", "立地", "リスク", "資金"]
+    assert sum(c.weight for c in d.categories) == 100
+    assert "物件" not in names          # 建物内部はMVPで評価しない
+    assert 0 <= d.total_score <= 100
+    assert d.grade in ("A", "B", "C", "D", "E")
+
+
+def test_management_is_always_flagged_as_unevaluated():
+    """管理を評価していないことを黙って隠さない。"""
+    subj = _subject(price=35_000_000)
+    d = build_mansion_diagnosis(subj, None)
+    assert any(r.type == "管理状態が未評価" for r in d.critical_risks)
+    assert "管理" in d.comment
 
 
 if __name__ == "__main__":
