@@ -128,11 +128,16 @@ def score_mansion_asset(subj: MansionSubject,
 
 
 def repair_fund_band(total_floors: Optional[int]) -> dict:
-    """修繕積立金の目安レンジ（円/㎡・月）。
+    """修繕積立金の目安レンジ（円/㎡・月）。出典は国土交通省のガイドライン。
 
-    ガイドラインは本来「建築延床面積」で区分するが、その入力を取っていない。
-    総階数で近似し、20階未満は各区分の幅を包含する広めのレンジにしている。
-    広く取っているぶん、この判定は「明らかに安すぎないか」を見るものと考える。
+    資料は建築延床面積で区分するが、その入力を取っていないので15階未満の
+    3区分の幅を包絡した値を使う。15〜19階を20階未満側に入れるのは資料の
+    指示どおり（供給量が少なく目安を出せていないため、15階未満に含めている）。
+
+    前提の違いは承知して使うこと。この目安は新築マンションの購入予定者向けに、
+    住居専用・単棟型のマンションを対象に、新築から30年の均等積立方式で
+    算定されている。中古の、しかも築年の進んだ物件にそのまま当てはめると
+    厳しめに出る側面がある。
     """
     if total_floors and total_floors >= 20:
         return REPAIR_GUIDE["over_20f"]
@@ -161,20 +166,22 @@ def score_mansion_management(subj: MansionSubject) -> CategoryScore:
 
     unit = fund / area                      # 円/㎡・月
     band = repair_fund_band(subj.total_floors)
-    floor_line = band["low"] * REPAIR_GUIDE["critically_low_ratio"]
+    span = f"目安 {band['low']}〜{band['high']}円/㎡"
 
-    if unit < floor_line:
-        raw = 0.25
-        judge = f"目安（{band['low']}〜{band['high']}円/㎡）を大きく下回る"
+    # 資料は「幅に収まっていないからといって直ちに不適切とは判断されない」と
+    # 明記している。外れたことを理由に大きく減点はせず、確認を促す扱いにする。
+    if unit < REPAIR_GUIDE["critically_low"]:
+        raw = 0.35
+        judge = f"{span}を大きく下回る"
     elif unit < band["low"]:
-        raw = 0.45
-        judge = f"目安（{band['low']}〜{band['high']}円/㎡）を下回る"
+        raw = 0.6
+        judge = f"{span}を下回る"
     elif unit <= band["high"]:
         raw = 0.85
-        judge = f"目安（{band['low']}〜{band['high']}円/㎡）の範囲"
+        judge = f"{span}の範囲"
     else:
-        raw = 0.7
-        judge = f"目安（{band['low']}〜{band['high']}円/㎡）を上回る"
+        raw = 0.75
+        judge = f"{span}を上回る"
 
     bits = [f"修繕積立金 月{fund:,}円（{unit:.0f}円/㎡）＝{judge}"]
     if fee:
@@ -256,13 +263,15 @@ def build_mansion_diagnosis(subj: MansionSubject,
     if subj.repair_fund and subj.exclusive_area_m2:
         unit = subj.repair_fund / subj.exclusive_area_m2
         band = repair_fund_band(subj.total_floors)
-        if unit < band["low"] * REPAIR_GUIDE["critically_low_ratio"]:
+        if unit < REPAIR_GUIDE["critically_low"]:
             risks.append(CriticalRisk(
-                "修繕積立金が目安を大きく下回る", "high", "confirmed",
+                "修繕積立金が目安を大きく下回る", "medium", "confirmed",
                 f"月{subj.repair_fund:,}円＝{unit:.0f}円/㎡。国土交通省の目安は"
-                f"{band['low']}〜{band['high']}円/㎡。将来の値上げや一時金の"
-                "徴収、修繕の先送りが起きていないか、長期修繕計画と総会議事録で"
-                "確認してください"))
+                f"{band['low']}〜{band['high']}円/㎡です。幅を外れていても直ちに"
+                "不適切とは限りませんが、長期修繕計画の内容と積立方法（当初を"
+                "低く抑えて段階的に上げる方式か、均等積立方式か）を確認して"
+                "ください。段階増額方式は、値上げの合意が取れず積立不足になる"
+                "例が報告されています"))
     # 額が分かっても、貯まっているか・使われたかは分からない。そこは必ず残す。
     risks.append(CriticalRisk(
         "積立金残高と修繕履歴が未確認", "medium", "unknown",

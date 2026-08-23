@@ -197,7 +197,7 @@ def test_management_unscored_without_the_numbers():
 
 
 def test_repair_fund_within_guideline_scores_well():
-    # 70㎡ で月13,000円 = 186円/㎡。20階未満の目安 170〜430円の範囲内
+    # 70㎡ で月13,000円 = 186円/㎡。20階未満の目安 135〜265円の範囲内
     c = score_mansion_management(
         _subject(price=35_000_000, repair_fund=13_000, management_fee=15_000,
                  total_floors=10))
@@ -205,16 +205,38 @@ def test_repair_fund_within_guideline_scores_well():
     assert "範囲" in c.reason
 
 
-def test_repair_fund_far_below_guideline_is_a_critical_risk():
-    # 70㎡ で月5,000円 = 71円/㎡。目安下限170円の6割(102円)すら下回る
+def test_repair_fund_far_below_guideline_is_flagged():
+    # 70㎡ で月5,000円 = 71円/㎡。新築時の当初設定額の平均95円/㎡すら下回る
     subj = _subject(price=35_000_000, repair_fund=5_000, management_fee=8_000,
                    total_floors=10)
     c = score_mansion_management(subj)
-    assert c.raw <= 0.3
+    assert c.raw <= 0.4
     d = build_mansion_diagnosis(subj, None)
     risk = [r for r in d.critical_risks
             if r.type == "修繕積立金が目安を大きく下回る"]
-    assert len(risk) == 1 and risk[0].severity == "high"
+    assert len(risk) == 1
+    # 資料が「直ちに不適切とは限らない」と断っているので断定調にはしない
+    assert risk[0].severity == "medium"
+    assert "長期修繕計画" in risk[0].evidence
+
+
+def test_guideline_numbers_match_the_source():
+    """出典どおりの数値かを固定する。ここが動くと判定が丸ごとずれる。
+
+    国土交通省「マンションの修繕積立金に関するガイドライン」より、
+    専有床面積当たりの額（円/㎡・月）と、事例の3分の2が包含される幅：
+      15階未満  5,000㎡未満     平均218  165〜250
+      15階未満  5,000〜10,000㎡ 平均202  140〜265
+      15階未満  10,000㎡以上    平均178  135〜220
+      20階以上                  平均206  170〜245
+    延床面積を入力に取らないので、15階未満は3区分の幅を包絡して135〜265とする。
+    """
+    low = repair_fund_band(10)
+    assert (low["low"], low["high"]) == (135, 265)
+    tall = repair_fund_band(20)
+    assert (tall["low"], tall["mid"], tall["high"]) == (170, 206, 245)
+    # 15〜19階は資料の指示どおり20階未満側で扱う
+    assert repair_fund_band(18) == low
 
 
 def test_tall_buildings_use_the_higher_band():
