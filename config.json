@@ -82,5 +82,7 @@
       "high": 410,
       "avg": 338
     }
-  }
+  },
+  "mansion_trade_years": 10,
+  "mansion_recency_decay": 0.06
 }

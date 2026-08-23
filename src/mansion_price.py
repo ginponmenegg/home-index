@@ -32,6 +32,8 @@ SIM_WEIGHTS = CONFIG["mansion_sim_weights"]
 K_NEAREST = CONFIG["k_nearest"]
 NEIGHBOR_RADIUS_M = CONFIG["neighbor_radius_m"]
 MAX_YEAR_GAP = CONFIG["max_year_gap"]
+TRADE_YEARS = CONFIG["mansion_trade_years"]
+RECENCY_DECAY = CONFIG["mansion_recency_decay"]
 
 
 def txn_area_m2(t: Transaction) -> Optional[float]:
@@ -102,10 +104,13 @@ def _location_similarity(subj: MansionSubject, t: Transaction,
 
 
 def _recency_similarity(period_year: Optional[int], current_year: int) -> float:
+    """古い成約ほど軽くする。ただしマンションは事例が薄く、10年分を母集団に
+    するので、戸建ほど急には落とさない（急に落とすと広げた意味がなくなる）。
+    """
     if not period_year:
         return 0.0
     d = max(0, current_year - period_year)
-    return max(0.0, 1.0 - 0.18 * d)
+    return max(0.0, 1.0 - RECENCY_DECAY * d)
 
 
 def extract_mansion_comparables(subj: MansionSubject, txns: List[Transaction],

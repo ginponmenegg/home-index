@@ -18,6 +18,7 @@ from .comparable import (extract_comparables, DEFAULT_WEIGHTS, NEWBUILD_WEIGHTS,
 from .price_analysis import analyze_price
 from .enrichment import enrich, haversine_m
 from .citycode import CityCodeResolver
+from .config import CONFIG
 from .loan import compute_loan, LoanResult
 from .scoring import build_diagnosis, Diagnosis
 from .mansion_price import (analyze_mansion_price, extract_mansion_comparables,
@@ -150,7 +151,10 @@ def run_mansion_pipeline(subject: MansionSubject,
     result.subject = subject
     current_year = datetime.date.today().year
     if trade_years is None:
-        trade_years = [current_year - 1, current_year - 2, current_year - 3]
+        # マンションは1つの市区町村で拾える成約が戸建より少ないので、
+        # 戸建の3年より長く遡る。古さは類似度側で割り引く。
+        span = CONFIG.get("mansion_trade_years", 10)
+        trade_years = [current_year - i for i in range(1, span + 1)]
 
     # 1) 住所 → 座標。マンション名があれば添えて引く。建物まで当たれば座標が
     #    正確になり、近隣事例の距離判定がそのぶん正しくなる。当たらなければ
