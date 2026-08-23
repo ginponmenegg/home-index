@@ -57,6 +57,7 @@ class MansionSubject:
     score_asset がこの名前を見るため。名前を合わせると流用が効く。
     """
     address: str
+    name: Optional[str] = None                  # マンション名（表示と座標の精度向上に使う）
     price: Optional[int] = None                 # 売出価格(円)
     build_year: Optional[int] = None            # 西暦
     station_walk_min: Optional[int] = None      # 駅まで徒歩(分)
@@ -69,6 +70,8 @@ class MansionSubject:
     longitude: Optional[float] = None
     municipality_code: Optional[str] = None
     district_name: Optional[str] = None
+    management_fee: Optional[int] = None        # 管理費(円/月)
+    repair_fund: Optional[int] = None           # 修繕積立金(円/月)
     property_type: str = "chuko_mansion"
 
 

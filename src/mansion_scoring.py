@@ -6,8 +6,9 @@ score_price は PriceAnalysis しか見ず、score_risk は座標由来の情報
 score_finance は LoanResult しか見ないため、そのまま通る。score_location も
 subject から読むのは駅徒歩だけなので、MansionSubject がその名前を持っている。
 
-配点は config.json の mansion_category_weights。②管理（管理費・修繕積立金・
-大規模修繕履歴）はMVPで入力を取らないので、評価に入れていない。
+配点は config.json の mansion_category_weights。管理は、入力してもらえる
+管理費・修繕積立金だけで評価する。積立金の残高・大規模修繕の履歴・管理形態は
+公的データから取れないので、依然として未評価のまま明示する。
 """
 from __future__ import annotations
 from dataclasses import replace
@@ -21,6 +22,7 @@ from .scoring import (CategoryScore, CriticalRisk, Diagnosis, grade_of, _clamp,
                       score_price, score_location, score_risk, score_finance)
 
 WEIGHTS = CONFIG["mansion_category_weights"]
+REPAIR_GUIDE = CONFIG["mansion_repair_fund_guideline"]
 
 # 新耐震基準は1981年6月1日以降の建築確認。築年は年単位でしか取れないため、
 # 1981年築は旧耐震側に倒す（安全側）。境界の物件は結果画面で要確認と出す。
@@ -125,6 +127,65 @@ def score_mansion_asset(subj: MansionSubject,
                          round(suff, 2), reason, ["user"])
 
 
+def repair_fund_band(total_floors: Optional[int]) -> dict:
+    """修繕積立金の目安レンジ（円/㎡・月）。
+
+    ガイドラインは本来「建築延床面積」で区分するが、その入力を取っていない。
+    総階数で近似し、20階未満は各区分の幅を包含する広めのレンジにしている。
+    広く取っているぶん、この判定は「明らかに安すぎないか」を見るものと考える。
+    """
+    if total_floors and total_floors >= 20:
+        return REPAIR_GUIDE["over_20f"]
+    return REPAIR_GUIDE["under_20f"]
+
+
+def score_mansion_management(subj: MansionSubject) -> CategoryScore:
+    """管理：修繕積立金が専有面積に対して妥当な水準かを見る。
+
+    管理費の「適正額」には公的な目安が無い（規模と共用設備で大きく変わる）ので、
+    高い安いの判定はしない。月々いくら出ていくかの内訳として扱う。
+    """
+    w = WEIGHTS["管理"]
+    src = ["国土交通省 修繕積立金ガイドライン"]
+    fee = subj.management_fee
+    fund = subj.repair_fund
+    area = subj.exclusive_area_m2
+
+    if not fund or not area or area <= 0:
+        bits = []
+        if fee:
+            bits.append(f"管理費 月{fee:,}円")
+        bits.append("修繕積立金が未入力のため水準を判定できません")
+        return CategoryScore("管理", w, 0.5, round(w * 0.5, 1), 0.1,
+                             "・".join(bits), src)
+
+    unit = fund / area                      # 円/㎡・月
+    band = repair_fund_band(subj.total_floors)
+    floor_line = band["low"] * REPAIR_GUIDE["critically_low_ratio"]
+
+    if unit < floor_line:
+        raw = 0.25
+        judge = f"目安（{band['low']}〜{band['high']}円/㎡）を大きく下回る"
+    elif unit < band["low"]:
+        raw = 0.45
+        judge = f"目安（{band['low']}〜{band['high']}円/㎡）を下回る"
+    elif unit <= band["high"]:
+        raw = 0.85
+        judge = f"目安（{band['low']}〜{band['high']}円/㎡）の範囲"
+    else:
+        raw = 0.7
+        judge = f"目安（{band['low']}〜{band['high']}円/㎡）を上回る"
+
+    bits = [f"修繕積立金 月{fund:,}円（{unit:.0f}円/㎡）＝{judge}"]
+    if fee:
+        bits.append(f"管理費 月{fee:,}円")
+        bits.append(f"合計 月{fee + fund:,}円")
+    # 残高も履歴も見ていない以上、満点の充足度は名乗れない
+    suff = 0.6 if fee else 0.45
+    return CategoryScore("管理", w, round(raw, 3), round(w * raw, 1),
+                         suff, "・".join(bits), src)
+
+
 def _reweight(cat: CategoryScore, weight: int) -> CategoryScore:
     """戸建用の配点で作られたスコアを、マンションの配点に載せ替える。"""
     return replace(cat, weight=weight, points=round(weight * cat.raw, 1))
@@ -144,6 +205,7 @@ def build_mansion_diagnosis(subj: MansionSubject,
     cats = [
         _reweight(score_price(price_a), WEIGHTS["価格"]),
         score_mansion_asset(subj, current_year),
+        score_mansion_management(subj),
         _reweight(score_location(subj, use_district, facility), WEIGHTS["立地"]),
         _reweight(score_risk(use_district, urbanization, hazard), WEIGHTS["リスク"]),
         _reweight(score_finance(loan), WEIGHTS["資金"]),
@@ -190,14 +252,26 @@ def build_mansion_diagnosis(subj: MansionSubject,
             and (price_a.deviation_pct or 0) >= 15:
         risks.append(CriticalRisk("価格乖離", "medium", "confirmed",
                                   f"推定中央値比 {price_a.deviation_pct:+}%"))
-    # 管理はMVPで評価していない。黙って落とさず、確認事項として必ず出す。
+    # 積立金が目安を大きく下回るのは、将来の値上げや一時金徴収に直結する。
+    if subj.repair_fund and subj.exclusive_area_m2:
+        unit = subj.repair_fund / subj.exclusive_area_m2
+        band = repair_fund_band(subj.total_floors)
+        if unit < band["low"] * REPAIR_GUIDE["critically_low_ratio"]:
+            risks.append(CriticalRisk(
+                "修繕積立金が目安を大きく下回る", "high", "confirmed",
+                f"月{subj.repair_fund:,}円＝{unit:.0f}円/㎡。国土交通省の目安は"
+                f"{band['low']}〜{band['high']}円/㎡。将来の値上げや一時金の"
+                "徴収、修繕の先送りが起きていないか、長期修繕計画と総会議事録で"
+                "確認してください"))
+    # 額が分かっても、貯まっているか・使われたかは分からない。そこは必ず残す。
     risks.append(CriticalRisk(
-        "管理状態が未評価", "medium", "unknown",
-        "管理費・修繕積立金の額と積立金残高、大規模修繕の履歴、管理形態は"
-        "この診断に含まれていません。重要事項説明で必ず確認してください"))
+        "積立金残高と修繕履歴が未確認", "medium", "unknown",
+        "積立金の残高、大規模修繕の実施履歴、管理形態、滞納の有無は公的データから"
+        "取得できず、この診断に含まれていません。重要事項説明で必ず確認してください"))
 
     comment = (f"総合 {total}点 / {grade}。情報充足度 {suff}%。"
-               "管理の健全性（管理費・修繕積立金・修繕履歴）は評価に含まれていません。"
+               "管理は入力された管理費・修繕積立金だけで評価しており、"
+               "積立金残高・修繕履歴・管理形態は含まれていません。"
                "スコアはルール計算であり、未確認項目は反映していません。"
                "最終判断は現地・専門家確認を前提としてください。")
 

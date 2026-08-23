@@ -26,10 +26,11 @@
     "structure": 0.05
   },
   "mansion_category_weights": {
-    "価格": 35,
-    "資産性": 25,
-    "立地": 15,
-    "リスク": 15,
+    "価格": 30,
+    "資産性": 20,
+    "管理": 15,
+    "リスク": 13,
+    "立地": 12,
     "資金": 10
   },
   "mansion_sim_weights": {
@@ -45,5 +46,18 @@
   "loan_rate": 0.0125,
   "loan_years": 35,
   "reno_premium": 0.08,
-  "reno_min_age": 15
-}
+  "reno_min_age": 15,
+  "mansion_repair_fund_guideline": {
+    "under_20f": {
+      "low": 170,
+      "mid": 270,
+      "high": 430
+    },
+    "over_20f": {
+      "low": 240,
+      "mid": 338,
+      "high": 410
+    },
+    "critically_low_ratio": 0.6
+  }
+}

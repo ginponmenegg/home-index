@@ -8,6 +8,7 @@ from src.models import MansionSubject, Transaction
 from src.mansion_price import (analyze_mansion_price, extract_mansion_comparables,
                                is_mansion_txn, txn_area_m2)
 from src.mansion_scoring import (is_new_quake_standard, score_mansion_asset,
+                                 score_mansion_management, repair_fund_band,
                                  build_mansion_diagnosis)
 from src.loan import compute_loan
 
@@ -171,19 +172,70 @@ def test_diagnosis_uses_mansion_weights():
     d = build_mansion_diagnosis(subj, pa, compute_loan(35_000_000, 3_000_000,
                                                        0.0125, 35, 6_000_000))
     names = [c.name for c in d.categories]
-    assert names == ["価格", "資産性", "立地", "リスク", "資金"]
+    assert names == ["価格", "資産性", "管理", "立地", "リスク", "資金"]
     assert sum(c.weight for c in d.categories) == 100
     assert "物件" not in names          # 建物内部はMVPで評価しない
     assert 0 <= d.total_score <= 100
     assert d.grade in ("A", "B", "C", "D", "E")
 
 
-def test_management_is_always_flagged_as_unevaluated():
-    """管理を評価していないことを黙って隠さない。"""
-    subj = _subject(price=35_000_000)
+def test_balance_and_repair_history_stay_flagged():
+    """額が分かっても、残高と修繕履歴は見えていない。そこは必ず残す。"""
+    subj = _subject(price=35_000_000, management_fee=15_000, repair_fund=13_000)
     d = build_mansion_diagnosis(subj, None)
-    assert any(r.type == "管理状態が未評価" for r in d.critical_risks)
+    assert any(r.type == "積立金残高と修繕履歴が未確認"
+               for r in d.critical_risks)
     assert "管理" in d.comment
+
+
+def test_management_unscored_without_the_numbers():
+    """修繕積立金が無ければ水準を判定しない（勝手に埋めない）。"""
+    c = score_mansion_management(_subject(price=35_000_000))
+    assert c.sufficiency <= 0.2
+    assert "未入力" in c.reason
+
+
+def test_repair_fund_within_guideline_scores_well():
+    # 70㎡ で月13,000円 = 186円/㎡。20階未満の目安 170〜430円の範囲内
+    c = score_mansion_management(
+        _subject(price=35_000_000, repair_fund=13_000, management_fee=15_000,
+                 total_floors=10))
+    assert c.raw >= 0.8
+    assert "範囲" in c.reason
+
+
+def test_repair_fund_far_below_guideline_is_a_critical_risk():
+    # 70㎡ で月5,000円 = 71円/㎡。目安下限170円の6割(102円)すら下回る
+    subj = _subject(price=35_000_000, repair_fund=5_000, management_fee=8_000,
+                   total_floors=10)
+    c = score_mansion_management(subj)
+    assert c.raw <= 0.3
+    d = build_mansion_diagnosis(subj, None)
+    risk = [r for r in d.critical_risks
+            if r.type == "修繕積立金が目安を大きく下回る"]
+    assert len(risk) == 1 and risk[0].severity == "high"
+
+
+def test_tall_buildings_use_the_higher_band():
+    assert repair_fund_band(25)["low"] > repair_fund_band(10)["low"]
+    assert repair_fund_band(None) == repair_fund_band(10)   # 不明は低層側
+
+
+def test_monthly_charges_raise_the_burden_ratio():
+    """管理費・修繕積立金は住み続ける限り出ていくので負担率に入れる。"""
+    bare = compute_loan(35_000_000, 3_000_000, 0.0125, 35, 6_000_000)
+    with_fees = compute_loan(35_000_000, 3_000_000, 0.0125, 35, 6_000_000,
+                             monthly_extra=28_000)
+    assert with_fees.monthly_payment == bare.monthly_payment
+    assert with_fees.burden_ratio > bare.burden_ratio
+    assert with_fees.monthly_extra == 28_000
+
+
+def test_detached_loan_is_unchanged():
+    """戸建は monthly_extra を渡さないので、これまでと同じ数字になる。"""
+    loan = compute_loan(35_000_000, 3_000_000, 0.0125, 35, 6_000_000)
+    assert loan.monthly_extra == 0
+    assert loan.burden_ratio == round(loan.annual_payment / 6_000_000 * 100, 1)
 
 
 if __name__ == "__main__":
