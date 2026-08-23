@@ -2433,7 +2433,9 @@ BRAND_BAR
 PRO_FINANCE_FORM = (PRO_FINANCE_FORM
                     .replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
                     .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
-                    .replace("BRAND_BAR", brand_bar("PRO")))
+                    .replace("BRAND_BAR", brand_bar("PRO"))
+                    .replace("</div></body></html>",
+                             FOOTER + "</div></body></html>"))
 PRO_FINANCE_RESULT = (PRO_FINANCE_RESULT
                       .replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
                       .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
