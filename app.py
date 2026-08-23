@@ -207,6 +207,7 @@ FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#6
           '<a href="/terms" style="color:#111">利用規約</a>　・　'
           '<a href="/privacy" style="color:#111">プライバシーポリシー</a><br>'
           '出典：国土交通省 不動産情報ライブラリ／総務省 e-Stat／国土地理院／Google<br>'
+          '買い物施設：© OpenStreetMap contributors（ODbL）<br>'
           '© HOME INDEX</div>')
 
 # ---- 負荷・不正対策（プロセス内・簡易） ----
@@ -576,6 +577,7 @@ BRAND_BAR
  <div class="card">
   <h2>立地・防災・人口</h2>
   <p class="muted" style="margin:2px 0 4px">用途地域：{{enr.use_district}}　／　人口：{{enr.population}}（動向 {{enr.trend}}）</p>
+  {% if enr.districts %}<p class="muted" style="margin:2px 0 0">学区：{{enr.districts}}</p>{% endif %}
   {% if enr.facilities %}<p class="muted" style="margin:2px 0 8px">周辺施設：{{enr.facilities}}</p>{% endif %}
   {% for label,val,kind in enr.hazard_items %}<span class="hz hz-{{kind}}">{{label}}：{{val}}</span>{% endfor %}
  </div>
@@ -1013,6 +1015,7 @@ footer a{color:var(--ink)}
       <span>国土交通省 不動産情報ライブラリ</span>
       <span>総務省 e-Stat</span>
       <span>国土地理院</span>
+      <span>OpenStreetMap</span>
     </div>
   </div>
 </header>
@@ -1214,7 +1217,7 @@ footer a{color:var(--ink)}
         </div>
         <div class="card">
           <h3>使うのは公的データ</h3>
-          <p>国土交通省の成約価格、総務省の人口統計、国土地理院の地図・ハザード情報。出典はすべて結果画面に明示します。</p>
+          <p>国土交通省の成約価格、総務省の人口統計、国土地理院の地図・ハザード情報。買い物施設だけは公的データに無いため、OpenStreetMapを使っています。出典はすべて結果画面に明示します。</p>
         </div>
         <div class="card">
           <h3>計算はルールベースで、全部見せる</h3>
@@ -1704,6 +1707,18 @@ def _render_result(res, subject, sctx, down_yen, loan_years):
                 items.append(("津波", "浸水想定域", "warn"))
             if hz.storm_surge:
                 items.append(("高潮", "浸水想定域", "warn"))
+            if getattr(hz, "danger_zone", None):
+                items.append(("災害危険区域", hz.danger_zone, "warn"))
+            if getattr(hz, "steep_slope", False):
+                items.append(("急傾斜地", "崩壊危険区域", "warn"))
+            if getattr(hz, "landslide_zone", False):
+                items.append(("地すべり", "防止地区", "warn"))
+            if getattr(hz, "embankment", None):
+                items.append(("大規模盛土", hz.embankment, "warn"))
+            liq = getattr(hz, "liquefaction", None)
+            if liq:
+                items.append(("液状化", liq,
+                              "warn" if "しやすい" in liq else "ok"))
             if not items:
                 items.append(("防災", "指定区域に該当なし", "ok"))
         else:
@@ -1720,9 +1735,39 @@ def _render_result(res, subject, sctx, down_yen, loan_years):
                 fac_bits.append(f"学校 {fa.nearest_school_m}m")
             if fa.hospital_count_1km:
                 fac_bits.append(f"1km内の医療 {fa.hospital_count_1km}件")
+            if fa.nearest_preschool_m is not None:
+                fac_bits.append(f"保育園・幼稚園 {fa.nearest_preschool_m}m")
+            if fa.nearest_library_m is not None:
+                fac_bits.append(f"図書館 {fa.nearest_library_m}m")
+        shops = getattr(en, "shops", None)
+        if shops is not None and getattr(shops, "checked", False):
+            big = shops.nearest_big
+            daily = shops.nearest_daily
+            if big:
+                fac_bits.append(
+                    f"大型商業施設 {big.distance_m}m"
+                    + (f"（{big.name}）" if big.name else ""))
+            if daily:
+                fac_bits.append(f"スーパー {daily.distance_m}m"
+                                + (f"（{daily.name}）" if daily.name else ""))
+            if not big and not daily:
+                fac_bits.append("買い物施設は付近に見当たらず")
+
+        # 学区と将来推計人口。人口はメッシュの推計があればそちらを優先する。
+        districts = []
+        if getattr(en, "elementary_district", None):
+            districts.append(f"小学校区 {en.elementary_district}")
+        if getattr(en, "junior_district", None):
+            districts.append(f"中学校区 {en.junior_district}")
+        pop_label = f"{en.population:,}人" if en.population else "—"
+        trend = en.population_trend or "—"
+        if getattr(en, "mesh_pop_change_pct", None) is not None:
+            trend = f"この地点の推計 2050年に{en.mesh_pop_change_pct:+}%"
+
         enr = dict(use_district=en.use_district or "—",
-                   population=(f"{en.population:,}人" if en.population else "—"),
-                   trend=en.population_trend or "—", hazard_items=items,
+                   population=pop_label,
+                   trend=trend, hazard_items=items,
+                   districts=("　/　".join(districts) if districts else None),
                    facilities=("　/　".join(fac_bits) if fac_bits else None))
 
     # スコアリング（円形ゲージ）

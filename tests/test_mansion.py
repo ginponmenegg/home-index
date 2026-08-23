@@ -163,7 +163,20 @@ def test_missing_inputs_lower_sufficiency_not_the_score():
     cat = score_mansion_asset(bare, CURRENT_YEAR)
     assert cat.sufficiency == 0.0
     full = _subject(price=35_000_000, floor=5, direction="南", total_floors=10)
-    assert score_mansion_asset(full, CURRENT_YEAR).sufficiency == 1.0
+    # 駅徒歩・築年・階数・向きの4つは埋まっているが、将来推計人口が無いので
+    # まだ満点にはしない（5項目中4項目）。
+    assert score_mansion_asset(full, CURRENT_YEAR).sufficiency == 0.8
+    assert score_mansion_asset(full, CURRENT_YEAR,
+                               pop_change_pct=-3.0).sufficiency == 1.0
+
+
+def test_shrinking_population_lowers_resale():
+    """その地点で人が減る見通しなら資産性を下げる（250mメッシュの推計）。"""
+    subj = _subject(price=35_000_000, floor=5, direction="南", total_floors=10)
+    growing = score_mansion_asset(subj, CURRENT_YEAR, pop_change_pct=8.0).raw
+    flat = score_mansion_asset(subj, CURRENT_YEAR, pop_change_pct=-3.0).raw
+    shrinking = score_mansion_asset(subj, CURRENT_YEAR, pop_change_pct=-30.0).raw
+    assert growing >= flat > shrinking
 
 
 def test_diagnosis_uses_mansion_weights():

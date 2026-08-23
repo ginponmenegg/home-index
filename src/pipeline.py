@@ -257,6 +257,8 @@ def run_mansion_pipeline(subject: MansionSubject,
         urbanization=(e.urbanization if e else None),
         hazard=(e.hazard if e else None),
         facility=(e.facility if e else None),
+        shops=(e.shops if e else None),
+        pop_change_pct=(e.mesh_pop_change_pct if e else None),
         current_year=current_year)
     return result
 
@@ -368,5 +370,7 @@ def run_pipeline(subject: SubjectProperty,
         hazard=(e.hazard if e else None),
         facility=(e.facility if e else None),
         population_trend=(e.population_trend if e else None),
+        shops=(e.shops if e else None),
+        pop_change_pct=(e.mesh_pop_change_pct if e else None),
         current_year=current_year)
     return result

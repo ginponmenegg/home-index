@@ -87,7 +87,7 @@ def _build_query(lat: float, lon: float, radius_m: int) -> str:
 
 
 def fetch_shops_around(lat: Optional[float], lon: Optional[float],
-                       radius_m: int = 1500,
+                       radius_m: int = 2500,
                        timeout: int = 20) -> ShopResult:
     """半径内の買い物施設を近い順に返す。取れなければ checked=False。"""
     res = ShopResult()

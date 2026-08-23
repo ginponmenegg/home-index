@@ -135,8 +135,138 @@ def _walk_score(m):
     return 0.45
 
 
+# ---- 生活利便（立地の主軸）----
+# 立地と資産性が両方とも駅徒歩で動いていて、ほぼ同じ点数になっていた。
+# 立地は「いま暮らしやすいか」、資産性は「将来も価値が保てるか」と役割を分け、
+# 駅距離は資産性の主軸として1回だけ効かせる。立地では従属的な要素にとどめる。
+LIFE_WEIGHTS = {"買い物": 0.35, "医療": 0.25, "教育": 0.25, "公共": 0.15}
+
+
+def _dist_score(m, best, good, fair, poor):
+    """近いほど高い。段階で切るのは、距離の1m差に意味を持たせないため。"""
+    if m is None:
+        return None
+    if m <= best:
+        return 1.0
+    if m <= good:
+        return 0.85
+    if m <= fair:
+        return 0.65
+    if m <= poor:
+        return 0.45
+    return 0.3
+
+
+def _shopping_score(shops):
+    """買い物。大型商業施設（モール・百貨店）を重く見る。
+
+    OpenStreetMapは有志の編集なので、衣料品店が supermarket として登録されて
+    いる例もある。だから件数を鵜呑みにせず、種別を分けて距離で評価する。
+    """
+    if shops is None or not getattr(shops, "checked", False):
+        return None, []
+    bits = []
+    big = shops.nearest_big
+    daily = shops.nearest_daily
+    # 大型：徒歩圏にあれば満点、車で行ける範囲までは加点を残す
+    if big:
+        big_raw = _dist_score(big.distance_m, 800, 1500, 2500, 4000)
+        bits.append(f"大型商業施設{big.distance_m}m（{big.name or '名称不明'}）")
+    else:
+        big_raw = 0.35
+        bits.append("大型商業施設は付近になし")
+    # 日常：スーパーが徒歩圏にあるか
+    if daily:
+        daily_raw = _dist_score(daily.distance_m, 400, 700, 1200, 2000)
+        bits.append(f"スーパー{daily.distance_m}m")
+    else:
+        daily_raw = 0.3
+        bits.append("スーパーは付近になし")
+    n = shops.count_within(1000)
+    if n >= 3:
+        bits.append(f"1km内に{n}店")
+    return _clamp(0.5 * big_raw + 0.5 * daily_raw), bits
+
+
+def _life_convenience(facility, shops):
+    """生活利便を0..1で。取れなかった項目は評価に入れず、充足度だけ下げる。"""
+    parts = {}
+    bits = []
+
+    shop_raw, shop_bits = _shopping_score(shops)
+    if shop_raw is not None:
+        parts["買い物"] = shop_raw
+        bits.extend(shop_bits)
+
+    if facility and getattr(facility, "checked", False):
+        hm = facility.nearest_hospital_m
+        if hm is not None:
+            med = _dist_score(hm, 500, 1000, 1500, 2500)
+            if facility.hospital_count_1km >= 5:
+                med = min(1.0, med + 0.05)
+            parts["医療"] = med
+            bits.append(f"病院{hm}m・1km内{facility.hospital_count_1km}件")
+
+        edu_vals = []
+        sm = facility.nearest_school_m
+        if sm is not None:
+            edu_vals.append(_dist_score(sm, 500, 1000, 1500, 2500))
+            bits.append(f"学校{sm}m")
+        pm = facility.nearest_preschool_m
+        if pm is not None:
+            edu_vals.append(_dist_score(pm, 400, 800, 1200, 2000))
+            bits.append(f"保育園・幼稚園{pm}m"
+                        + (f"・1km内{facility.preschool_count_1km}件"
+                           if facility.preschool_count_1km else ""))
+        if edu_vals:
+            parts["教育"] = sum(edu_vals) / len(edu_vals)
+
+        pub_vals = []
+        lm = facility.nearest_library_m
+        if lm is not None:
+            pub_vals.append(_dist_score(lm, 800, 1500, 2500, 4000))
+            bits.append(f"図書館{lm}m")
+        hallm = facility.nearest_hall_m
+        if hallm is not None:
+            pub_vals.append(_dist_score(hallm, 600, 1200, 2000, 3000))
+        if facility.welfare_count_1km:
+            pub_vals.append(min(1.0, 0.6 + 0.1 * facility.welfare_count_1km))
+            bits.append(f"福祉施設1km内{facility.welfare_count_1km}件")
+        if pub_vals:
+            parts["公共"] = sum(pub_vals) / len(pub_vals)
+
+    if not parts:
+        return None, [], 0.0
+
+    # 取れた項目だけで重み付き平均する（欠けた項目で薄めない）
+    total_w = sum(LIFE_WEIGHTS[k] for k in parts)
+    raw = sum(LIFE_WEIGHTS[k] * v for k, v in parts.items()) / total_w
+    coverage = total_w / sum(LIFE_WEIGHTS.values())
+    return _clamp(raw), bits, coverage
+
+
+def _future_population_adj(change_pct):
+    """250mメッシュの将来推計人口の増減で、資産性を軽く調整する。
+
+    市区町村全体の増減より、その地点で人が減るかどうかのほうが効く。
+    ここは軽い加減点にとどめ、駅距離や築年を覆さない程度にする。
+    """
+    if change_pct is None:
+        return 0.0, None
+    if change_pct >= 5:
+        return 0.08, f"2050年に向けて人口+{change_pct}%"
+    if change_pct >= 0:
+        return 0.04, f"2050年に向けて人口+{change_pct}%"
+    if change_pct >= -10:
+        return 0.0, f"2050年に向けて人口{change_pct}%"
+    if change_pct >= -20:
+        return -0.05, f"2050年に向けて人口{change_pct}%（減少）"
+    return -0.10, f"2050年に向けて人口{change_pct}%（大きく減少）"
+
+
 def score_location(subj: SubjectProperty, use_district: Optional[str],
-                   facility=None) -> CategoryScore:
+                   facility=None, shops=None) -> CategoryScore:
+    """立地＝いま暮らしやすいか。生活利便を主軸に、駅アクセスを従属要素にする。"""
     w = WEIGHTS["立地"]
     src = []
     walk = subj.station_walk_min
@@ -173,30 +303,21 @@ def score_location(subj: SubjectProperty, use_district: Optional[str],
         src.append("reinfolib:XKT002")
         suff = min(1.0, suff + 0.05)
 
-    checked = bool(facility and getattr(facility, "checked", False))
-    if checked:
+    # ここまでで raw は駅アクセスの評価。生活利便が取れていれば主役を入れ替える。
+    access_raw = raw
+    life_raw, life_bits, coverage = _life_convenience(facility, shops)
+    if life_raw is not None:
+        raw = 0.65 * life_raw + 0.35 * access_raw
         src.append("reinfolib:XKT(facility)")
-        suff = max(suff, 0.85)
-        bits = []
-        hm = getattr(facility, "nearest_hospital_m", None)
-        if hm is not None:
-            bits.append(f"病院{hm}m")
-            if hm <= 1500:
-                raw = min(1.0, raw + 0.05)
-        sm = getattr(facility, "nearest_school_m", None)
-        if sm is not None:
-            bits.append(f"学校{sm}m")
-            if sm <= 1000:
-                raw = min(1.0, raw + 0.05)
-        if getattr(facility, "hospital_count_1km", 0):
-            bits.append(f"1km内医療{facility.hospital_count_1km}件")
-        if bits:
-            reason += "（" + "・".join(bits) + "）"
+        if shops is not None and getattr(shops, "checked", False):
+            src.append("OpenStreetMap")
+        suff = max(suff, 0.5 + 0.45 * coverage)
+        reason += "／" + "・".join(life_bits)
     else:
         reason += "（周辺施設は未評価）"
 
-    return CategoryScore("立地", w, round(raw, 3), round(w * raw, 1), suff,
-                         reason, src)
+    return CategoryScore("立地", w, round(raw, 3), round(w * raw, 1),
+                         round(suff, 2), reason, src)
 
 
 def score_risk(use_district: Optional[str], urbanization: Optional[str],
@@ -239,6 +360,27 @@ def score_risk(use_district: Optional[str], urbanization: Optional[str],
             raw -= 0.3; hit.append("津波浸水想定域")
         if getattr(hazard, "storm_surge", False):
             raw -= 0.2; hit.append("高潮浸水想定域")
+        # 地盤系。液状化は数値レベルの凡例が手元に無いので、説明文の
+        # 「しやすい／しにくい」で読む。凡例を推測して逆に採点する事故を避ける。
+        liq = getattr(hazard, "liquefaction", None)
+        if liq:
+            if "しやすい" in liq:
+                raw -= 0.20 if "やや" not in liq else 0.10
+                hit.append(f"液状化：{liq}")
+            elif "しにくい" not in liq:
+                hit.append(f"液状化：{liq}")
+        if getattr(hazard, "danger_zone", None):
+            raw = min(raw, 0.4)
+            hit.append(f"災害危険区域（{hazard.danger_zone}）")
+        if getattr(hazard, "steep_slope", False):
+            raw = min(raw, 0.5)
+            hit.append("急傾斜地崩壊危険区域")
+        if getattr(hazard, "landslide_zone", False):
+            raw = min(raw, 0.5)
+            hit.append("地すべり防止地区")
+        if getattr(hazard, "embankment", None):
+            raw -= 0.10
+            hit.append(f"大規模盛土造成地（{hazard.embankment}）")
         raw = max(0.0, raw)
         notes.append("・".join(hit) if hit else "指定ハザード区域に該当なし")
 
@@ -271,8 +413,13 @@ def score_finance(loan: Optional[LoanResult]) -> CategoryScore:
 
 
 def score_asset(subj: SubjectProperty, use_district: Optional[str],
-                population_trend: Optional[str]) -> CategoryScore:
-    """資産性：駅近接性を段階評価し、ゆとりある広さ・人口動向で加減点。"""
+                population_trend: Optional[str],
+                pop_change_pct: Optional[float] = None) -> CategoryScore:
+    """資産性＝将来も価値が保てるか。駅近接性を主軸に、広さと人口見通しで加減点。
+
+    立地（生活利便）と役割を分けている。駅距離はここで主に効かせ、立地側では
+    従属要素にとどめる。両方が駅距離で動くと、同じことを二重に採点してしまう。
+    """
     w = WEIGHTS["資産性"]
     src = []
     bits = []
@@ -304,7 +451,15 @@ def score_asset(subj: SubjectProperty, use_district: Optional[str],
         bits.append("ゆとりある広さ")
 
     suff = 0.4
-    if population_trend:
+    # 250mメッシュの将来推計人口があればそちらを優先する。市区町村全体の
+    # 増減より、その地点で人が減るかどうかのほうが資産性に効く。
+    adj, pop_bit = _future_population_adj(pop_change_pct)
+    if pop_bit:
+        src.append("reinfolib:XKT013")
+        bits.append(pop_bit)
+        raw += adj
+        suff = 0.75
+    elif population_trend:
         src.append("e-Stat")
         bits.append(f"人口{population_trend}")
         suff = 0.6
@@ -339,17 +494,19 @@ def build_diagnosis(subj: SubjectProperty, price_a: Optional[PriceAnalysis],
                     hazard=None,
                     facility=None,
                     population_trend: Optional[str] = None,
-                    current_year: Optional[int] = None) -> Diagnosis:
+                    current_year: Optional[int] = None,
+                    shops=None,
+                    pop_change_pct: Optional[float] = None) -> Diagnosis:
     if current_year is None:
         current_year = datetime.date.today().year
 
     cats = [
         score_building(subj, current_year),
-        score_location(subj, use_district, facility),
+        score_location(subj, use_district, facility, shops),
         score_price(price_a),
         score_risk(use_district, urbanization, hazard),
         score_finance(loan),
-        score_asset(subj, use_district, population_trend),
+        score_asset(subj, use_district, population_trend, pop_change_pct),
     ]
     total = int(round(sum(c.points for c in cats)))
     total = max(0, min(100, total))

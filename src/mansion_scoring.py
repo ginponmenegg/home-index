@@ -19,7 +19,8 @@ from .models import MansionSubject, PriceAnalysis
 from .loan import LoanResult
 from .config import CONFIG
 from .scoring import (CategoryScore, CriticalRisk, Diagnosis, grade_of, _clamp,
-                      score_price, score_location, score_risk, score_finance)
+                      score_price, score_location, score_risk, score_finance,
+                      _future_population_adj)
 
 WEIGHTS = CONFIG["mansion_category_weights"]
 REPAIR_GUIDE = CONFIG["mansion_repair_fund_guideline"]
@@ -56,14 +57,19 @@ def _walk_raw(walk: Optional[int]) -> Optional[float]:
 
 
 def score_mansion_asset(subj: MansionSubject,
-                        current_year: Optional[int] = None) -> CategoryScore:
-    """資産性：駅徒歩と築年（新耐震か）を主に、階数と向きで軽く調整する。"""
+                        current_year: Optional[int] = None,
+                        pop_change_pct: Optional[float] = None) -> CategoryScore:
+    """資産性：駅徒歩と築年（新耐震か）を主に、階数・向き・将来人口で調整する。
+
+    立地（生活利便）とは役割を分けてある。駅距離はここで主に効かせ、立地側では
+    従属要素にとどめる。両方が駅距離で動くと同じことを二重に採点してしまう。
+    """
     if current_year is None:
         current_year = datetime.date.today().year
     w = WEIGHTS["資産性"]
     bits: List[str] = []
     known = 0
-    total_checks = 4
+    total_checks = 5
 
     # 駅徒歩（マンションは戸建より駅距離が効く）
     walk_raw = _walk_raw(subj.station_walk_min)
@@ -119,6 +125,14 @@ def score_mansion_asset(subj: MansionSubject,
         if adj is not None:
             base += adj
             bits.append(f"{d}向き")
+
+    # 将来推計人口（250mメッシュ）。その地点で人が減るかどうかは、
+    # マンションの出口（売れるか）に直結する。
+    adj, pop_bit = _future_population_adj(pop_change_pct)
+    if pop_bit:
+        known += 1
+        base += adj
+        bits.append(pop_bit)
 
     raw = _clamp(base)
     suff = known / total_checks
@@ -215,15 +229,18 @@ def build_mansion_diagnosis(subj: MansionSubject,
                             urbanization: Optional[str] = None,
                             hazard=None,
                             facility=None,
-                            current_year: Optional[int] = None) -> Diagnosis:
+                            current_year: Optional[int] = None,
+                            shops=None,
+                            pop_change_pct: Optional[float] = None) -> Diagnosis:
     if current_year is None:
         current_year = datetime.date.today().year
 
     cats = [
         _reweight(score_price(price_a), WEIGHTS["価格"]),
-        score_mansion_asset(subj, current_year),
+        score_mansion_asset(subj, current_year, pop_change_pct),
         score_mansion_management(subj),
-        _reweight(score_location(subj, use_district, facility), WEIGHTS["立地"]),
+        _reweight(score_location(subj, use_district, facility, shops),
+                  WEIGHTS["立地"]),
         _reweight(score_risk(use_district, urbanization, hazard), WEIGHTS["リスク"]),
         _reweight(score_finance(loan), WEIGHTS["資金"]),
     ]
