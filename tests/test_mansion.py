@@ -12,6 +12,7 @@ from src.mansion_scoring import (is_new_quake_standard, score_mansion_asset,
                                  score_mansion_management, repair_fund_band,
                                  build_mansion_diagnosis)
 from src.loan import compute_loan
+from src.extract import parse_mansion_text
 
 CURRENT_YEAR = 2026
 
@@ -303,6 +304,68 @@ def test_same_building_is_empty_without_a_build_year():
     subj = _subject(price=35_000_000, build_year=None)
     comps = extract_mansion_comparables(subj, _market(500_000), CURRENT_YEAR)
     assert same_building_candidates(subj, comps) == []
+
+LISTING = "\n".join([
+    "中古マンション ブリリア鵠沼桜が岡",
+    "神奈川県藤沢市鵠沼桜が岡3丁目",
+    "価格 7,480万円",
+    "専有面積 96.77m2（壁芯）／バルコニー面積 12.30m2",
+    "間取り 3LDK",
+    "所在階/構造・階建 2階/5階建",
+    "築年月 2006年3月",
+    "南東向き",
+    "管理費 20,100円/月",
+    "修繕積立金 37,550円/月",
+    "修繕積立基金 250,000円（引渡時一括）",
+    "駐車場 月額15,000円（管理費別）",
+    "小田急江ノ島線 鵠沼海岸駅 徒歩5分",
+])
+
+
+def test_parse_mansion_listing():
+    p = parse_mansion_text(LISTING)
+    assert p["price_man"] == 7480
+    assert p["area"] == 96.77          # バルコニー面積を拾わない
+    assert p["byear"] == 2006
+    assert p["station"] == 5
+    assert (p["floor"], p["total_floors"]) == (2, 5)
+    assert p["direction"] == "南東"
+    assert p["layout"] == "3LDK"
+    assert p["city"] == "14205"
+
+
+def test_lump_sum_fund_is_not_the_monthly_one():
+    """修繕積立基金は購入時の一括金。月額の修繕積立金と混ぜない。"""
+    p = parse_mansion_text(LISTING)
+    assert p["rfund"] == 37_550
+    assert p["mfee"] == 20_100
+    # 基金が先に書かれていても取り違えない
+    q = parse_mansion_text("修繕積立基金 300,000円\n修繕積立金 12,500円")
+    assert q["rfund"] == 12_500
+
+
+def test_parking_fee_is_not_the_management_fee():
+    p = parse_mansion_text("管理費（駐車場）3,000円\n管理費 11,000円")
+    assert p["mfee"] == 11_000
+
+
+def test_label_and_amount_split_across_lines():
+    """PDFはラベルと金額が改行で切れることがある。"""
+    p = parse_mansion_text("管理費\n12,000円\n修繕積立金\n13,500円")
+    assert (p["mfee"], p["rfund"]) == (12_000, 13_500)
+
+
+def test_house_listing_is_detected():
+    """戸建のページを貼ってしまったら気づけるようにする。"""
+    p = parse_mansion_text("中古一戸建 土地面積 147.07m2 建ぺい率60%")
+    assert p["is_mansion"] is False
+    assert parse_mansion_text(LISTING)["is_mansion"] is True
+
+
+def test_ambiguous_floor_is_left_blank():
+    """「3階」だけでは所在階か総階数か決まらないので埋めない。"""
+    p = parse_mansion_text("価格 3,000万円\n3階")
+    assert p["floor"] is None and p["total_floors"] is None
 
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

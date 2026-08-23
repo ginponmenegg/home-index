@@ -200,6 +200,118 @@ def parse_listing_text(text: str) -> Dict[str, object]:
     }
 
 
+# ---- マンション向けの読み取り ----------------------------------------
+# 戸建と共通の部品（価格・住所・築年・駅徒歩・間取り・面積）はそのまま使い、
+# マンション固有の項目だけここに足す。
+
+DIRECTIONS_8 = ("南東", "南西", "北東", "北西", "南", "北", "東", "西")
+
+
+def _parse_monthly_yen(t: str, labels, exclude=()) -> Optional[int]:
+    """「管理費 12,000円」のような月額を円で拾う。
+
+    価格は万円だがこれらは円で書かれるので、万円のパーサとは分けてある。
+
+    判定は行単位で行う。前後の行まで覗くと、「修繕積立金」の隣にある
+    「修繕積立基金」や、別項目の「駐車場の管理費」を巻き込んで、正しい
+    月額まで捨ててしまう。ただしPDFではラベルと金額が改行で切れることが
+    あるので、値は次の行までを見る。
+
+    exclude は、その行にあれば別物とみなす語（駐車場の管理費、購入時の
+    一括金である修繕積立基金など）。
+    """
+    lines = t.splitlines()
+    for lab in labels:
+        for i, line in enumerate(lines):
+            if lab not in line or any(x in line for x in exclude):
+                continue
+            segment = line + " " + (lines[i + 1] if i + 1 < len(lines) else "")
+            m = re.search(re.escape(lab) + r"[^\d]{0,24}?([0-9][0-9,]{2,8})\s*円",
+                          segment)
+            if m:
+                try:
+                    return int(m.group(1).replace(",", ""))
+                except ValueError:
+                    continue
+    return None
+
+def _parse_floors(t: str):
+    """所在階と総階数。「3階/5階建」のような並記を最優先で読む。
+
+    「5階建」だけなら総階数、「所在階3階」なら所在階。どちらか分からない
+    「3階」単独は、取り違えると評価が変わるので拾わない。
+    """
+    floor = total = None
+    m = re.search(r"([0-9]{1,2})\s*階\s*[/／]\s*(?:地上)?([0-9]{1,2})\s*階建", t)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    m = re.search(r"所在階[^\d]{0,8}?([0-9]{1,2})\s*階", t)
+    if m:
+        floor = int(m.group(1))
+    m = re.search(r"(?:地上)?([0-9]{1,2})\s*階建", t)
+    if m:
+        total = int(m.group(1))
+    if floor is None:
+        m = re.search(r"([0-9]{1,2})\s*階\s*部分", t)
+        if m:
+            floor = int(m.group(1))
+    return floor, total
+
+
+def _parse_direction(t: str) -> Optional[str]:
+    """向き。2文字の方位（南東など）を先に見る。"""
+    for d in DIRECTIONS_8:
+        if re.search(re.escape(d) + r"\s*向き", t):
+            return d
+    m = re.search(r"(?:バルコニー|採光|開口部?)[^。\n]{0,12}?"
+                  r"(南東|南西|北東|北西|南|北|東|西)", t)
+    if m:
+        return m.group(1)
+    return None
+
+
+def looks_like_mansion(t: str) -> Optional[bool]:
+    """貼り付けたのがマンションの物件かどうか。判断できなければ None。
+
+    戸建のページを貼ってしまったときに気づけるようにするためのもの。
+    """
+    t = _z2h(t or "")
+    if re.search(r"マンション|区分所有|専有面積", t):
+        return True
+    if re.search(r"一戸建|戸建|土地面積|建ぺい率", t):
+        return False
+    return None
+
+
+def parse_mansion_text(text: str) -> Dict[str, object]:
+    """貼り付けテキストからマンションの項目を抽出。値が無いものは None。"""
+    t = _z2h(text or "")
+    walk, station_name = _parse_station_walk(t)
+    addr, city, district = _parse_address(t)
+    floor, total_floors = _parse_floors(t)
+    return {
+        "price_man": _parse_price_man(t),
+        # バルコニーを拾わないよう、専有と明記されたものだけを見る
+        "area": _parse_area(t, ["専有面積", "専有部分の面積", "専有"]),
+        "layout": _parse_layout(t),
+        "byear": _parse_build_year(t),
+        "station": walk,
+        "station_name": station_name,
+        "floor": floor,
+        "total_floors": total_floors,
+        "direction": _parse_direction(t),
+        # 「修繕積立基金」は購入時の一括金なので月額と混ぜない
+        "mfee": _parse_monthly_yen(t, ["管理費"],
+                                   exclude=("駐車", "駐輪", "バイク", "トランク")),
+        "rfund": _parse_monthly_yen(t, ["修繕積立金", "修繕費"],
+                                    exclude=("基金", "一時金", "駐車")),
+        "address": addr,
+        "city": city,
+        "district": district,
+        "is_mansion": looks_like_mansion(text),
+    }
+
+
 def extract_from_url(url: str) -> Dict[str, object]:
     """URLのページを取得しテキスト抽出→parse（実験的・best-effort）。
     公開メタ情報とページテキストのみを解析する。"""

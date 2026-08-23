@@ -1851,10 +1851,26 @@ BRAND_BAR
  <h1>マンションを100点で採点します</h1>
  <p class="aim">「この価格は妥当か」「資産価値は保てるか」「無理なく返せるか」。
   近隣の<b>マンションの成約事例</b>から専有面積あたりの単価を出して、100点に換算します。</p>
- <p class="lead">項目は手で入力してください。金額は<b>万円</b>。
+ <p class="lead">物件説明を貼り付けると自動で項目を埋めます。内容を確認・修正して診断してください。
+  金額は<b>万円</b>（管理費・修繕積立金は<b>円</b>）。
   <a href="/buy">戸建の診断はこちら</a></p>
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
+
+ <form class="card" method="post" action="/mansion_parse">
+  <label>① 物件説明を貼り付け（SUUMO等の物件ページの<b>説明文</b>をコピペ）</label>
+  <textarea name="listing" placeholder="例）中古マンション 神奈川県藤沢市鵠沼桜が岡3丁目 価格7,480万円 専有面積96.77㎡ 3LDK 2階/5階建 築2006年 南東向き 管理費20,100円 修繕積立金37,550円 鵠沼海岸駅 徒歩5分">{{listing or ''}}</textarea>
+  <button class="sub" type="submit">貼り付けから自動入力する</button>
+  <div class="hint">※ <b>URLではなく、物件ページの文章</b>をコピーしてください。ご自身がコピーした情報を解析します（私的利用）。
+   マンション名は自動では取れないため、手で入力してください。抽出後、下で確認・修正できます。</div>
+ </form>
+
+ <form class="card" method="post" action="/mansion_upload_pdf" enctype="multipart/form-data">
+  <label>① 販売図面PDFから読み取る（文字が選択できるPDF）</label>
+  <input type="file" name="pdf" accept="application/pdf">
+  <button class="sub" type="submit">PDFから自動入力する</button>
+  <div class="hint">※ スキャン画像のPDFは文字を取り出せません。</div>
+ </form>
 
  <div class="banner">
   <b>この診断に含まれないもの：</b>修繕積立金の<b>残高</b>、大規模修繕の履歴、管理形態、
@@ -1981,11 +1997,113 @@ def _mansion_example_v():
                 loan_years="35")
 
 
+def _mansion_v_from_parsed(p):
+    """抽出結果をフォームの値に移す。取れなかった項目は空のままにする。"""
+    v = _mansion_example_v()
+    if p.get("price_man") is not None:
+        v["price"] = str(p["price_man"])
+    if p.get("area") is not None:
+        v["area"] = str(p["area"])
+    for src_key, dst in (("byear", "byear"), ("station", "station"),
+                         ("floor", "floor"), ("total_floors", "total_floors"),
+                         ("mfee", "mfee"), ("rfund", "rfund")):
+        if p.get(src_key) is not None:
+            v[dst] = str(p[src_key])
+    for src_key, dst in (("address", "address"), ("city", "city"),
+                         ("district", "district")):
+        if p.get(src_key):
+            v[dst] = p[src_key]
+    if p.get("direction"):
+        v["direction"] = p["direction"]
+    return v
+
+
+def _mansion_parse_banner(p):
+    """何が取れて何が取れなかったかを、そのまま伝える。"""
+    labels = [("price_man", "価格"), ("area", "専有面積"), ("byear", "築年"),
+              ("station", "駅徒歩"), ("floor", "所在階"),
+              ("total_floors", "総階数"), ("direction", "向き"),
+              ("mfee", "管理費"), ("rfund", "修繕積立金"),
+              ("address", "所在地")]
+    got = [name for k, name in labels if p.get(k) is not None]
+    miss = [name for k, name in labels if p.get(k) is None]
+    msg = ""
+    if p.get("is_mansion") is False:
+        msg += ("<b>戸建の物件情報のようです。</b>"
+                "マンションでなければ<a href=\"/buy\">戸建の診断</a>をお使いください。<br>")
+    msg += "読み取れた項目：" + ("、".join(got) if got else "なし")
+    if miss:
+        msg += "<br>読み取れなかった項目：" + "、".join(miss) + "（手で入力してください）"
+    msg += "<br><b>金額と面積は必ず目視で確認してください。</b>"
+    return msg
+
+
 @app.route("/mansion")
 def mansion():
     """マンション診断の入力フォーム。"""
     return render_template_string(MANSION_FORM, v=_mansion_example_v(),
-                                  directions=DIRECTIONS, banner=None)
+                                  directions=DIRECTIONS, banner=None,
+                                  listing="")
+
+
+@app.route("/mansion_parse", methods=["POST"])
+def mansion_parse():
+    """貼り付けたテキストから項目を埋める。戸建の /parse と同じ役割。"""
+    from src.extract import parse_mansion_text
+    text = request.form.get("listing", "")
+    if not text.strip():
+        return render_template_string(
+            MANSION_FORM, v=_mansion_example_v(), directions=DIRECTIONS,
+            listing="", banner="貼り付け欄が空です。物件説明を貼り付けてください。")
+    p = parse_mansion_text(text)
+    if p.get("address") and not p.get("city"):
+        try:
+            code, _nm, dist = _resolver().resolve_from_address(p["address"])
+            if code:
+                p["city"] = code
+            if dist and not p.get("district"):
+                p["district"] = dist
+        except Exception:
+            pass
+    return render_template_string(MANSION_FORM, v=_mansion_v_from_parsed(p),
+                                  directions=DIRECTIONS, listing=text,
+                                  banner=_mansion_parse_banner(p))
+
+
+@app.route("/mansion_upload_pdf", methods=["POST"])
+def mansion_upload_pdf():
+    """販売図面PDFの文字を取り出して項目を埋める。"""
+    from src.extract import extract_from_pdf, parse_mansion_text
+    f = request.files.get("pdf")
+    if not f or not f.filename:
+        return render_template_string(
+            MANSION_FORM, v=_mansion_example_v(), directions=DIRECTIONS,
+            listing="", banner="PDFファイルが選ばれていません。")
+    try:
+        text = extract_from_pdf(f.stream)
+        if not text.strip():
+            return render_template_string(
+                MANSION_FORM, v=_mansion_example_v(), directions=DIRECTIONS,
+                listing="",
+                banner="このPDFは文字を抽出できませんでした（スキャン画像の可能性）。"
+                       "文字が選択できるPDFをお試しください。")
+        p = parse_mansion_text(text)
+        if p.get("address") and not p.get("city"):
+            try:
+                code, _nm, dist = _resolver().resolve_from_address(p["address"])
+                if code:
+                    p["city"] = code
+                if dist and not p.get("district"):
+                    p["district"] = dist
+            except Exception:
+                pass
+        return render_template_string(
+            MANSION_FORM, v=_mansion_v_from_parsed(p), directions=DIRECTIONS,
+            listing=text, banner="PDFから読み取りました。" + _mansion_parse_banner(p))
+    except Exception as e:
+        return render_template_string(
+            MANSION_FORM, v=_mansion_example_v(), directions=DIRECTIONS,
+            listing="", banner=f"PDFの読み取りに失敗しました：{e}")
 
 
 @app.route("/mansion_diagnose", methods=["POST"])
@@ -1995,11 +2113,13 @@ def mansion_diagnose():
     if not _rate_ok(_client_ip()):
         return render_template_string(
             MANSION_FORM, v=_mansion_form_values(f), directions=DIRECTIONS,
+            listing=f.get("listing", ""),
             banner=(f"本日の診断回数の上限（{_RATE_LIMIT}回）に達しました。"
                     "時間をおいて再度お試しください。")), 429
     if not _SEM.acquire(timeout=25):
         return render_template_string(
             MANSION_FORM, v=_mansion_form_values(f), directions=DIRECTIONS,
+            listing=f.get("listing", ""),
             banner="ただいまアクセスが集中しています。少し時間をおいて再度お試しください。"), 503
     try:
         return _run_mansion_diagnose(f)
@@ -2035,6 +2155,7 @@ def _run_mansion_diagnose(f):
     if not area or area <= 0:
         return render_template_string(
             MANSION_FORM, v=_mansion_form_values(f), directions=DIRECTIONS,
+            listing=f.get("listing", ""),
             banner="専有面積を入力してください。㎡単価で比較するため必須です。")
 
     direction = (f.get("direction") or "不明").strip()
