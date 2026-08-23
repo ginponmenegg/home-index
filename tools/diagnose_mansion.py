@@ -43,9 +43,13 @@ from src.mansion_price import (analyze_mansion_price, is_mansion_txn,  # noqa: E
 from src.pipeline import _geocode_mansion_districts  # noqa: E402
 
 # 施設レイヤの棚卸しに試す候補。当たりだけ拾えればよいので広めに舐める。
-CANDIDATE_LAYERS = [f"XKT{n:03d}" for n in range(1, 31)]
-KNOWN = {"XKT002": "用途地域（既に利用）", "XKT006": "学校（既に利用）",
+# XKT001〜030では大型商業施設が見つからなかったので、範囲を広げて舐める。
+# なお fetch_points_around はポイントだけを拾うので、面で来るレイヤ
+# （用途地域XKT002・ハザードXKT026-029など）はここに出てこない。
+CANDIDATE_LAYERS = [f"XKT{n:03d}" for n in range(1, 61)]
+KNOWN = {"XKT002": "用途地域（面・既に利用）", "XKT006": "学校（既に利用）",
          "XKT010": "医療機関（既に利用）", "XKT015": "駅（既に利用）",
+         "XKT007": "保育園・幼稚園", "XKT011": "福祉施設", "XKT017": "図書館", "XKT018": "役場・公的集会施設",
          "XKT026": "洪水（既に利用）", "XKT027": "高潮（既に利用）",
          "XKT028": "津波（既に利用）", "XKT029": "土砂（既に利用）"}
 

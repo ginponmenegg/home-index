@@ -30,6 +30,28 @@ def _resolver():
         _RESOLVER = CityCodeResolver(os.environ.get("REINFOLIB_KEY"), cache)
     return _RESOLVER
 
+def _load_dotenv():
+    """プロジェクト直下の .env をローカル起動時だけ読む。
+
+    本番（Render）は環境変数がダッシュボードから入るので .env は無く、
+    その場合はなにもしない。既に環境変数がある場合はそちらを優先する。
+    キーが無いまま起動すると、取引の取得もハザードも静かにスキップされ、
+    「類似成約が不足」「防災未取得」に見えてしまうため、ここで読んでおく。
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.exists(path):
+        return
+    import io as _io
+    for line in _io.open(path, encoding="utf-8-sig"):
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+_load_dotenv()
+
 app = Flask(__name__)
 
 # ブランド：HOME INDEX（シンボル＝家×棒グラフ / モノクロ #111111・#E5E5E5）
