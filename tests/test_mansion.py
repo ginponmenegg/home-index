@@ -197,7 +197,7 @@ def test_management_unscored_without_the_numbers():
 
 
 def test_repair_fund_within_guideline_scores_well():
-    # 70㎡ で月13,000円 = 186円/㎡。20階未満の目安 135〜265円の範囲内
+    # 70㎡ で月13,000円 = 186円/㎡。20階未満の包絡幅 170〜430円の範囲内
     c = score_mansion_management(
         _subject(price=35_000_000, repair_fund=13_000, management_fee=15_000,
                  total_floors=10))
@@ -205,43 +205,52 @@ def test_repair_fund_within_guideline_scores_well():
     assert "範囲" in c.reason
 
 
-def test_repair_fund_far_below_guideline_is_flagged():
-    # 70㎡ で月5,000円 = 71円/㎡。新築時の当初設定額の平均95円/㎡すら下回る
-    subj = _subject(price=35_000_000, repair_fund=5_000, management_fee=8_000,
+def test_repair_fund_below_the_floor_is_flagged():
+    # 70㎡ で月6,000円 = 86円/㎡。包絡幅の下限170円を下回る
+    subj = _subject(price=35_000_000, repair_fund=6_000, management_fee=8_000,
                    total_floors=10)
     c = score_mansion_management(subj)
-    assert c.raw <= 0.4
+    assert c.raw <= 0.5
     d = build_mansion_diagnosis(subj, None)
     risk = [r for r in d.critical_risks
-            if r.type == "修繕積立金が目安を大きく下回る"]
+            if r.type == "修繕積立金が目安の下限を下回る"]
     assert len(risk) == 1
     # 資料が「直ちに不適切とは限らない」と断っているので断定調にはしない
     assert risk[0].severity == "medium"
     assert "長期修繕計画" in risk[0].evidence
+    assert "積立方式" in risk[0].evidence
 
 
 def test_guideline_numbers_match_the_source():
     """出典どおりの数値かを固定する。ここが動くと判定が丸ごとずれる。
 
-    国土交通省「マンションの修繕積立金に関するガイドライン」より、
-    専有床面積当たりの額（円/㎡・月）と、事例の3分の2が包含される幅：
-      15階未満  5,000㎡未満     平均218  165〜250
-      15階未満  5,000〜10,000㎡ 平均202  140〜265
-      15階未満  10,000㎡以上    平均178  135〜220
-      20階以上                  平均206  170〜245
-    延床面積を入力に取らないので、15階未満は3区分の幅を包絡して135〜265とする。
+    国土交通省「マンションの修繕積立金に関するガイドライン」（令和6年6月改定）
+    より、計画期間全体での修繕積立金の平均額の目安（円/㎡・月）：
+      20階未満  5,000㎡未満        235〜430  平均335
+      20階未満  5,000〜10,000㎡    170〜320  平均252
+      20階未満  10,000〜20,000㎡   200〜330  平均271
+      20階未満  20,000㎡以上       190〜325  平均255
+      20階以上                     240〜410  平均338
     """
-    low = repair_fund_band(10)
-    assert (low["low"], low["high"]) == (135, 265)
-    tall = repair_fund_band(20)
-    assert (tall["low"], tall["mid"], tall["high"]) == (170, 206, 245)
-    # 15〜19階は資料の指示どおり20階未満側で扱う
-    assert repair_fund_band(18) == low
+    assert repair_fund_band(10, 4_000)["low"] == 235
+    assert repair_fund_band(10, 8_000)["avg"] == 252
+    assert repair_fund_band(10, 15_000)["high"] == 330
+    assert repair_fund_band(10, 30_000)["avg"] == 255
+    tall = repair_fund_band(25)
+    assert (tall["low"], tall["avg"], tall["high"]) == (240, 338, 410)
 
+
+def test_unknown_floor_area_widens_the_band():
+    """延床面積が分からないときは4区分を包絡する。甘くなるぶん誤検知しない。"""
+    wide = repair_fund_band(10)
+    assert (wide["low"], wide["high"]) == (170, 430)
+    assert wide["exact"] is False
+    assert repair_fund_band(10, 8_000)["exact"] is True
 
 def test_tall_buildings_use_the_higher_band():
     assert repair_fund_band(25)["low"] > repair_fund_band(10)["low"]
     assert repair_fund_band(None) == repair_fund_band(10)   # 不明は低層側
+    assert repair_fund_band(19) == repair_fund_band(10)     # 区分は20階で切る
 
 
 def test_monthly_charges_raise_the_burden_ratio():

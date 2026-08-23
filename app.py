@@ -1841,7 +1841,7 @@ BRAND_BAR
     <div class="hint">万円ではなく<b>円</b>で入力</div></div>
    <div><label>修繕積立金（円／月）</label>
     <input name="rfund" value="{{v.rfund}}" placeholder="例）13000">
-    <div class="hint">専有面積あたりの月額に直して、国土交通省「マンションの修繕積立金に関するガイドライン」の目安と比べます</div></div>
+    <div class="hint">専有面積あたりの月額に直して、国土交通省「マンションの修繕積立金に関するガイドライン」（令和6年6月改定）の目安と比べます</div></div>
   </div>
 
   <div class="row">

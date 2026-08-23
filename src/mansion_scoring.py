@@ -127,22 +127,34 @@ def score_mansion_asset(subj: MansionSubject,
                          round(suff, 2), reason, ["user"])
 
 
-def repair_fund_band(total_floors: Optional[int]) -> dict:
+def repair_fund_band(total_floors: Optional[int],
+                     floor_area_m2: Optional[float] = None) -> dict:
     """修繕積立金の目安レンジ（円/㎡・月）。出典は国土交通省のガイドライン。
 
-    資料は建築延床面積で区分するが、その入力を取っていないので15階未満の
-    3区分の幅を包絡した値を使う。15〜19階を20階未満側に入れるのは資料の
-    指示どおり（供給量が少なく目安を出せていないため、15階未満に含めている）。
+    資料は地上20階で分け、20階未満はさらに建築延床面積で4区分している。
+    延床面積は購入検討者が普通は知らないので入力に取っておらず、その場合は
+    4区分の幅を包絡した値を返す（exact=False）。広く取るぶん判定は甘くなり、
+    「明らかに低いか」しか見ない。延床面積が分かるなら区分を特定できるよう、
+    引数だけ用意してある。
 
-    前提の違いは承知して使うこと。この目安は新築マンションの購入予定者向けに、
-    住居専用・単棟型のマンションを対象に、新築から30年の均等積立方式で
-    算定されている。中古の、しかも築年の進んだ物件にそのまま当てはめると
-    厳しめに出る側面がある。
+    前提の違いは承知して使うこと。この目安は「計画期間全体における修繕積立金の
+    平均額」であって、いま毎月いくら払っているかではない。均等積立方式なら
+    ほぼ一致するが、段階増額積立方式なら現在額は平均額を下回る。
     """
     if total_floors and total_floors >= 20:
-        return REPAIR_GUIDE["over_20f"]
-    return REPAIR_GUIDE["under_20f"]
-
+        b = REPAIR_GUIDE["over_20f"]
+        return {"low": b["low"], "high": b["high"], "avg": b["avg"],
+                "exact": True}
+    bands = REPAIR_GUIDE["under_20f_bands"]
+    if floor_area_m2:
+        for b in bands:
+            cap = b.get("max_floor_area_m2")
+            if cap is None or floor_area_m2 < cap:
+                return {"low": b["low"], "high": b["high"],
+                        "avg": b["avg"], "exact": True}
+    return {"low": min(b["low"] for b in bands),
+            "high": max(b["high"] for b in bands),
+            "avg": None, "exact": False}
 
 def score_mansion_management(subj: MansionSubject) -> CategoryScore:
     """管理：修繕積立金が専有面積に対して妥当な水準かを見る。
@@ -168,21 +180,19 @@ def score_mansion_management(subj: MansionSubject) -> CategoryScore:
     band = repair_fund_band(subj.total_floors)
     span = f"目安 {band['low']}〜{band['high']}円/㎡"
 
-    # 資料は「幅に収まっていないからといって直ちに不適切とは判断されない」と
-    # 明記している。外れたことを理由に大きく減点はせず、確認を促す扱いにする。
-    if unit < REPAIR_GUIDE["critically_low"]:
-        raw = 0.35
-        judge = f"{span}を大きく下回る"
-    elif unit < band["low"]:
-        raw = 0.6
-        judge = f"{span}を下回る"
+    # 幅の下限値は、マンション長寿命化促進税制と管理計画の認定で「著しく低額で
+    # ないか」が問われる線として使われている。ただし資料自身が「幅に収まって
+    # いないからといって直ちに不適切とは限らない」と断っているので、下回った
+    # ことだけを理由に大きくは減点せず、確認を促す扱いにする。
+    if unit < band["low"]:
+        raw = 0.5
+        judge = f"{span}の下限を下回る"
     elif unit <= band["high"]:
         raw = 0.85
         judge = f"{span}の範囲"
     else:
         raw = 0.75
         judge = f"{span}を上回る"
-
     bits = [f"修繕積立金 月{fund:,}円（{unit:.0f}円/㎡）＝{judge}"]
     if fee:
         bits.append(f"管理費 月{fee:,}円")
@@ -263,15 +273,15 @@ def build_mansion_diagnosis(subj: MansionSubject,
     if subj.repair_fund and subj.exclusive_area_m2:
         unit = subj.repair_fund / subj.exclusive_area_m2
         band = repair_fund_band(subj.total_floors)
-        if unit < REPAIR_GUIDE["critically_low"]:
+        if unit < band["low"]:
             risks.append(CriticalRisk(
-                "修繕積立金が目安を大きく下回る", "medium", "confirmed",
+                "修繕積立金が目安の下限を下回る", "medium", "confirmed",
                 f"月{subj.repair_fund:,}円＝{unit:.0f}円/㎡。国土交通省の目安は"
-                f"{band['low']}〜{band['high']}円/㎡です。幅を外れていても直ちに"
-                "不適切とは限りませんが、長期修繕計画の内容と積立方法（当初を"
-                "低く抑えて段階的に上げる方式か、均等積立方式か）を確認して"
-                "ください。段階増額方式は、値上げの合意が取れず積立不足になる"
-                "例が報告されています"))
+                f"{band['low']}〜{band['high']}円/㎡です。下限を下回る額は、"
+                "管理計画の認定で「著しく低額でない特段の理由」を求められる"
+                "水準にあたります。ただし目安は計画期間全体の平均額なので、"
+                "当初を低く抑えて段階的に上げる方式なら現在額が下回ること自体は"
+                "起こります。長期修繕計画の内容と積立方式を確認してください"))
     # 額が分かっても、貯まっているか・使われたかは分からない。そこは必ず残す。
     risks.append(CriticalRisk(
         "積立金残高と修繕履歴が未確認", "medium", "unknown",
