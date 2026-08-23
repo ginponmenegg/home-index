@@ -207,7 +207,7 @@ FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#6
           '<a href="/terms" style="color:#111">利用規約</a>　・　'
           '<a href="/privacy" style="color:#111">プライバシーポリシー</a><br>'
           '出典：国土交通省 不動産情報ライブラリ／総務省 e-Stat／国土地理院／Google<br>'
-          '買い物施設：© OpenStreetMap contributors（ODbL）<br>'
+          '商業施設：© OpenStreetMap contributors（ODbL）<br>'
           '© HOME INDEX</div>')
 
 # ---- 負荷・不正対策（プロセス内・簡易） ----
@@ -1217,7 +1217,7 @@ footer a{color:var(--ink)}
         </div>
         <div class="card">
           <h3>使うのは公的データ</h3>
-          <p>国土交通省の成約価格、総務省の人口統計、国土地理院の地図・ハザード情報。商業施設については公的データに無いためOpenStreetMapを使用してます。出典はすべて結果画面に明示します。</p>
+          <p>国土交通省の成約価格、総務省の人口統計、国土地理院の地図・ハザード情報。商業施設については公的データに無いためOpenStreetMapを使用しています。出典はすべて結果画面に明示します。</p>
         </div>
         <div class="card">
           <h3>計算はルールベースで、全部見せる</h3>
@@ -1287,11 +1287,7 @@ footer a{color:var(--ink)}
 </section>
 
 <footer>
-  <div class="wrap">
-    <p><a href="/terms">利用規約</a>　・　<a href="/privacy">プライバシーポリシー</a></p>
-    <p>出典：国土交通省 不動産情報ライブラリ／総務省 e-Stat／国土地理院／Google</p>
-    <p>© HOME INDEX</p>
-  </div>
+  <div class="wrap">FOOTER_PLACEHOLDER</div>
 </footer>
 
 <script>
@@ -1416,7 +1412,8 @@ footer a{color:var(--ink)}
 
 LP = (LP.replace("LP_FONT_LINK_PLACEHOLDER", LP_FONT_LINK)
       .replace("HI_SYMBOL_PLACEHOLDER", symbol_small())
-      .replace("HI_WORDMARK_PLACEHOLDER", WORDMARK))
+      .replace("HI_WORDMARK_PLACEHOLDER", WORDMARK)
+      .replace("FOOTER_PLACEHOLDER", FOOTER))
 
 GRADE_COLOR = {"A": "#15803d", "B": "#16a34a", "C": "#d97706",
                "D": "#dc2626", "E": "#b91c1c"}
@@ -1751,7 +1748,7 @@ def _render_result(res, subject, sctx, down_yen, loan_years):
                 fac_bits.append(f"スーパー {daily.distance_m}m"
                                 + (f"（{daily.name}）" if daily.name else ""))
             if not big and not daily:
-                fac_bits.append("買い物施設は付近に見当たらず")
+                fac_bits.append("商業施設は付近に見当たらず")
 
         # 学区と将来推計人口。人口はメッシュの推計があればそちらを優先する。
         districts = []
