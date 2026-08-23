@@ -15,6 +15,7 @@ from typing import Optional, List, Dict, Any
 import math
 import requests
 from concurrent.futures import ThreadPoolExecutor
+from .osm import fetch_shops_around
 import logging
 logger = logging.getLogger(__name__)
 
@@ -56,11 +57,20 @@ class HazardResult:
     sediment: Optional[str] = None      # "特別警戒区域" / "警戒区域" / None
     tsunami: bool = False               # 津波浸水想定域内
     storm_surge: bool = False           # 高潮浸水想定域内
+    # 地盤・区域系（XKT025/020/022/021/016）
+    liquefaction: Optional[str] = None      # 「やや液状化しにくい」等の説明文
+    liquefaction_level: Optional[int] = None
+    embankment: Optional[str] = None        # 大規模盛土造成地の種別（谷埋め型など）
+    steep_slope: bool = False               # 急傾斜地崩壊危険区域
+    landslide_zone: bool = False            # 地すべり防止地区
+    danger_zone: Optional[str] = None       # 災害危険区域の指定事由
     notes: List[str] = field(default_factory=list)
 
     def any_hit(self) -> bool:
         return bool(self.flood_rank or self.sediment or self.tsunami
-                    or self.storm_surge)
+                    or self.storm_surge or self.steep_slope
+                    or self.landslide_zone or self.danger_zone
+                    or self.embankment)
 
 
 @dataclass
@@ -71,6 +81,12 @@ class FacilityResult:
     nearest_hospital_m: Optional[int] = None
     nearest_school_m: Optional[int] = None
     hospital_count_1km: int = 0
+    # 生活利便のために足したもの。取れなければ None のままにして評価に入れない。
+    nearest_preschool_m: Optional[int] = None
+    preschool_count_1km: int = 0
+    nearest_library_m: Optional[int] = None
+    nearest_hall_m: Optional[int] = None
+    welfare_count_1km: int = 0
     notes: List[str] = field(default_factory=list)
 
 
@@ -82,6 +98,15 @@ class Enrichment:
     facility: FacilityResult = field(default_factory=FacilityResult)
     population: Optional[int] = None
     population_trend: Optional[str] = None   # "増加" / "微増" / "横ばい" / "減少"
+    # 学区（XKT004/005）
+    elementary_district: Optional[str] = None
+    junior_district: Optional[str] = None
+    # 250mメッシュの将来推計人口（XKT013）。市区町村単位より地点の実態に近い。
+    mesh_pop_now: Optional[float] = None
+    mesh_pop_future: Optional[float] = None
+    mesh_pop_change_pct: Optional[float] = None
+    # 買い物施設（OpenStreetMap）
+    shops: Any = None
     notes: List[str] = field(default_factory=list)
 
     @property
@@ -176,6 +201,118 @@ def _containing_props(lat, lon, feats) -> List[dict]:
     for f in feats:
         if point_in_geometry(lon, lat, f.get("geometry") or {}):
             out.append(f.get("properties", {}) or {})
+    return out
+
+
+# ---------- 学区・将来人口・地盤（項目名は実データで確認済み） ----------
+def _first_str(props: dict, *keys) -> Optional[str]:
+    for k in keys:
+        v = props.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+
+
+def fetch_school_districts(lat, lon, key, zoom=14):
+    """小学校区・中学校区の学校名。XKT004/005 はポリゴンで返る。
+
+    項目名は実データで確認：小学校区 A27_004_ja、中学校区 A32_004_ja。
+    """
+    x, y = latlon_to_tile(lat, lon, zoom)
+
+    def get(spec):
+        api, field_name = spec
+        try:
+            feats = _reinfolib_tile(api, key, zoom, x, y)
+        except Exception:
+            return api, None
+        for props in _containing_props(lat, lon, feats):
+            name = _first_str(props, field_name)
+            if name:
+                return api, name
+        return api, None
+
+    got = dict(_parallel(get, [("XKT004", "A27_004_ja"),
+                               ("XKT005", "A32_004_ja")], workers=2))
+    return got.get("XKT004"), got.get("XKT005")
+
+
+def _mesh_value(props: dict, year: int) -> Optional[float]:
+    """将来推計人口メッシュから、その年の総人口を取り出す。
+
+    総人口の項目名は PT00_2025 のような形だが、O と 0 が紛らわしく実データの
+    表示だけでは綴りを確定できない。年で終わるキーを拾い、秘匿フラグ
+    （HITOKU****）は除く、という取り方にして綴りに依存しないようにする。
+    """
+    for k, v in props.items():
+        if k.startswith("HITOKU") or not k.endswith(str(year)):
+            continue
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def fetch_future_population(lat, lon, key, zoom=14,
+                            base_year=2025, target_year=2050):
+    """250mメッシュの将来推計人口（XKT013）。その地点の人口の増減見通し。
+
+    市区町村全体の人口動向より、実際に住む場所の見通しに近い。
+    """
+    x, y = latlon_to_tile(lat, lon, zoom)
+    try:
+        feats = _reinfolib_tile("XKT013", key, zoom, x, y)
+    except Exception:
+        return None, None, None
+    for props in _containing_props(lat, lon, feats):
+        now = _mesh_value(props, base_year)
+        future = _mesh_value(props, target_year)
+        if now and future is not None and now > 0:
+            return now, future, round((future - now) / now * 100.0, 1)
+        if now is not None:
+            return now, future, None
+    return None, None, None
+
+
+def fetch_ground_hazards(lat, lon, key, zoom=14) -> dict:
+    """液状化・盛土・急傾斜地・地すべり・災害危険区域。
+
+    液状化（XKT025）は note に「やや液状化しにくい」のような説明文が入るので、
+    数値レベルの凡例を推測せず、その文言をそのまま持ち回る。
+    """
+    out = {}
+
+    def get(spec):
+        api, z = spec
+        xx, yy = latlon_to_tile(lat, lon, z)
+        try:
+            return api, _containing_props(lat, lon,
+                                          _reinfolib_tile(api, key, z, xx, yy))
+        except Exception:
+            return api, None
+
+    got = dict(_parallel(get, [("XKT025", zoom), ("XKT020", zoom),
+                               ("XKT022", 13), ("XKT021", 13),
+                               ("XKT016", 13)], workers=5))
+
+    liq = got.get("XKT025") or []
+    if liq:
+        out["liquefaction"] = _first_str(liq[0], "note")
+        try:
+            out["liquefaction_level"] = int(liq[0].get("liquefaction_tendency_level"))
+        except (TypeError, ValueError):
+            pass
+    emb = got.get("XKT020") or []
+    if emb:
+        out["embankment"] = (_first_str(emb[0], "embankment_classification")
+                             or "大規模盛土造成地")
+    out["steep_slope"] = bool(got.get("XKT022"))
+    out["landslide_zone"] = bool(got.get("XKT021"))
+    dz = got.get("XKT016") or []
+    if dz:
+        out["danger_zone"] = (_first_str(dz[0], "A48_007_name_ja", "A48_008_ja")
+                              or "災害危険区域")
     return out
 
 
@@ -305,6 +442,40 @@ def fetch_facilities(lat, lon, key) -> FacilityResult:
         ok += 1
     except Exception as e:
         fr.notes.append(f"学校取得失敗: {e}")
+    # ここから生活利便のために足したレイヤ。落ちても診断は続ける。
+    try:
+        ps = fetch_points_around("XKT007", key, lat, lon)  # 保育園・幼稚園
+        n = _nearest(ps, lat, lon)
+        if n:
+            fr.nearest_preschool_m = int(n[0])
+        fr.preschool_count_1km = sum(
+            1 for (la, lo, pr) in ps if haversine_m(lat, lon, la, lo) <= 1000)
+        ok += 1
+    except Exception as e:
+        fr.notes.append(f"保育園・幼稚園取得失敗: {e}")
+    try:
+        lb = fetch_points_around("XKT017", key, lat, lon)  # 図書館
+        n = _nearest(lb, lat, lon)
+        if n:
+            fr.nearest_library_m = int(n[0])
+        ok += 1
+    except Exception as e:
+        fr.notes.append(f"図書館取得失敗: {e}")
+    try:
+        hl = fetch_points_around("XKT018", key, lat, lon)  # 役場・集会施設
+        n = _nearest(hl, lat, lon)
+        if n:
+            fr.nearest_hall_m = int(n[0])
+        ok += 1
+    except Exception as e:
+        fr.notes.append(f"役場・集会施設取得失敗: {e}")
+    try:
+        wf = fetch_points_around("XKT011", key, lat, lon)  # 福祉施設
+        fr.welfare_count_1km = sum(
+            1 for (la, lo, pr) in wf if haversine_m(lat, lon, la, lo) <= 1000)
+        ok += 1
+    except Exception as e:
+        fr.notes.append(f"福祉施設取得失敗: {e}")
     fr.checked = ok >= 1
     return fr
 
@@ -417,6 +588,11 @@ def enrich(lat: Optional[float], lon: Optional[float],
             tasks["ud"] = ex.submit(fetch_use_district, lat, lon, reinfolib_key)
             tasks["hz"] = ex.submit(fetch_hazard, lat, lon, reinfolib_key)
             tasks["fa"] = ex.submit(fetch_facilities, lat, lon, reinfolib_key)
+            tasks["sd"] = ex.submit(fetch_school_districts, lat, lon, reinfolib_key)
+            tasks["fp"] = ex.submit(fetch_future_population, lat, lon, reinfolib_key)
+            tasks["gh"] = ex.submit(fetch_ground_hazards, lat, lon, reinfolib_key)
+        # 買い物先は国交省のAPIに無いのでOpenStreetMapから。鍵は要らない。
+        tasks["shop"] = ex.submit(fetch_shops_around, lat, lon)
         if estat_appid and city_code:
             tasks["pop"] = ex.submit(fetch_population, city_code, estat_appid, estat_table)
 
@@ -437,8 +613,29 @@ def enrich(lat: Optional[float], lon: Optional[float],
             e.facility = tasks["fa"].result()
         except Exception as ex_:
             e.notes.append(f"周辺施設取得失敗: {ex_}")
+        try:
+            e.elementary_district, e.junior_district = tasks["sd"].result()
+        except Exception as ex_:
+            e.notes.append(f"学区取得失敗: {ex_}")
+        try:
+            e.mesh_pop_now, e.mesh_pop_future, e.mesh_pop_change_pct = \
+                tasks["fp"].result()
+        except Exception as ex_:
+            e.notes.append(f"将来推計人口取得失敗: {ex_}")
+        try:
+            for k, v in (tasks["gh"].result() or {}).items():
+                setattr(e.hazard, k, v)
+        except Exception as ex_:
+            e.notes.append(f"地盤情報取得失敗: {ex_}")
     else:
         e.notes.append("REINFOLIB_KEY未設定のため用途地域・ハザードをスキップ")
+
+    try:
+        e.shops = tasks["shop"].result()
+        if e.shops is not None:
+            e.notes.extend(e.shops.notes)
+    except Exception as ex_:
+        e.notes.append(f"買い物施設取得失敗: {ex_}")
 
     if "pop" in tasks:
         try:
