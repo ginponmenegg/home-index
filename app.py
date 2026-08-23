@@ -524,6 +524,20 @@ BRAND_BAR
      推定 {{p.low}} 〜 {{p.high}}<span class="muted" style="font-size:14px">（中央値 {{p.mid}}）</span></p>
    <p class="muted">確信度 {{p.conf}} ・ 使用 {{p.count}}件 ・ レンジ幅 {{p.disp}}%
      ／ ㎡単価(中央) 建物 {{p.ub}}・土地 {{p.ul}}</p>
+   {% if p.same %}
+   <div class="banner" style="margin:10px 0">
+    <b>同じ建物の可能性がある成約 {{p.same|length}}件</b>
+    <span class="muted">（{{p.same_label}}）</span>
+    <table style="margin-top:6px"><tr><th>成約時期</th><th>専有</th>
+     <th style="text-align:right">成約価格</th><th style="text-align:right">㎡単価</th></tr>
+    {% for c in p.same %}<tr><td>{{c.period}}</td><td>{{c.area}}㎡</td>
+     <td style="text-align:right">{{c.price}}</td>
+     <td style="text-align:right">{{c.unit}}</td></tr>{% endfor %}</table>
+    <div class="muted" style="font-size:12px;margin-top:6px">
+     取引価格情報に建物名は含まれないため、同一マンションとは断定できません。
+     町名と築年が一致する成約を集めたものです。</div>
+   </div>
+   {% endif %}
    {% if p.comps %}
    <div class="tablewrap">
    <table><tr><th>町名</th><th>築年</th><th>土地/建物</th><th>成約</th><th>類似</th><th>→推定</th></tr>
@@ -559,7 +573,11 @@ BRAND_BAR
   <h2>住宅ローン（無料版：月々返済額まで）</h2>
   <p style="margin:4px 0">借入額 {{loan.principal}}（頭金 {{loan.down}}） 金利{{loan.rate}}% {{loan.years}}年</p>
   <p style="font-size:20px;font-weight:700;margin:6px 0">月々 約 {{loan.monthly}}
-    {% if loan.burden %}<span class="muted" style="font-size:14px">／ 返済負担率 {{loan.burden}}%</span>{% endif %}</p>
+    {% if loan.extra %}<span class="muted" style="font-size:14px">＋ 管理費・修繕積立金 {{loan.extra}}</span>{% endif %}</p>
+  {% if loan.extra %}<p style="font-size:18px;font-weight:700;margin:2px 0 6px">
+    実質の月額負担 約 {{loan.total_monthly}}
+    {% if loan.burden %}<span class="muted" style="font-size:14px">／ 負担率 {{loan.burden}}%（管理費等込み）</span>{% endif %}</p>
+  {% elif loan.burden %}<p class="muted" style="font-size:14px;margin:2px 0 6px">返済負担率 {{loan.burden}}%</p>{% endif %}
  </div>
 
  {% if d.risks %}
@@ -1604,7 +1622,19 @@ def _render_result(res, subject, sctx, down_yen, loan_years):
                               l=t.land_area_m2, b=t.building_area_m2,
                               price=man(t.trade_price), sim=c.similarity_score,
                               est=man(c.subject_price_estimate)))
-    price_ctx = dict(has=bool(p and p.verdict != "判定不可"))
+    # 同じ建物の可能性がある成約（マンションのみ。断定はできないと明記する）
+    same = []
+    for c in getattr(res, "same_building", [])[:6]:
+        t = c.txn
+        area = t.land_area_m2 or t.building_area_m2
+        unit = int(t.trade_price / area) if (area and t.trade_price) else None
+        same.append(dict(period=(f"{t.period_year}年" if t.period_year else "—"),
+                         area=(f"{area:.0f}" if area else "—"),
+                         price=man(t.trade_price),
+                         unit=(f"{unit:,}円/㎡" if unit else "—")))
+    price_ctx = dict(has=bool(p and p.verdict != "判定不可"), same=same,
+                     same_label=(f"{subject.district_name}・{subject.build_year}年築"
+                                 if same else ""))
     if price_ctx["has"]:
         price_ctx.update(verdict=p.verdict, vclass=_vclass(p.verdict),
                          dev=p.deviation_pct, low=man(p.estimate_low),
@@ -1625,9 +1655,12 @@ def _render_result(res, subject, sctx, down_yen, loan_years):
                        for r in d.critical_risks],
                 strengths=d.strengths, weaknesses=d.weaknesses, confirm=d.to_confirm)
     L = res.loan
+    extra = getattr(L, "monthly_extra", 0) or 0
     loan = dict(principal=man(L.principal), down=man(down_yen),
                 rate="1.25", years=str(loan_years), monthly=f"{L.monthly_payment:,}円",
-                burden=L.burden_ratio)
+                burden=L.burden_ratio,
+                extra=(f"{extra:,}円" if extra else None),
+                total_monthly=f"{L.monthly_payment + extra:,}円")
     age = (datetime.date.today().year - subject.build_year) if subject.build_year else "—"
 
     # 見出しに出す物件情報（sctx）は呼び出し側が組み立てて渡す。
@@ -1760,15 +1793,19 @@ BRAND_BAR
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
 
  <div class="banner">
-  <b>この診断に含まれないもの：</b>管理費・修繕積立金の額、積立金の残高、大規模修繕の履歴、
-  管理形態。マンションの価値を左右する要素ですが、公的データからは取得できないため
-  評価に入れていません。重要事項説明でご確認ください。
+  <b>この診断に含まれないもの：</b>修繕積立金の<b>残高</b>、大規模修繕の履歴、管理形態、
+  滞納の有無。いずれもマンションの価値を左右しますが、公的データからは取得できません。
+  重要事項説明でご確認ください。
  </div>
 
  <form class="card" method="post" action="/mansion_diagnose">
   <label>所在地（必須）</label>
   <input name="address" value="{{v.address}}" placeholder="例）神奈川県小田原市栄町1-1-1" required>
   <div class="hint">住所を入れると市区町村コードを自動で判定します</div>
+
+  <label>マンション名</label>
+  <input name="name" value="{{v.name}}" placeholder="例）〇〇マンション">
+  <div class="hint">建物の位置を正確に取るために使います。<b>成約事例を名前で検索することはできません</b>（取引価格情報は匿名化されていて建物名を含まないため）。同じ町名・同じ築年の成約を「同じ建物の可能性がある事例」として別枠で表示します。</div>
 
   <div class="row">
    <div><label>売出価格（万円・必須）</label>
@@ -1796,6 +1833,15 @@ BRAND_BAR
      <option value="{{d}}" {{'selected' if v.direction==d else ''}}>{{d}}</option>
      {% endfor %}
     </select></div>
+  </div>
+
+  <div class="row">
+   <div><label>管理費（円／月）</label>
+    <input name="mfee" value="{{v.mfee}}" placeholder="例）12000">
+    <div class="hint">万円ではなく<b>円</b>で入力</div></div>
+   <div><label>修繕積立金（円／月）</label>
+    <input name="rfund" value="{{v.rfund}}" placeholder="例）13000">
+    <div class="hint">専有面積あたりの水準を国土交通省の目安と比べます</div></div>
   </div>
 
   <div class="row">
@@ -1865,9 +1911,10 @@ MANSION_FORM = (MANSION_FORM
 
 
 def _mansion_example_v():
-    return dict(address="", price="", area="", byear="", station="",
+    return dict(address="", name="", price="", area="", byear="", station="",
                 floor="", total_floors="", direction="不明", city="",
-                district="", income="", down="", loan_years="35")
+                district="", mfee="", rfund="", income="", down="",
+                loan_years="35")
 
 
 @app.route("/mansion")
@@ -1929,6 +1976,7 @@ def _run_mansion_diagnose(f):
     direction = (f.get("direction") or "不明").strip()
     subject = MansionSubject(
         address=address,
+        name=(f.get("name") or "").strip() or None,
         price=to_yen(f.get("price")) or 0,
         build_year=to_int(f.get("byear")),
         station_walk_min=to_int(f.get("station")),
@@ -1937,7 +1985,9 @@ def _run_mansion_diagnose(f):
         total_floors=to_int(f.get("total_floors")),
         direction=direction,
         municipality_code=city or None,
-        district_name=district or None)
+        district_name=district or None,
+        management_fee=to_int(f.get("mfee")),
+        repair_fund=to_int(f.get("rfund")))
 
     loan_years = max(1, min(50, to_int(f.get("loan_years")) or 35))
     down_yen = to_yen(f.get("down")) or 0
@@ -1962,7 +2012,12 @@ def _run_mansion_diagnose(f):
     bits.append(f"築{age}年" if age is not None else "築年不明")
     bits.append(f"駅徒歩{subject.station_walk_min}分"
                 if subject.station_walk_min is not None else "駅徒歩不明")
-    sctx = dict(address=subject.address, ptype="中古マンション",
+    if subject.management_fee or subject.repair_fund:
+        monthly = (subject.management_fee or 0) + (subject.repair_fund or 0)
+        bits.append(f"管理費等 月{monthly:,}円")
+    sctx = dict(address=(f"{subject.address}　{subject.name}"
+                         if subject.name else subject.address),
+                ptype="中古マンション",
                 specs=" ・ ".join(bits))
     return _render_result(res, subject, sctx, down_yen, loan_years)
 

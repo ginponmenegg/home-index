@@ -21,7 +21,7 @@ from .citycode import CityCodeResolver
 from .loan import compute_loan, LoanResult
 from .scoring import build_diagnosis, Diagnosis
 from .mansion_price import (analyze_mansion_price, extract_mansion_comparables,
-                            is_mansion_txn)
+                            is_mansion_txn, same_building_candidates)
 from .mansion_scoring import build_mansion_diagnosis
 
 
@@ -84,6 +84,8 @@ class DiagnosisResult:
         self.loan: Optional[LoanResult] = None
         self.diagnosis: Optional[Diagnosis] = None
         self.warnings: List[str] = []
+        # 同じ建物の別住戸かもしれない事例（マンションのみ・断定はしない）
+        self.same_building: List = []
         self.generated_at = now_iso()
 
 
@@ -150,15 +152,30 @@ def run_mansion_pipeline(subject: MansionSubject,
     if trade_years is None:
         trade_years = [current_year - 1, current_year - 2, current_year - 3]
 
-    # 1) 住所 → 座標
+    # 1) 住所 → 座標。マンション名があれば添えて引く。建物まで当たれば座標が
+    #    正確になり、近隣事例の距離判定がそのぶん正しくなる。当たらなければ
+    #    住所だけで引き直す（名前で外すくらいなら住所の方が確実）。
     if not mock:
-        try:
-            geocoder = make_geocoder(google_key)
-            gc = geocoder.geocode(subject.address)
+        geocoder = make_geocoder(google_key)
+        queries = []
+        if subject.name:
+            queries.append((f"{subject.address} {subject.name}", True))
+        queries.append((subject.address, False))
+        last_error = None
+        for query, with_name in queries:
+            try:
+                gc = geocoder.geocode(query)
+            except Exception as e:
+                last_error = e
+                continue
             result.geocode = gc
             subject.latitude, subject.longitude = gc.latitude, gc.longitude
-        except Exception as e:
-            result.warnings.append(f"ジオコーディング失敗: {e}")
+            if with_name:
+                result.warnings.append(
+                    "マンション名を含めて座標を特定しました（近隣事例の距離がより正確になります）")
+            break
+        else:
+            result.warnings.append(f"ジオコーディング失敗: {last_error}")
 
     # 2) 成約事例の取得
     txns: List[Transaction] = []
@@ -204,6 +221,14 @@ def run_mansion_pipeline(subject: MansionSubject,
     result.price = analyze_mansion_price(subject, comps, current_year,
                                          annual_rate, k_nearest=k_nearest)
 
+    # 同じ建物の可能性がある事例。類似度で上位に来るので価格には既に効いて
+    # いるが、根拠として別枠で見せられるよう取り出しておく。
+    result.same_building = same_building_candidates(subject, comps)
+    if result.same_building:
+        result.warnings.append(
+            f"同じ町名・同じ築年の成約が{len(result.same_building)}件あります"
+            "（同一マンションの可能性が高い事例）")
+
     # 5) 用途地域・ハザード・周辺施設（座標ベースなので戸建と共通）
     if not mock:
         result.enrichment = enrich(subject.latitude, subject.longitude,
@@ -213,9 +238,12 @@ def run_mansion_pipeline(subject: MansionSubject,
         if result.enrichment:
             result.warnings.extend(result.enrichment.notes)
 
-    # 6) ローン
+    # 6) ローン。管理費と修繕積立金は住み続ける限り毎月出ていくので、
+    #    返済負担率にも含めて見る（戸建は monthly_extra=0 のまま）。
+    monthly_extra = (subject.management_fee or 0) + (subject.repair_fund or 0)
     result.loan = compute_loan(subject.price or 0, down_payment, loan_rate,
-                               loan_years, annual_income)
+                               loan_years, annual_income,
+                               monthly_extra=monthly_extra)
 
     # 7) 採点
     e = result.enrichment

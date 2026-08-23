@@ -145,6 +145,28 @@ def extract_mansion_comparables(subj: MansionSubject, txns: List[Transaction],
     return out
 
 
+def same_building_candidates(subj: MansionSubject,
+                             comparables: List[Comparable]
+                             ) -> List[Comparable]:
+    """同じ建物の別住戸である可能性が高い事例を拾う。
+
+    取引価格情報に建物名は無い（実データで全項目を確認済み）。個人が特定
+    されないよう匿名化されていて、場所は町名までしか出ない。だからマンション名
+    そのもので突き合わせることはできない。
+
+    代わりに「町名が一致し、築年が完全に一致する」事例を集める。同じ町に
+    同じ年に建ったマンションはそう多くないので、同一建物である可能性は高い。
+    ただし可能性であって断定ではないので、呼び出し側は必ずその旨を表示する。
+    """
+    if not subj.district_name or not subj.build_year:
+        return []
+    out = [c for c in comparables
+           if c.txn.district_name == subj.district_name
+           and c.txn.build_year == subj.build_year]
+    out.sort(key=lambda c: c.similarity_score, reverse=True)
+    return out
+
+
 def analyze_mansion_price(subj: MansionSubject, comparables: List[Comparable],
                           current_year: int, annual_rate: float = 0.0,
                           min_count: int = 5,

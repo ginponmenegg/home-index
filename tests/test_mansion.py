@@ -6,7 +6,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.models import MansionSubject, Transaction
 from src.mansion_price import (analyze_mansion_price, extract_mansion_comparables,
-                               is_mansion_txn, txn_area_m2)
+                               is_mansion_txn, txn_area_m2,
+                               same_building_candidates)
 from src.mansion_scoring import (is_new_quake_standard, score_mansion_asset,
                                  score_mansion_management, repair_fund_band,
                                  build_mansion_diagnosis)
@@ -237,6 +238,27 @@ def test_detached_loan_is_unchanged():
     assert loan.monthly_extra == 0
     assert loan.burden_ratio == round(loan.annual_payment / 6_000_000 * 100, 1)
 
+
+def test_same_building_needs_matching_district_and_year():
+    """建物名が無いので、町名と築年の一致で同一建物を推測する。"""
+    subj = _subject(price=35_000_000, build_year=2005)
+    txns = [_txn(35_000_000, 70.0, build_year=2005, district="栄町"),
+            _txn(38_000_000, 75.0, build_year=2005, district="栄町"),
+            _txn(30_000_000, 70.0, build_year=2008, district="栄町"),
+            _txn(31_000_000, 70.0, build_year=2005, district="城山")]
+    comps = extract_mansion_comparables(subj, txns, CURRENT_YEAR,
+                                        radius_m=None)
+    same = same_building_candidates(subj, comps)
+    assert len(same) == 2
+    assert all(c.txn.district_name == "栄町" and c.txn.build_year == 2005
+               for c in same)
+
+
+def test_same_building_is_empty_without_a_build_year():
+    """築年が無ければ推測しない（当てずっぽうで同一建物とは言わない）。"""
+    subj = _subject(price=35_000_000, build_year=None)
+    comps = extract_mansion_comparables(subj, _market(500_000), CURRENT_YEAR)
+    assert same_building_candidates(subj, comps) == []
 
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
