@@ -128,5 +128,73 @@ class PriceAnalysis:
     unit_land_median: Optional[int] = None      # 土地 ㎡単価 中央値(円)
 
 
+@dataclass
+class ProDetail:
+    """PROで追加入力してもらう詳細（戸建）。
+
+    仕様書§1の原則：ここに入る情報は**物件スコアとリスクにのみ**反映し、
+    価格推定には一切渡さない。価額の精度を売らないための線引きなので、
+    analyze_price 側にこのオブジェクトを持ち込まないこと。
+
+    値は「わからない」を必ず持つ。埋まっていない項目は評価に反映せず、
+    情報充足度だけを下げる（第14章）。PROはこの充足度を上げるサービス。
+    """
+    # ---- 建物内部の状態（ok / concern / unknown）----
+    leak: str = "unknown"            # 雨漏りの跡
+    termite: str = "unknown"         # シロアリ・腐朽
+    tilt: str = "unknown"            # 床の傾き
+    plumbing: str = "unknown"        # 給排水の不具合
+    foundation: str = "unknown"      # 基礎のひび
+
+    # ---- 主要設備の更新時期（le5 / le10 / gt10 / unknown）----
+    water_heater: str = "unknown"    # 給湯器
+    kitchen: str = "unknown"
+    bath: str = "unknown"
+    electrical: str = "unknown"      # 分電盤・配線
+
+    # ---- 構造・性能 ----
+    structure_kind: Optional[str] = None   # 木造在来/2x4/鉄骨/RC など
+    insulation: str = "unknown"      # high / standard / low / unknown
+    quake_retrofit: str = "unknown"  # done / none / unknown（耐震補強）
+    inspection: str = "unknown"      # done / none / unknown（住宅診断の実施）
+
+    # ---- リフォームの箇所（無料版は有無のみ。PROは箇所別に受ける）----
+    reno_water: bool = False         # 水回り
+    reno_exterior: bool = False      # 外壁・屋根
+    reno_interior: bool = False      # 内装
+    reno_pipes: bool = False         # 給排水管
+    reno_year: Optional[int] = None  # 直近のリフォーム年
+
+    # ---- 敷地・法規（リスク精査）----
+    road_width: str = "unknown"      # ge4 / lt4 / none / unknown（接道の幅員）
+    rebuildable: str = "unknown"     # yes / no / unknown（再建築可否）
+    boundary: str = "unknown"        # fixed / unfixed / unknown（境界確定）
+    encroachment: str = "unknown"    # none / exists / unknown（越境）
+
+    def known_ratio(self, fields) -> float:
+        """指定した項目のうち、答えが埋まっている割合。"""
+        vals = [getattr(self, f, "unknown") for f in fields]
+        known = sum(1 for v in vals if v not in (None, "", "unknown"))
+        return known / len(vals) if vals else 0.0
+
+
+@dataclass
+class BuyerProfile:
+    """購入者の家計の輪郭。返済の重さと、出口（何年住むか）を見るために使う。
+
+    個別の借入可否は判断しない（仕様書§8-6）。一般的な試算の材料として扱う。
+    """
+    age: Optional[int] = None
+    household_size: Optional[int] = None
+    children: Optional[int] = None
+    employment: str = "unknown"      # 正社員/契約/自営/パート など
+    tenure_years: Optional[int] = None       # 勤続年数
+    other_debt_monthly: Optional[int] = None  # 他の借入の月々返済(円)
+    own_funds: Optional[int] = None  # 自己資金の総額(円)
+    reserve: Optional[int] = None    # 手元に残す額(円)
+    move_in: Optional[str] = None    # 入居予定時期
+    hold_years: Optional[int] = None  # 何年住む見込みか
+
+
 def now_iso() -> str:
     return datetime.datetime.now().isoformat(timespec="seconds")
