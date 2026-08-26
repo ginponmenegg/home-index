@@ -225,6 +225,59 @@ def test_mansion_result_does_not_offer_the_house_pro():
         "area": "96.77", "byear": "2006", "station": "5"}).data.decode("utf-8")
     assert "このまま詳細診断に進む" not in html
 
+def test_certifications_lift_the_property_score():
+    """長期優良住宅・性能評価・耐震等級・瑕疵保険は中古で差が大きい。"""
+    from src.pro_scoring import score_certifications
+    free = _free()
+    base = [c for c in free.categories if c.name == "物件"][0]
+    plain = score_property_detail(base, ProDetail(), YEAR)
+    certified = score_property_detail(base, ProDetail(
+        long_term_excellent="yes", performance_cert="construction",
+        quake_grade="g3", defect_insurance="yes"), YEAR)
+    assert certified.raw > plain.raw
+    assert "長期優良住宅の認定あり" in certified.reason
+    assert "耐震等級3" in certified.reason
+    # 積み上がりすぎないよう上限を設けてある
+    adj, _bits = score_certifications(ProDetail(
+        long_term_excellent="yes", performance_cert="construction",
+        quake_grade="g3", defect_insurance="yes"))
+    assert adj <= 0.22
+
+
+def test_certification_grades_are_ordered():
+    from src.pro_scoring import score_certifications
+    g3 = score_certifications(ProDetail(quake_grade="g3"))[0]
+    g2 = score_certifications(ProDetail(quake_grade="g2"))[0]
+    g1 = score_certifications(ProDetail(quake_grade="g1"))[0]
+    assert g3 > g2 > g1 == 0.0
+    built = score_certifications(ProDetail(performance_cert="construction"))[0]
+    design = score_certifications(ProDetail(performance_cert="design"))[0]
+    assert built > design > 0
+
+
+def test_answering_none_still_raises_sufficiency():
+    """「なし」と答えるのも情報。点は上がらないが充足度は上がる。"""
+    free = _free()
+    base = [c for c in free.categories if c.name == "物件"][0]
+    unknown = score_property_detail(base, ProDetail(), YEAR)
+    answered_none = score_property_detail(base, ProDetail(
+        long_term_excellent="no", performance_cert="none",
+        quake_grade="g1", defect_insurance="no"), YEAR)
+    assert answered_none.raw == unknown.raw
+    assert answered_none.sufficiency > unknown.sufficiency
+
+
+def test_long_term_certification_asks_about_succession():
+    """中古では認定の承継手続きが要る。持っている前提で話を進めない。"""
+    pro = apply_pro(_free(), ProDetail(long_term_excellent="yes"), _subject())
+    items = [r for r in pro.critical_risks if r.type == "長期優良住宅の認定の承継"]
+    assert len(items) == 1
+    assert items[0].status == "unknown"
+    assert "承継" in items[0].evidence
+    # 認定が無ければ出さない
+    assert not [r for r in apply_pro(_free(), ProDetail(), _subject()).critical_risks
+                if r.type == "長期優良住宅の認定の承継"]
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0

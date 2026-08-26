@@ -158,6 +158,17 @@ class ProDetail:
     quake_retrofit: str = "unknown"  # done / none / unknown（耐震補強）
     inspection: str = "unknown"      # done / none / unknown（住宅診断の実施）
 
+    # ---- 公的な認定・評価。中古では有無の差が大きい ----
+    # 長期優良住宅：yes / no / unknown。中古は認定の承継手続きが要る。
+    long_term_excellent: str = "unknown"
+    # 住宅性能評価：construction(建設) / design(設計のみ) / existing(既存住宅)
+    #               / none / unknown
+    performance_cert: str = "unknown"
+    # 耐震等級：g3 / g2 / g1 / unknown
+    quake_grade: str = "unknown"
+    # 既存住宅売買瑕疵保険の付保：yes / no / unknown
+    defect_insurance: str = "unknown"
+
     # ---- リフォームの箇所（無料版は有無のみ。PROは箇所別に受ける）----
     reno_water: bool = False         # 水回り
     reno_exterior: bool = False      # 外壁・屋根

@@ -38,6 +38,39 @@ EQUIPMENT_ADJ = {"le5": 0.02, "le10": 0.01, "gt10": -0.03}
 RENO_FIELDS = (("reno_water", "水回り", 0.04), ("reno_exterior", "外壁・屋根", 0.05),
                ("reno_interior", "内装", 0.02), ("reno_pipes", "給排水管", 0.04))
 
+# 公的な認定・評価。いずれも第三者の検査や基準に裏付けられているので、
+# 自己申告の項目より重く見てよい。ただし積み上がりすぎないよう幅は抑える。
+CERT_FIELDS = ("long_term_excellent", "performance_cert", "quake_grade",
+               "defect_insurance")
+PERFORMANCE_ADJ = {"construction": (0.06, "建設住宅性能評価あり"),
+                   "design": (0.03, "設計住宅性能評価あり"),
+                   "existing": (0.05, "既存住宅性能評価あり"),
+                   "none": (0.0, None)}
+QUAKE_GRADE_ADJ = {"g3": (0.06, "耐震等級3"), "g2": (0.03, "耐震等級2"),
+                   "g1": (0.0, "耐震等級1（建築基準法と同等）")}
+
+
+def score_certifications(detail: ProDetail):
+    """認定・評価による加点と、その説明。合計の上限は設けている。"""
+    adj = 0.0
+    bits: List[str] = []
+    if detail.long_term_excellent == "yes":
+        adj += 0.08
+        bits.append("長期優良住宅の認定あり")
+    perf = PERFORMANCE_ADJ.get(detail.performance_cert)
+    if perf:
+        adj += perf[0]
+        if perf[1]:
+            bits.append(perf[1])
+    grade = QUAKE_GRADE_ADJ.get(detail.quake_grade)
+    if grade:
+        adj += grade[0]
+        bits.append(grade[1])
+    if detail.defect_insurance == "yes":
+        adj += 0.05
+        bits.append("既存住宅売買瑕疵保険の付保あり")
+    return min(adj, 0.22), bits
+
 
 def _rebuild(cat: CategoryScore, raw: float, sufficiency: float,
              reason: str, extra_source: Optional[str] = None) -> CategoryScore:
@@ -89,6 +122,10 @@ def score_property_detail(base: CategoryScore, detail: ProDetail,
     if done:
         bits.append("リフォーム：" + "・".join(l for l, _ in done))
 
+    cert_adj, cert_bits = score_certifications(detail)
+    raw += cert_adj
+    bits.extend(cert_bits)
+
     if detail.quake_retrofit == "done":
         raw += 0.06
         bits.append("耐震補強済み")
@@ -102,7 +139,8 @@ def score_property_detail(base: CategoryScore, detail: ProDetail,
         bits.append("住宅診断あり")
 
     answered = detail.known_ratio(CONDITION_FIELDS + EQUIPMENT_FIELDS
-                                  + ("quake_retrofit", "insulation"))
+                                  + ("quake_retrofit", "insulation")
+                                  + CERT_FIELDS)
     # 内部を実際に見てもらえたなら、FREEの「未確認」から一気に上がる
     suff = 0.3 + 0.7 * answered
     reason = "・".join([base.reason.split("（")[0]] + bits) if bits else base.reason
@@ -186,6 +224,12 @@ def pro_critical_risks(detail: ProDetail, subj: SubjectProperty,
             "越境あり", "medium", "confirmed",
             "越境の覚書があるか、将来の是正について取り決めがあるかを"
             "確認してください"))
+    if detail.long_term_excellent == "yes":
+        out.append(CriticalRisk(
+            "長期優良住宅の認定の承継", "low", "unknown",
+            "中古では、認定を引き継ぐのに承継の手続きが必要です。認定通知書と"
+            "維持保全の記録が残っているか、承継が可能かを確認してください。"
+            "住宅ローン控除の限度額や登録免許税・不動産取得税の扱いに関わります"))
     # 旧耐震の境界。年単位の築年では判定しきれない。
     if subj.build_year and 1981 <= subj.build_year <= 1983:
         out.append(CriticalRisk(
