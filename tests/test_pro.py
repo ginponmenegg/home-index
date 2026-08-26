@@ -278,6 +278,18 @@ def test_long_term_certification_asks_about_succession():
     assert not [r for r in apply_pro(_free(), ProDetail(), _subject()).critical_risks
                 if r.type == "長期優良住宅の認定の承継"]
 
+def test_pro_never_lowers_sufficiency():
+    """何も答えずにPROへ来ても、無料診断より低く出てはいけない。
+
+    PROは「充足度を上げるサービス」と説明している以上、下がる表示は
+    そもそも売り物と矛盾する。項目を足したときに起きやすい。
+    """
+    free = _free()
+    blank = apply_pro(free, ProDetail(), _subject())
+    assert blank.data_sufficiency >= free.data_sufficiency
+    for c_free, c_pro in zip(free.categories, blank.categories):
+        assert c_pro.sufficiency >= c_free.sufficiency
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0

@@ -141,8 +141,9 @@ def score_property_detail(base: CategoryScore, detail: ProDetail,
     answered = detail.known_ratio(CONDITION_FIELDS + EQUIPMENT_FIELDS
                                   + ("quake_retrofit", "insulation")
                                   + CERT_FIELDS)
-    # 内部を実際に見てもらえたなら、FREEの「未確認」から一気に上がる
-    suff = 0.3 + 0.7 * answered
+    # 無料診断の充足度を出発点にして、答えた分だけ上げる。0から計算し直すと、
+    # 未回答のままPROに来たときに無料診断より低く出てしまう。
+    suff = base.sufficiency + (1.0 - base.sufficiency) * answered
     reason = "・".join([base.reason.split("（")[0]] + bits) if bits else base.reason
     if answered < 1.0:
         reason += "（未回答の項目は評価に入れていません）"
