@@ -335,6 +335,32 @@ def test_confirmation_certificate_asked_for_boundary_years():
     qs2 = "".join(agent_questions(ProDetail(), _subject(build_year=1995)))
     assert "確認済証の日付" not in qs2
 
+def test_question_card_sits_between_strengths_and_what_is_covered():
+    """読む順に置く。強みを見たあとに「では何を聞けばいいか」が続く。"""
+    html = _client().post("/pro/diagnose", data=dict(
+        FREE_INPUT, leak="ok")).data.decode("utf-8")
+    strengths = html.find("◎ 強み")
+    questions = html.find("仲介業者に聞くこと")
+    covered = html.find("この診断が見ているもの")
+    assert -1 < strengths < questions < covered
+
+
+def test_house_questions_do_not_mention_flat_paperwork():
+    """戸建の画面にマンションの管理の話を出さない。"""
+    html = _client().post("/pro/diagnose",
+                          data=FREE_INPUT).data.decode("utf-8")
+    assert "重要事項調査報告書" not in html
+    assert "総会議事録" not in html
+    assert "物件状況報告書" in html
+
+
+def test_flat_questions_keep_their_own_wording():
+    html = _client().post("/pro/mansion", data={
+        "address": "神奈川県藤沢市鵠沼桜が岡3丁目", "price": "7480",
+        "area": "96.77", "byear": "2006"}).data.decode("utf-8")
+    assert "重要事項調査報告書と、総会議事録" in html
+    assert "物件状況報告書" not in html
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0

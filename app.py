@@ -605,21 +605,6 @@ BRAND_BAR
   </div>
   {% endif %}
 
-  {% if questions %}
-  <div class="card">
-   <h2 style="margin-top:0">仲介業者に聞くこと（{{questions|length}}件）</h2>
-   <p class="muted" style="margin:6px 0 10px">
-    未回答だった項目です。マンションの管理の中身は、重要事項調査報告書を見ないと
-    分からないものが多く、それは契約前に売主か仲介業者が用意する書類です。
-    いまの段階では、下の質問をそのまま仲介業者にお伝えください。
-    答えが分かったらもう一度診断すると、情報充足度が上がります。
-   </p>
-   <ol style="margin:0;padding-left:1.2em">
-    {% for q in questions %}<li style="margin-bottom:6px">{{q}}</li>{% endfor %}
-   </ol>
-  </div>
-  {% endif %}
-
   {% if pro %}
   <div class="banner" style="margin-bottom:10px">
    <b>PRO診断：情報充足度 {{pro.free_suff}}% → {{pro.suff}}%</b>
@@ -658,6 +643,20 @@ BRAND_BAR
   {% if d.confirm %}<h2 style="margin-top:12px">? 要確認（情報不足）</h2><ul>{% for x in d.confirm %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
   <p class="foot">{{d.comment}}</p>
  </div>
+
+  {% if questions %}
+  <div class="card">
+   <h2 style="margin-top:0">仲介業者に聞くこと（{{questions|length}}件）</h2>
+   <p class="muted" style="margin:6px 0 10px">
+    {{questions_note}}
+    下の質問をそのまま仲介業者にお伝えください。
+    答えが分かったらもう一度診断すると、情報充足度が上がります。
+   </p>
+   <ol style="margin:0;padding-left:1.2em">
+    {% for q in questions %}<li style="margin-bottom:6px">{{q}}</li>{% endfor %}
+   </ol>
+  </div>
+  {% endif %}
 
  <div class="card">
   <h2>この診断が見ているもの</h2>
@@ -1669,7 +1668,8 @@ def diagnose():
 
 
 def _render_result(res, subject, sctx, down_yen, loan_years,
-                   free_diagnosis=None, carry=None, questions=None):
+                   free_diagnosis=None, carry=None, questions=None,
+                   questions_note=None):
     """診断結果ページを描画する。戸建とマンションで共通。
 
     res は run_pipeline / run_mansion_pipeline のどちらの戻り値でもよい。
@@ -1842,7 +1842,8 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
         grade_color=grade_color, grade_comment=grade_comment,
         pro=pro_delta, handover=handover,
         handover_action=handover_action, handover_label=handover_label,
-        handover_unknowns=handover_unknowns, questions=questions)
+        handover_unknowns=handover_unknowns, questions=questions,
+        questions_note=questions_note)
 
 
 def _run_diagnose(f, datetime):
@@ -2608,6 +2609,9 @@ def _run_pro_diagnose(f):
     free = res.diagnosis
     res.diagnosis = apply_pro(free, detail, subject, buyer)
     questions = agent_questions(detail, subject)
+    questions_note = ("未回答だった項目です。建物の中の状態は売主が記入する"
+                      "物件状況報告書に、境界や再建築の可否は測量図と"
+                      "重要事項説明書に書かれています。")
 
     age = (datetime.date.today().year - subject.build_year) \
         if subject.build_year else None
@@ -2622,7 +2626,8 @@ def _run_pro_diagnose(f):
     sctx = dict(address=subject.address, ptype="中古戸建（PRO）",
                 specs=" ・ ".join(bits))
     return _render_result(res, subject, sctx, down_yen, loan_years,
-                          free_diagnosis=free, questions=questions)
+                          free_diagnosis=free, questions=questions,
+                          questions_note=questions_note)
 
 
 # ---- マンションPRO 購入診断 ----------------------------------------
@@ -2934,6 +2939,9 @@ def _run_mansion_pro(f):
     free = res.diagnosis
     res.diagnosis = apply_pro_mansion(free, detail, subject, buyer)
     questions = agent_questions(detail, subject)
+    questions_note = ("未回答だった項目です。管理の中身は、契約前に売主か"
+                      "仲介業者が用意する重要事項調査報告書と、"
+                      "総会議事録に書かれています。")
 
     age = (datetime.date.today().year - subject.build_year) \
         if subject.build_year else None
@@ -2946,7 +2954,8 @@ def _run_mansion_pro(f):
                          if subject.name else subject.address),
                 ptype="中古マンション（PRO）", specs=" ・ ".join(bits))
     return _render_result(res, subject, sctx, down_yen, loan_years,
-                          free_diagnosis=free, questions=questions)
+                          free_diagnosis=free, questions=questions,
+                          questions_note=questions_note)
 
 
 PRO_FINANCE_FORM = """
