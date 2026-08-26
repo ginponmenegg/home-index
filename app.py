@@ -1916,6 +1916,15 @@ BRAND_BAR
   </div>
 
   <div class="row">
+   <div><label>リフォーム</label>
+    <select name="reno">
+     <option value="0" {{'selected' if not v.reno else ''}}>リフォームなし／不明</option>
+     <option value="1" {{'selected' if v.reno else ''}}>リフォーム済み</option>
+    </select>
+    <div class="hint">築15年以上のリフォーム済みは、推定価格と資産性を調整します（内容は見ていません）</div></div>
+  </div>
+
+  <div class="row">
    <div><label>管理費（円／月）</label>
     <input name="mfee" value="{{v.mfee}}" placeholder="例）12000">
     <div class="hint">万円ではなく<b>円</b>で入力</div></div>
@@ -1993,7 +2002,7 @@ MANSION_FORM = (MANSION_FORM
 def _mansion_example_v():
     return dict(address="", name="", price="", area="", byear="", station="",
                 floor="", total_floors="", direction="不明", city="",
-                district="", mfee="", rfund="", income="", down="",
+                district="", reno=False, mfee="", rfund="", income="", down="",
                 loan_years="35")
 
 
@@ -2015,6 +2024,9 @@ def _mansion_v_from_parsed(p):
             v[dst] = p[src_key]
     if p.get("direction"):
         v["direction"] = p["direction"]
+    # 記載が無ければ None。そのときは「なし／不明」のままにする。
+    if p.get("renovated") is not None:
+        v["reno"] = bool(p["renovated"])
     return v
 
 
@@ -2024,7 +2036,7 @@ def _mansion_parse_banner(p):
               ("station", "駅徒歩"), ("floor", "所在階"),
               ("total_floors", "総階数"), ("direction", "向き"),
               ("mfee", "管理費"), ("rfund", "修繕積立金"),
-              ("address", "所在地")]
+              ("renovated", "リフォーム有無"), ("address", "所在地")]
     got = [name for k, name in labels if p.get(k) is not None]
     miss = [name for k, name in labels if p.get(k) is None]
     msg = ""
@@ -2172,7 +2184,8 @@ def _run_mansion_diagnose(f):
         municipality_code=city or None,
         district_name=district or None,
         management_fee=to_int(f.get("mfee")),
-        repair_fund=to_int(f.get("rfund")))
+        repair_fund=to_int(f.get("rfund")),
+        renovated=((f.get("reno") or "0").strip() == "1"))
 
     loan_years = max(1, min(50, to_int(f.get("loan_years")) or 35))
     down_yen = to_yen(f.get("down")) or 0
@@ -2197,6 +2210,8 @@ def _run_mansion_diagnose(f):
     bits.append(f"築{age}年" if age is not None else "築年不明")
     bits.append(f"駅徒歩{subject.station_walk_min}分"
                 if subject.station_walk_min is not None else "駅徒歩不明")
+    if subject.renovated:
+        bits.append("リフォーム済み")
     if subject.management_fee or subject.repair_fund:
         monthly = (subject.management_fee or 0) + (subject.repair_fund or 0)
         bits.append(f"管理費等 月{monthly:,}円")

@@ -104,6 +104,12 @@ def score_mansion_asset(subj: MansionSubject,
             if subj.build_year <= NEW_QUAKE_STANDARD_YEAR:
                 bits.append("※建築確認の時期により旧耐震の可能性あり・要確認")
 
+    # リフォーム済み。マンションには戸建のような「物件」カテゴリが無いので、
+    # 内装の手入れは資産性（築年の目減り）を戻す形で効かせる。内容は見ていない。
+    if getattr(subj, "renovated", False):
+        base += 0.06
+        bits.append("リフォーム済み(内容未評価)")
+
     # 所在階／総階数（軽め）
     if subj.floor is not None:
         known += 1

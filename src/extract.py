@@ -89,6 +89,25 @@ def _parse_area(t: str, labels) -> Optional[float]:
     return None
 
 
+# リフォームは「済み」と「可・要」で意味が逆になる。取り違えると価格の
+# 上乗せまで狂うので、済みを表す言い方を先に見て、無ければ否定形を見る。
+_RENO_DONE = ("リフォーム済", "リノベーション済", "リノベ済", "フルリフォーム",
+              "フルリノベ", "改装済", "内装リフォーム")
+_RENO_NOT = ("リフォーム可", "要リフォーム", "リフォーム前", "リフォーム相談",
+             "リフォーム不可", "リノベーション可")
+
+
+def _parse_renovated(t: str) -> Optional[bool]:
+    """リフォーム済みか。記載が無ければ None（不明のまま返す）。"""
+    for w in _RENO_DONE:
+        if w in t:
+            return True
+    for w in _RENO_NOT:
+        if w in t:
+            return False
+    return None
+
+
 def _parse_layout(t: str) -> Optional[str]:
     m = re.search(r"([1-9][0-9]?)\s*(S?LDK|S?DK|S?K|LDK|DK)", t)
     if m:
@@ -194,6 +213,7 @@ def parse_listing_text(text: str) -> Dict[str, object]:
         "station_name": station_name,
         "bus": _parse_bus(t),
         "ptype": ptype,
+        "renovated": _parse_renovated(t),
         "address": addr,
         "city": city,
         "district": district,
@@ -301,6 +321,7 @@ def parse_mansion_text(text: str) -> Dict[str, object]:
         "total_floors": total_floors,
         "direction": _parse_direction(t),
         # 「修繕積立基金」は購入時の一括金なので月額と混ぜない
+        "renovated": _parse_renovated(t),
         "mfee": _parse_monthly_yen(t, ["管理費"],
                                    exclude=("駐車", "駐輪", "バイク", "トランク")),
         "rfund": _parse_monthly_yen(t, ["修繕積立金", "修繕費"],

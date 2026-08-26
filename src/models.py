@@ -72,6 +72,7 @@ class MansionSubject:
     district_name: Optional[str] = None
     management_fee: Optional[int] = None        # 管理費(円/月)
     repair_fund: Optional[int] = None           # 修繕積立金(円/月)
+    renovated: bool = False                     # リフォーム済み（有無のみ・内容は見ない）
     property_type: str = "chuko_mansion"
 
 

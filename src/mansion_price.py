@@ -16,7 +16,7 @@ from .models import MansionSubject, Transaction, Comparable, PriceAnalysis
 from .config import CONFIG
 # 集計の道具は戸建版と共有する（重複させると片方だけ直す事故が起きる）
 from .price_analysis import (_percentile, _weighted_percentile, _iqr_filter,
-                             time_adjust, SIM_POWER)
+                             time_adjust, SIM_POWER, RENO_PREMIUM, RENO_MIN_AGE)
 
 # 不動産情報ライブラリ XIT001 の Type。マンションはこの区分で入ってくる
 # （小田原市の実データで確認：宅地(土地と建物)561 / 宅地(土地)293 /
@@ -226,6 +226,16 @@ def analyze_mansion_price(subj: MansionSubject, comparables: List[Comparable],
     mid = int(_weighted_percentile(pairs, 50))
     high = int(_weighted_percentile(pairs, 75))
 
+    # リフォーム済みの上乗せ。比較した成約はリフォーム前提ではないので、
+    # 築古のリフォーム済みは推定価格を引き上げる。戸建と同じ率・同じ築年条件。
+    age = (current_year - subj.build_year) if subj.build_year else None
+    reno_applied = False
+    if getattr(subj, "renovated", False) and (age is None or age >= RENO_MIN_AGE):
+        f = 1.0 + RENO_PREMIUM
+        low, mid, high = (int(round(low * f)), int(round(mid * f)),
+                          int(round(high * f)))
+        reno_applied = True
+
     units = [c.txn.trade_price / txn_area_m2(c.txn) for c in filtered]
     unit_median = int(_percentile(units, 50)) if units else None
 
@@ -262,6 +272,9 @@ def analyze_mansion_price(subj: MansionSubject, comparables: List[Comparable],
         note += f" 件数が少ない({n}<{min_count})ため参考値として扱ってください。"
     if dispersion is not None and dispersion > 60:
         note += " レンジ幅が広く、階数・向き・管理状態などのばらつきが大きい可能性があります。"
+    if reno_applied:
+        note += (f" リフォーム済みのため推定価格に+{int(RENO_PREMIUM * 100)}%"
+                 "を上乗せしています（内容は未評価）。")
 
     pa = PriceAnalysis(low, mid, high, verdict, deviation, conf, n, note,
                        sorted(filtered, key=lambda c: c.similarity_score,

@@ -367,6 +367,48 @@ def test_ambiguous_floor_is_left_blank():
     p = parse_mansion_text("価格 3,000万円\n3階")
     assert p["floor"] is None and p["total_floors"] is None
 
+def test_renovation_is_read_only_when_it_says_done():
+    """「リフォーム済」と「リフォーム可・要リフォーム」は意味が逆。"""
+    assert parse_mansion_text("フルリフォーム済み")["renovated"] is True
+    assert parse_mansion_text("リノベーション済み")["renovated"] is True
+    assert parse_mansion_text("室内リフォーム可")["renovated"] is False
+    assert parse_mansion_text("要リフォーム")["renovated"] is False
+    # 記載が無ければ不明のまま。勝手に「なし」と決めない。
+    assert parse_mansion_text("築20年の中古マンション")["renovated"] is None
+
+
+def test_renovation_lifts_the_estimate_only_for_older_flats():
+    """比較した成約はリフォーム前提ではないので、築古のみ上乗せする。"""
+    market = _market(500_000)
+
+    def estimate(build_year, renovated):
+        subj = _subject(price=35_000_000, build_year=build_year,
+                        renovated=renovated)
+        comps = extract_mansion_comparables(subj, market, CURRENT_YEAR)
+        return analyze_mansion_price(subj, comps, CURRENT_YEAR)
+
+    old_plain = estimate(2005, False)
+    old_reno = estimate(2005, True)
+    assert old_reno.estimate_mid > old_plain.estimate_mid
+    # 黙って盛らず、上乗せしたことを根拠文に書く
+    assert "リフォーム済み" in old_reno.note
+
+    new_plain = estimate(CURRENT_YEAR - 6, False)
+    new_reno = estimate(CURRENT_YEAR - 6, True)
+    assert new_reno.estimate_mid == new_plain.estimate_mid
+    assert "リフォーム済み" not in new_reno.note
+
+
+def test_renovation_lifts_resale_a_little():
+    """マンションには「物件」カテゴリが無いので、資産性側で効かせる。"""
+    plain = _subject(price=35_000_000, floor=5, total_floors=10, direction="南")
+    reno = _subject(price=35_000_000, floor=5, total_floors=10, direction="南",
+                    renovated=True)
+    a = score_mansion_asset(plain, CURRENT_YEAR).raw
+    b = score_mansion_asset(reno, CURRENT_YEAR).raw
+    assert b > a
+    assert "リフォーム済み(内容未評価)" in score_mansion_asset(reno, CURRENT_YEAR).reason
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0
