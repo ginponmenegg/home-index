@@ -152,6 +152,7 @@ BRAND_CSS = (
 MENU_ITEMS = [("/", "トップ"),
               ("/buy", "購入診断（戸建）"),
               ("/mansion", "購入診断（マンション）"),
+              ("/pro/diagnose", "PRO 購入診断（試作）"),
               ("/pro/finance", "詳細な資金計画（PRO）"),
               ("/terms", "利用規約"),
               ("/privacy", "プライバシーポリシー")]
