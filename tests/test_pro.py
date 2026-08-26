@@ -148,6 +148,83 @@ def test_comment_says_the_price_is_unchanged():
     assert "推定価格レンジは無料診断と同じ計算" in pro.comment
 
 
+# ---- 無料診断からPROへの引き継ぎ（画面をまたぐのでFlaskのテストクライアントで）----
+
+def _client():
+    os.environ["SHINDAN_MOCK"] = "1"
+    import app
+    return app.app.test_client()
+
+
+FREE_INPUT = {"address": "神奈川県小田原市城山4-20-18", "price": "3880",
+              "land": "147", "building": "90", "byear": "2005",
+              "station": "12", "ptype": "chuko_kodate", "income": "600",
+              "down": "300", "loan_years": "35"}
+
+
+def _hidden_fields(html):
+    import re
+    return dict(re.findall(r'<input type="hidden" name="(\w+)" value="([^"]*)">',
+                           html))
+
+
+def test_free_result_offers_the_pro_diagnosis():
+    html = _client().post("/diagnose", data=FREE_INPUT).data.decode("utf-8")
+    assert "このまま詳細診断に進む" in html
+    carried = _hidden_fields(html)
+    # 入力し直さずに済むこと
+    for k in ("address", "price", "byear", "land", "building", "station",
+              "income", "down"):
+        assert carried.get(k) == FREE_INPUT[k] or k == "address"
+    assert carried["address"] == FREE_INPUT["address"]
+
+
+def test_carried_values_land_in_the_pro_form():
+    c = _client()
+    html = c.post("/diagnose", data=FREE_INPUT).data.decode("utf-8")
+    form = c.post("/pro/start", data=_hidden_fields(html)).data.decode("utf-8")
+    assert "引き継ぎました" in form
+    for k in ("price", "byear", "land", "building", "station", "income"):
+        assert f'name="{k}" value="{FREE_INPUT[k]}"' in form
+
+
+def test_income_is_not_put_in_the_url():
+    """年収や検討中の住所をクエリ文字列に載せない。"""
+    import inspect
+    import app
+    src = inspect.getsource(app.pro_start)
+    assert "request.args" not in src
+    html = _client().post("/diagnose", data=FREE_INPUT).data.decode("utf-8")
+    assert 'action="/pro/start"' in html
+    assert "/pro/start?" not in html
+
+
+def test_renovation_is_reasked_by_part():
+    """無料版は有無しか聞いていないので、箇所のチェックを勝手に入れない。"""
+    c = _client()
+    data = dict(FREE_INPUT, reno="1")
+    html = c.post("/diagnose", data=data).data.decode("utf-8")
+    form = c.post("/pro/start",
+                  data=_hidden_fields(html)).data.decode("utf-8")
+    assert "選び直してください" in form
+    import re
+    assert not re.search(r'name="reno_interior"[^>]*checked', form)
+
+
+def test_pro_result_does_not_offer_itself_again():
+    c = _client()
+    data = dict(FREE_INPUT, leak="ok", termite="ok")
+    html = c.post("/pro/diagnose", data=data).data.decode("utf-8")
+    assert "このまま詳細診断に進む" not in html
+
+
+def test_mansion_result_does_not_offer_the_house_pro():
+    """PRO診断は戸建のみ。マンションの結果からは誘導しない。"""
+    html = _client().post("/mansion_diagnose", data={
+        "address": "神奈川県藤沢市鵠沼桜が岡3丁目", "price": "7480",
+        "area": "96.77", "byear": "2006", "station": "5"}).data.decode("utf-8")
+    assert "このまま詳細診断に進む" not in html
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0

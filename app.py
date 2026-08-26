@@ -152,7 +152,7 @@ BRAND_CSS = (
 MENU_ITEMS = [("/", "トップ"),
               ("/buy", "購入診断（戸建）"),
               ("/mansion", "購入診断（マンション）"),
-              ("/pro/diagnose", "PRO 購入診断（試作）"),
+              ("/pro/diagnose", "購入診断(戸建)(PRO)"),
               ("/pro/finance", "詳細な資金計画（PRO）"),
               ("/terms", "利用規約"),
               ("/privacy", "プライバシーポリシー")]
@@ -585,6 +585,25 @@ BRAND_BAR
  {% endif %}
 
  <div class="card">
+  {% if handover %}
+  <div class="card" style="border-color:#111">
+   <h2 style="margin-top:0">このまま詳細診断に進む（PRO）</h2>
+   <p class="muted" style="margin:6px 0 10px">
+    いまの診断は、建物の中の状態・設備の更新時期・接道や再建築の可否を
+    「未確認」として点数に入れていません。情報充足度は
+    <b>{{d.suff}}%</b> です。これらに答えると、その分だけ評価に反映されます。
+    <b>入力済みの内容はそのまま引き継がれます。</b><br>
+    推定価格レンジは無料診断と同じ計算で、PROでも変わりません。
+   </p>
+   <form method="post" action="/pro/start">
+    {% for k, val in handover.items() %}
+    <input type="hidden" name="{{k}}" value="{{val}}">
+    {% endfor %}
+    <button type="submit">詳細診断に進む（購入診断(戸建)(PRO)）</button>
+   </form>
+  </div>
+  {% endif %}
+
   {% if pro %}
   <div class="banner" style="margin-bottom:10px">
    <b>PRO診断：情報充足度 {{pro.free_suff}}% → {{pro.suff}}%</b>
@@ -1634,7 +1653,7 @@ def diagnose():
 
 
 def _render_result(res, subject, sctx, down_yen, loan_years,
-                   free_diagnosis=None):
+                   free_diagnosis=None, carry=None):
     """診断結果ページを描画する。戸建とマンションで共通。
 
     res は run_pipeline / run_mansion_pipeline のどちらの戻り値でもよい。
@@ -1677,6 +1696,11 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
                          comps=comps)
 
     d = res.diagnosis
+    # 無料診断の結果から、入力をそのままPROへ持っていくための値。
+    # 年収などを含むのでURLには載せず、hiddenでPOSTする。
+    handover = None
+    if carry:
+        handover = {k: v for k, v in carry.items() if v not in (None, "")}
     # PROのときだけ、無料診断からどれだけ情報が埋まったかを見せる
     pro_delta = None
     if free_diagnosis is not None:
@@ -1795,7 +1819,7 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
         p=price_ctx, cats=cats, d=dctx, loan=loan, warnings=res.warnings,
         enr=enr, ring_circ=round(circ, 1), ring_off=ring_off,
         grade_color=grade_color, grade_comment=grade_comment,
-        pro=pro_delta)
+        pro=pro_delta, handover=handover)
 
 
 def _run_diagnose(f, datetime):
@@ -1848,8 +1872,18 @@ def _run_diagnose(f, datetime):
              f"{dash(subject.building_area_m2)}㎡ ・ 築{age}年 ・ "
              f"駅徒歩{dash(subject.station_walk_min)}分")
     sctx = dict(address=subject.address, ptype=ptype_ja, specs=specs)
+    # PROへ持っていく入力。PRO側のフォームと同じ name にそろえてある。
+    carry = {"address": subject.address, "price": f.get("price") or "",
+             "byear": f.get("byear") or "", "land": f.get("land") or "",
+             "building": f.get("building") or "",
+             "station": f.get("station") or "",
+             "income": f.get("income") or "", "down": f.get("down") or "",
+             "loan_years": str(loan_years),
+             # 無料版は「リフォーム済み」の有無しか聞いていない。どの箇所かは
+             # 分からないので、チェックを勝手に入れず、選び直してもらう。
+             "renovated_hint": "1" if subject.renovated else ""}
     return _render_result(res, subject, sctx,
-                          to_yen(f.get("down")) or 0, loan_years)
+                          to_yen(f.get("down")) or 0, loan_years, carry=carry)
 
 
 
@@ -2320,13 +2354,13 @@ PRO_DIAGNOSE_FORM = """
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
-<title>PRO 購入診断｜HOME INDEX</title>
+<title>購入診断(戸建)(PRO)｜HOME INDEX</title>
 <style>
 MANSION_CSS_PLACEHOLDER
 </style></head><body>
 BRAND_BAR
 <div class="wrap">
- <h1>PRO 購入診断（戸建）</h1>
+ <h1>購入診断(戸建)(PRO)</h1>
  <p class="aim">無料診断で「未確認」として点数に入れていなかったことを、あなたの回答で埋めます。
   情報が増えるぶん、同じ物件でも点数は変わります。</p>
  <div class="banner">
@@ -2409,9 +2443,26 @@ PRO_DIAGNOSE_FORM = (PRO_DIAGNOSE_FORM
                               _pro_select("employment", "employment"))
                      .replace("MANSION_CSS_PLACEHOLDER", _FORM_CSS)
                      .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
-                     .replace("BRAND_BAR", brand_bar("PRO 購入診断"))
+                     .replace("BRAND_BAR", brand_bar("購入診断(戸建)(PRO)"))
                      .replace("</div></body></html>",
                               FOOTER + "</div></body></html>"))
+
+
+@app.route("/pro/start", methods=["POST"])
+def pro_start():
+    """無料診断の結果から、入力を引き継いでPROのフォームを開く。
+
+    年収や検討中の住所を含むため、クエリ文字列ではなくPOSTで受ける
+    （URLに残さない・アクセスログに出さない）。
+    """
+    v = _pro_form_values(request.form)
+    msg = ("無料診断の入力を引き継ぎました。"
+           "以下の項目に答えるほど、情報充足度が上がります。")
+    if request.form.get("renovated_hint") == "1":
+        msg += ("<br>無料診断では「リフォーム済み」とだけ伺っています。"
+                "PROは箇所ごとに評価するので、下の<b>リフォームした箇所</b>を"
+                "選び直してください。")
+    return render_template_string(PRO_DIAGNOSE_FORM, v=v, banner=msg)
 
 
 @app.route("/pro/diagnose", methods=["GET", "POST"])
@@ -2514,7 +2565,7 @@ def _run_pro_diagnose(f):
     bits.append(f"築{age}年" if age is not None else "築年不明")
     if buyer.hold_years:
         bits.append(f"居住予定 {buyer.hold_years}年")
-    sctx = dict(address=subject.address, ptype="中古戸建（PRO診断）",
+    sctx = dict(address=subject.address, ptype="中古戸建（PRO）",
                 specs=" ・ ".join(bits))
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           free_diagnosis=free)
