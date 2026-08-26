@@ -12,9 +12,14 @@
   資産性  ← 専有部の状態・設備の更新時期・リフォーム・認定
   リスク  ← 敷地の権利（借地権）・耐震診断
 
-積立金の「残高がいくらあれば十分か」には公的な目安が無い。だから残高は
-1戸あたりに直して表示するだけにとどめ、点数は向きのはっきりした事実
-（修繕をやったか・計画があるか・滞納があるか・誰が管理しているか）で付ける。
+積立金の残高は入力に取らない。いくらあれば十分かの公的な目安が無く点数に
+できないうえ、検討段階では重要事項調査報告書が手元に無いことがほとんどで、
+答えようのない項目になるため。ただし聞く価値はあるので、仲介業者への質問文
+としては必ず出す。点数は向きのはっきりした事実（修繕をやったか・計画が
+あるか・滞納があるか・誰が管理しているか）で付ける。
+
+答えられなかった項目は、そのまま「仲介業者に聞くこと」に変える。買主の
+実際の困りごとは、何を聞けばいいか分からないことなので、そこを埋める。
 """
 from __future__ import annotations
 from dataclasses import replace
@@ -87,14 +92,6 @@ def score_management_detail(base: CategoryScore, detail: MansionProDetail
     """管理：無料版は管理費と積立金の額しか見ていない。中身を足す。"""
     raw = base.raw
     bits: List[str] = []
-
-    per_unit = detail.reserve_per_unit_man()
-    if per_unit is not None:
-        # 十分かどうかの公的な目安が無いので、額は出すだけで点数にしない
-        bits.append(f"積立金残高 1戸あたり約{per_unit:,.0f}万円"
-                    f"（総戸数{detail.units}戸）")
-    elif detail.reserve_balance_man:
-        bits.append(f"積立金残高 {detail.reserve_balance_man:,}万円")
 
     for table, value in ((MAJOR_REPAIR, detail.major_repair),
                          (LONG_TERM_PLAN, detail.long_term_plan),
@@ -229,11 +226,44 @@ def mansion_pro_risks(detail: MansionProDetail,
         out.append(CriticalRisk(
             "耐震診断で要補強", "high", "confirmed",
             "補強工事の予定と費用負担、実施までの見通しを確認してください"))
-    if detail.reserve_balance_man is None:
-        out.append(CriticalRisk(
-            "積立金残高が未確認", "medium", "unknown",
-            "重要事項説明書に記載があります。総戸数と築年数に対して"
-            "十分かを確認してください"))
+    return out
+
+
+# 答えられなかった項目を、そのまま仲介業者への質問に変える。
+# いつ分かるかで段階が違うので、聞く相手と手段もあわせて書く。
+AGENT_QUESTIONS = {
+    "major_repair": "大規模修繕は過去に何回、直近はいつ実施されましたか。次回の予定時期も教えてください。",
+    "long_term_plan": "長期修繕計画は作成されていますか。作成されている場合、計画期間は何年ですか。",
+    "reserve_increase": "修繕積立金の値上げ予定はありますか。ある場合は時期と値上げ後の金額を教えてください。",
+    "arrears": "管理費・修繕積立金の滞納はありますか。重要事項調査報告書で確認できますか。",
+    "management_cert": "マンション管理計画認定、またはマンション管理適正評価を受けていますか。",
+    "management_form": "管理形態は全部委託ですか、一部委託ですか、自主管理ですか。",
+    "manager_style": "管理員の勤務形態は常駐・日勤・巡回のどれですか。",
+    "quake_diagnosis": "耐震診断は実施されていますか。実施済みの場合、結果と補強の有無を教えてください。",
+    "land_right": "敷地の権利は所有権ですか、借地権ですか。",
+    "performance_cert": "住宅性能評価書は残っていますか。",
+    "defect_insurance": "既存住宅売買瑕疵保険に加入できる物件ですか。",
+}
+
+# 入力には取らないが、聞く価値があるので必ず質問に入れるもの
+ALWAYS_ASK = [
+    "修繕積立金の残高は現在いくらですか。総戸数と築年数に対して十分な水準か、"
+    "管理会社の見解も教えてください。",
+    "直近の総会議事録を見せていただけますか。修繕や管理費の議題が分かります。",
+]
+
+
+def agent_questions(detail: MansionProDetail,
+                    subj: MansionSubject) -> List[str]:
+    """未回答の項目から、仲介業者に聞くべきことを組み立てる。"""
+    out = [q for f, q in AGENT_QUESTIONS.items()
+           if getattr(detail, f, "unknown") == "unknown"]
+    # 旧耐震のときだけ意味を持つ質問は、条件を見て足す
+    if subj.build_year and subj.build_year < 1982 \
+            and detail.quake_diagnosis == "unknown":
+        out.append(f"{subj.build_year}年築で旧耐震基準にあたります。"
+                   "耐震診断や補強工事の予定はありますか。")
+    out.extend(ALWAYS_ASK)
     return out
 
 

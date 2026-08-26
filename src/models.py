@@ -219,8 +219,9 @@ class MansionProDetail:
     には渡さない（仕様書§1）。
     """
     # ---- 管理の健全性。マンションの良し悪しを一番分けるところ ----
-    reserve_balance_man: Optional[int] = None   # 修繕積立金の残高(万円)
-    units: Optional[int] = None                 # 総戸数
+    # 積立金の残高は入力に取らない。いくらあれば十分かの公的な目安が無く、
+    # 点数にできないうえ、検討段階では重要事項調査報告書が手元に無いことが
+    # ほとんどだから。聞く価値はあるので、質問文としては結果画面に出す。
     # 大規模修繕：recent(直近10年以内) / old(10年以上前) / never(未実施) / unknown
     major_repair: str = "unknown"
     # 長期修繕計画：long(30年以上) / short(あるが30年未満・期間不明)
@@ -265,12 +266,6 @@ class MansionProDetail:
     # ---- 認定・評価 ----
     performance_cert: str = "unknown"   # 戸建と同じ選択肢
     defect_insurance: str = "unknown"
-
-    def reserve_per_unit_man(self) -> Optional[float]:
-        """1戸あたりの積立金残高（万円）。総戸数が無ければ出さない。"""
-        if not self.reserve_balance_man or not self.units or self.units <= 0:
-            return None
-        return round(self.reserve_balance_man / self.units, 1)
 
     def known_ratio(self, fields) -> float:
         vals = [getattr(self, f, "unknown") for f in fields]

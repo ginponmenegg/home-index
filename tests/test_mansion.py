@@ -427,7 +427,7 @@ def _free_diagnosis():
 
 def _well_run():
     return MansionProDetail(
-        reserve_balance_man=8_500, units=48, major_repair="recent",
+        major_repair="recent",
         long_term_plan="long", management_form="full", manager_style="daily",
         arrears="none", reserve_increase="planned", management_cert="certified",
         common_area="good", plumbing="ok", sash="ok", mold="ok", tilt="ok",
@@ -436,7 +436,7 @@ def _well_run():
 
 def _neglected():
     return MansionProDetail(
-        reserve_balance_man=300, units=48, major_repair="never",
+        major_repair="never",
         long_term_plan="none", management_form="self", manager_style="none",
         arrears="many", reserve_increase="steep", management_cert="none",
         common_area="concern", plumbing="concern", mold="concern",
@@ -499,22 +499,44 @@ def test_answering_management_removes_the_unchecked_warning():
                for r in blank.critical_risks)
 
 
-def test_reserve_balance_is_shown_not_judged():
-    """残高がいくらなら十分かの公的な目安が無いので、額は出すだけにする。"""
-    subj, free = _free_diagnosis()
-    base = [c for c in free.categories if c.name == "管理"][0]
-    rich = score_management_detail(base, MansionProDetail(
-        reserve_balance_man=20_000, units=48))
-    poor = score_management_detail(base, MansionProDetail(
-        reserve_balance_man=100, units=48))
-    assert rich.raw == poor.raw          # 残高では点を動かさない
-    assert "1戸あたり" in rich.reason     # ただし必ず見せる
+def test_unanswered_items_become_questions_for_the_agent():
+    """検討段階では答えられない項目が多い。そこを質問文に変える。
+
+    重要事項調査報告書は売主か仲介業者が契約前に用意するもので、内見の
+    段階では買主の手元に無いのが普通。答えられないまま放置せず、
+    「何を聞けばいいか」に変換する。
+    """
+    from src.mansion_pro_scoring import agent_questions
+    subj, _free = _free_diagnosis()
+    # 販売図面で分かる範囲だけ答えた状態
+    partial = MansionProDetail(management_form="full", manager_style="daily",
+                               land_right="ownership")
+    qs = agent_questions(partial, subj)
+    joined = "".join(qs)
+    # 答えた項目は聞かない
+    assert "管理形態は全部委託ですか" not in joined
+    # 答えていない項目は聞く
+    assert "大規模修繕は過去に何回" in joined
+    assert "滞納はありますか" in joined
+    # 入力には取らないが、聞く価値のあるものは必ず入れる
+    assert "修繕積立金の残高は現在いくらですか" in joined
+    assert "総会議事録" in joined
 
 
-def test_reserve_per_unit_needs_the_number_of_units():
-    d = MansionProDetail(reserve_balance_man=8_500, units=48)
-    assert d.reserve_per_unit_man() == 177.1
-    assert MansionProDetail(reserve_balance_man=8_500).reserve_per_unit_man() is None
+def test_old_buildings_get_an_extra_seismic_question():
+    from src.mansion_pro_scoring import agent_questions
+    old_flat = _subject(price=30_000_000, build_year=1978)
+    qs = "".join(agent_questions(MansionProDetail(), old_flat))
+    assert "旧耐震基準にあたります" in qs
+    new_flat = _subject(price=30_000_000, build_year=2010)
+    qs2 = "".join(agent_questions(MansionProDetail(), new_flat))
+    assert "旧耐震基準にあたります" not in qs2
+
+
+def test_balance_is_no_longer_an_input():
+    """点数にできない項目は聞かない。聞く価値は質問文の側で残す。"""
+    assert not hasattr(MansionProDetail(), "reserve_balance_man")
+    assert not hasattr(MansionProDetail(), "units")
 
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

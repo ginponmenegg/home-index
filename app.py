@@ -605,6 +605,21 @@ BRAND_BAR
   </div>
   {% endif %}
 
+  {% if questions %}
+  <div class="card">
+   <h2 style="margin-top:0">仲介業者に聞くこと（{{questions|length}}件）</h2>
+   <p class="muted" style="margin:6px 0 10px">
+    未回答だった項目です。マンションの管理の中身は、重要事項調査報告書を見ないと
+    分からないものが多く、それは契約前に売主か仲介業者が用意する書類です。
+    いまの段階では、下の質問をそのまま仲介業者にお伝えください。
+    答えが分かったらもう一度診断すると、情報充足度が上がります。
+   </p>
+   <ol style="margin:0;padding-left:1.2em">
+    {% for q in questions %}<li style="margin-bottom:6px">{{q}}</li>{% endfor %}
+   </ol>
+  </div>
+  {% endif %}
+
   {% if pro %}
   <div class="banner" style="margin-bottom:10px">
    <b>PRO診断：情報充足度 {{pro.free_suff}}% → {{pro.suff}}%</b>
@@ -1654,7 +1669,7 @@ def diagnose():
 
 
 def _render_result(res, subject, sctx, down_yen, loan_years,
-                   free_diagnosis=None, carry=None):
+                   free_diagnosis=None, carry=None, questions=None):
     """診断結果ページを描画する。戸建とマンションで共通。
 
     res は run_pipeline / run_mansion_pipeline のどちらの戻り値でもよい。
@@ -1827,7 +1842,7 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
         grade_color=grade_color, grade_comment=grade_comment,
         pro=pro_delta, handover=handover,
         handover_action=handover_action, handover_label=handover_label,
-        handover_unknowns=handover_unknowns)
+        handover_unknowns=handover_unknowns, questions=questions)
 
 
 def _run_diagnose(f, datetime):
@@ -2651,29 +2666,36 @@ _MPRO_CHOICES = {
     "cert_yesno": [("yes", "あり"), ("no", "なし"), ("unknown", "未確認")],
 }
 
+# 検討段階の買主が「いま答えられるか」で並べる。マンションの管理の中身は
+# 重要事項調査報告書を見ないと分からないものが多く、それは売主か仲介業者が
+# 契約前に取得するもので、内見の段階では手元に無いのが普通。だから答えられる
+# ものから順に置き、答えられない項目は結果画面で質問文に変える。
 _MPRO_SECTIONS = [
-    ("管理の健全性", "重要事項説明書と直近の総会議事録で確認できます。マンションの価値を一番左右するところです。",
+    ("① いま答えられること（販売図面・内見）",
+     "物件ページや販売図面に載っていることが多く、内見でも確かめられます。ここだけでも診断できます。",
+     [("management_form", "管理形態", "management_form"),
+      ("manager_style", "管理員の勤務", "manager_style"),
+      ("common_area", "共用部の管理状態", "common_area"),
+      ("land_right", "敷地の権利", "land_right"),
+      ("plumbing", "専有部：給排水の不具合", "condition"),
+      ("sash", "専有部：サッシ・建具の不具合", "condition"),
+      ("mold", "専有部：結露・カビ", "condition"),
+      ("tilt", "専有部：床の傾き", "condition"),
+      ("water_heater", "設備：給湯器の更新", "equipment"),
+      ("kitchen", "設備：キッチンの更新", "equipment"),
+      ("bath", "設備：浴室の更新", "equipment")]),
+    ("② 仲介業者に聞けば分かること",
+     "管理会社に確認すれば答えが返ります。未回答のままでも構いません。結果画面に、そのまま使える質問文を出します。",
      [("major_repair", "大規模修繕の実施", "major_repair"),
       ("long_term_plan", "長期修繕計画", "long_term_plan"),
-      ("management_form", "管理形態", "management_form"),
-      ("manager_style", "管理員の勤務", "manager_style"),
-      ("arrears", "管理費等の滞納", "arrears"),
       ("reserve_increase", "修繕積立金の値上げ予定", "reserve_increase"),
       ("management_cert", "管理計画認定・管理適正評価", "management_cert"),
-      ("common_area", "共用部の管理状態", "common_area")]),
-    ("専有部の状態", "内見で見た範囲でかまいません。未確認のままでも診断はできます。",
-     [("plumbing", "給排水の不具合", "condition"),
-      ("sash", "サッシ・建具の不具合", "condition"),
-      ("mold", "結露・カビ", "condition"),
-      ("tilt", "床の傾き", "condition")]),
-    ("主要設備の更新時期", None,
-     [("water_heater", "給湯器", "equipment"),
-      ("kitchen", "キッチン", "equipment"), ("bath", "浴室", "equipment")]),
-    ("権利・耐震・評価", "借地権か所有権かは、住宅ローンの可否と将来の売却に直結します。",
-     [("land_right", "敷地の権利", "land_right"),
       ("quake_diagnosis", "耐震診断", "quake_diagnosis"),
       ("performance_cert", "住宅性能評価書", "performance"),
       ("defect_insurance", "既存住宅売買瑕疵保険", "cert_yesno")]),
+    ("③ 重要事項調査報告書で分かること",
+     "売主か仲介業者が契約前に取得する書類です。検討段階では手元に無いのが普通なので、分からなければ未確認のままで構いません。",
+     [("arrears", "管理費等の滞納", "arrears")]),
 ]
 
 _MPRO_RENO = [("reno_water", "水回り"), ("reno_interior", "内装"),
@@ -2694,14 +2716,6 @@ def _mpro_detail_html():
         out.append(f'<h2 style="font-size:15px;margin:0 0 6px">{title}</h2>')
         if note:
             out.append(f'<div class="hint" style="margin-bottom:8px">{note}</div>')
-        if title == "管理の健全性":
-            out.append('<div class="row">'
-                       '<div><label>修繕積立金の残高（万円）</label>'
-                       '<input name="reserve_balance_man" value="{{v.reserve_balance_man}}"'
-                       ' placeholder="例）8500"></div>'
-                       '<div><label>総戸数</label>'
-                       '<input name="units" value="{{v.units}}" placeholder="例）48">'
-                       '<div class="hint">1戸あたりの残高を出します</div></div></div>')
         for name, label, kind in fields:
             out.append(f"<label>{label}</label>{_mpro_select(name, kind)}")
         out.append("</div>")
@@ -2796,7 +2810,7 @@ MPRO_DETAIL_PLACEHOLDER
 def _mpro_defaults():
     v = {"address": "", "name": "", "price": "", "area": "", "byear": "",
          "station": "", "floor": "", "total_floors": "", "direction": "不明",
-         "mfee": "", "rfund": "", "reserve_balance_man": "", "units": "",
+         "mfee": "", "rfund": "",
          "income": "", "down": "", "loan_years": "35", "other_debt": "",
          "hold_years": ""}
     for _t, _n, fields in _MPRO_SECTIONS:
@@ -2861,7 +2875,7 @@ def pro_mansion():
 def _run_mansion_pro(f):
     import datetime
     from src.models import MansionProDetail, BuyerProfile
-    from src.mansion_pro_scoring import apply_pro_mansion
+    from src.mansion_pro_scoring import apply_pro_mansion, agent_questions
 
     address = (f.get("address") or "").strip()
     city = district = ""
@@ -2889,8 +2903,6 @@ def _run_mansion_pro(f):
         renovated=any(f.get(n) == "1" for n, _l in _MPRO_RENO))
 
     detail = MansionProDetail(
-        reserve_balance_man=to_int(f.get("reserve_balance_man")),
-        units=to_int(f.get("units")),
         **{name: (f.get(name) or "unknown")
            for _t, _n, fields in _MPRO_SECTIONS for name, _l, _k in fields},
         **{name: (f.get(name) == "1") for name, _l in _MPRO_RENO})
@@ -2920,6 +2932,7 @@ def _run_mansion_pro(f):
 
     free = res.diagnosis
     res.diagnosis = apply_pro_mansion(free, detail, subject, buyer)
+    questions = agent_questions(detail, subject)
 
     age = (datetime.date.today().year - subject.build_year) \
         if subject.build_year else None
@@ -2928,14 +2941,11 @@ def _run_mansion_pro(f):
         bits.append(f"{subject.floor}階" + (f"/{subject.total_floors}階"
                                             if subject.total_floors else ""))
     bits.append(f"築{age}年" if age is not None else "築年不明")
-    per_unit = detail.reserve_per_unit_man()
-    if per_unit is not None:
-        bits.append(f"積立金残高 1戸あたり約{per_unit:,.0f}万円")
     sctx = dict(address=(f"{subject.address}　{subject.name}"
                          if subject.name else subject.address),
                 ptype="中古マンション（PRO）", specs=" ・ ".join(bits))
     return _render_result(res, subject, sctx, down_yen, loan_years,
-                          free_diagnosis=free)
+                          free_diagnosis=free, questions=questions)
 
 
 PRO_FINANCE_FORM = """
