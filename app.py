@@ -2552,7 +2552,7 @@ def _run_pro_diagnose(f):
     """無料の診断を普通に走らせ、その結果にPROの回答を重ねる。"""
     import datetime
     from src.models import ProDetail, BuyerProfile
-    from src.pro_scoring import apply_pro
+    from src.pro_scoring import apply_pro, agent_questions
 
     address = (f.get("address") or "").strip()
     city = district = ""
@@ -2607,6 +2607,7 @@ def _run_pro_diagnose(f):
 
     free = res.diagnosis
     res.diagnosis = apply_pro(free, detail, subject, buyer)
+    questions = agent_questions(detail, subject)
 
     age = (datetime.date.today().year - subject.build_year) \
         if subject.build_year else None
@@ -2621,7 +2622,7 @@ def _run_pro_diagnose(f):
     sctx = dict(address=subject.address, ptype="中古戸建（PRO）",
                 specs=" ・ ".join(bits))
     return _render_result(res, subject, sctx, down_yen, loan_years,
-                          free_diagnosis=free)
+                          free_diagnosis=free, questions=questions)
 
 
 # ---- マンションPRO 購入診断 ----------------------------------------
@@ -2671,8 +2672,8 @@ _MPRO_CHOICES = {
 # 契約前に取得するもので、内見の段階では手元に無いのが普通。だから答えられる
 # ものから順に置き、答えられない項目は結果画面で質問文に変える。
 _MPRO_SECTIONS = [
-    ("① いま答えられること（販売図面・内見）",
-     "物件ページや販売図面に載っていることが多く、内見でも確かめられます。ここだけでも診断できます。",
+    ("① 手元の資料と、見てきた印象で答えられること",
+     "物件ページや販売図面を見ながら、または内見で見た印象で選んでください。ここまで答えれば診断できます。",
      [("management_form", "管理形態", "management_form"),
       ("manager_style", "管理員の勤務", "manager_style"),
       ("common_area", "共用部の管理状態", "common_area"),
@@ -2684,8 +2685,8 @@ _MPRO_SECTIONS = [
       ("water_heater", "設備：給湯器の更新", "equipment"),
       ("kitchen", "設備：キッチンの更新", "equipment"),
       ("bath", "設備：浴室の更新", "equipment")]),
-    ("② 仲介業者に聞けば分かること",
-     "管理会社に確認すれば答えが返ります。未回答のままでも構いません。結果画面に、そのまま使える質問文を出します。",
+    ("② 聞けば教えてもらえること",
+     "いま分からなくても大丈夫です。「未確認」のまま進めると、最後にそのまま送れる質問文をまとめます。",
      [("major_repair", "大規模修繕の実施", "major_repair"),
       ("long_term_plan", "長期修繕計画", "long_term_plan"),
       ("reserve_increase", "修繕積立金の値上げ予定", "reserve_increase"),
@@ -2693,8 +2694,8 @@ _MPRO_SECTIONS = [
       ("quake_diagnosis", "耐震診断", "quake_diagnosis"),
       ("performance_cert", "住宅性能評価書", "performance"),
       ("defect_insurance", "既存住宅売買瑕疵保険", "cert_yesno")]),
-    ("③ 重要事項調査報告書で分かること",
-     "売主か仲介業者が契約前に取得する書類です。検討段階では手元に無いのが普通なので、分からなければ未確認のままで構いません。",
+    ("③ 契約前に受け取る書類で分かること",
+     "重要事項調査報告書に書かれています。この段階で分からないのが普通なので、「未確認」のままで構いません。",
      [("arrears", "管理費等の滞納", "arrears")]),
 ]
 
@@ -2741,9 +2742,9 @@ MANSION_CSS_PLACEHOLDER
 BRAND_BAR
 <div class="wrap">
  <h1>購入診断(マンション)(PRO)</h1>
- <p class="aim">無料診断は、修繕積立金の<b>残高</b>・大規模修繕の履歴・管理形態・滞納の有無を
-  「取得できない」として評価に入れていません。重要事項説明書と総会議事録を見れば分かるので、
-  ここで答えていただくとその分が評価に反映されます。</p>
+ <p class="aim">分かる範囲で答えるほど、診断の確かさが上がります。
+  <b>分からない項目は「未確認」のままで構いません。</b>
+  答えられなかったことは、最後に「仲介業者に聞くこと」としてまとめてお渡しします。</p>
  <div class="banner">
   <b>推定価格レンジは無料診断と同じ計算です。</b>ここで入力していただく内容は、
   <b>管理・資産性・リスクにのみ</b>反映し、価格の推定には使いません。

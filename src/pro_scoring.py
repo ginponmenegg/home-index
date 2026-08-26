@@ -240,6 +240,56 @@ def pro_critical_risks(detail: ProDetail, subj: SubjectProperty,
     return out
 
 
+# 答えられなかった項目を、そのまま仲介業者への質問に変える。
+# 戸建の建物の中の状態は、売主が記入する「物件状況報告書（告知書）」に
+# 書かれていることが多い。どこを見れば分かるかまで書いておく。
+# 並びは、答えが返ってこなかったときの影響が大きい順。建て替えられるか、
+# 敷地の境界がはっきりしているか、が最初に来る。
+AGENT_QUESTIONS = {
+    "rebuildable": "再建築は可能ですか。制限がある場合、その理由を教えてください。",
+    "road_width": "前面道路の幅員は何メートルですか。セットバックは必要ですか。",
+    "boundary": "隣地との境界は確定していますか。確定測量図はありますか。",
+    "encroachment": "塀・屋根・配管などの越境はありますか。覚書はありますか。",
+    "foundation": "基礎にひび割れはありますか。補修した箇所はありますか。",
+    "termite": "シロアリの被害や駆除の履歴はありますか。防蟻処理はいつ行いましたか。",
+    "leak": "雨漏りの跡はありますか。物件状況報告書（告知書）にどう記載されていますか。",
+    "termite": "シロアリの被害や駆除の履歴はありますか。防蟻処理はいつ行いましたか。",
+    "tilt": "床の傾きを指摘されたことはありますか。",
+    "plumbing": "給排水管の不具合や漏水の履歴はありますか。配管の更新はしていますか。",
+    "quake_retrofit": "耐震補強工事は行っていますか。行っている場合、内容と時期を教えてください。",
+    "inspection": "住宅診断（インスペクション）は実施済みですか。未実施の場合、契約前に実施できますか。",
+    "water_heater": "給湯器はいつ交換しましたか。",
+    "kitchen": "キッチンはいつ交換・改修しましたか。",
+    "bath": "浴室はいつ交換・改修しましたか。",
+    "electrical": "分電盤や屋内配線の更新はしていますか。",
+    "insulation": "断熱材の仕様や断熱等性能等級は分かりますか。",
+    "long_term_excellent": "長期優良住宅の認定を受けていますか。受けている場合、認定を承継できますか。",
+    "performance_cert": "住宅性能評価書は残っていますか。設計と建設のどちらですか。",
+    "quake_grade": "耐震等級はいくつですか。証明する書類はありますか。",
+    "defect_insurance": "既存住宅売買瑕疵保険に加入できる物件ですか。",
+}
+
+# 入力には取らないが、戸建では必ず見ておきたい書類
+ALWAYS_ASK = [
+    "物件状況報告書（告知書）と設備表を見せていただけますか。"
+    "雨漏り・シロアリ・給排水の不具合について、売主の申告が書かれています。",
+    "建築確認済証と検査済証は残っていますか。",
+]
+
+
+def agent_questions(detail: ProDetail, subj: SubjectProperty) -> List[str]:
+    """未回答の項目から、仲介業者や売主に聞くべきことを組み立てる。"""
+    # 一度に多くの答えが得られる書類の依頼を先に置く。個別に聞くより早い。
+    out = list(ALWAYS_ASK)
+    # 新旧の耐震基準が築年だけでは決まらない年は、確認済証の日付を聞く
+    if subj.build_year and 1981 <= subj.build_year <= 1983:
+        out.append(f"{subj.build_year}年築は、建築確認を受けた日によって"
+                   "新耐震か旧耐震かが分かれます。確認済証の日付を教えてください。")
+    out += [q for f, q in AGENT_QUESTIONS.items()
+            if getattr(detail, f, "unknown") == "unknown"]
+    return out
+
+
 def apply_pro(diagnosis: Diagnosis, detail: ProDetail,
               subj: SubjectProperty,
               buyer: Optional[BuyerProfile] = None,

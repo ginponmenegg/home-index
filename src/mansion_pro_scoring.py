@@ -256,14 +256,15 @@ ALWAYS_ASK = [
 def agent_questions(detail: MansionProDetail,
                     subj: MansionSubject) -> List[str]:
     """未回答の項目から、仲介業者に聞くべきことを組み立てる。"""
-    out = [q for f, q in AGENT_QUESTIONS.items()
-           if getattr(detail, f, "unknown") == "unknown"]
+    # 一度に多くの答えが得られる依頼を先に置く。個別に聞くより早い。
+    out = list(ALWAYS_ASK)
     # 旧耐震のときだけ意味を持つ質問は、条件を見て足す
     if subj.build_year and subj.build_year < 1982 \
             and detail.quake_diagnosis == "unknown":
         out.append(f"{subj.build_year}年築で旧耐震基準にあたります。"
                    "耐震診断や補強工事の予定はありますか。")
-    out.extend(ALWAYS_ASK)
+    out += [q for f, q in AGENT_QUESTIONS.items()
+            if getattr(detail, f, "unknown") == "unknown"]
     return out
 
 

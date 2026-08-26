@@ -300,6 +300,41 @@ def test_pro_never_lowers_sufficiency():
     for c_free, c_pro in zip(free.categories, blank.categories):
         assert c_pro.sufficiency >= c_free.sufficiency
 
+def test_unanswered_items_become_questions_for_the_agent():
+    """戸建でも、答えられなかった項目を「聞くこと」に変える。"""
+    from src.pro_scoring import agent_questions
+    qs = agent_questions(ProDetail(leak="ok", termite="ok", road_width="ge4"),
+                         _subject())
+    joined = "".join(qs)
+    # 答えた項目は聞かない
+    assert "雨漏りの跡はありますか" not in joined
+    assert "前面道路の幅員" not in joined
+    # 答えていない項目は聞く
+    assert "再建築は可能ですか" in joined
+    assert "隣地との境界は確定していますか" in joined
+    # 入力には無いが、まとめて答えが得られる書類は必ず頼む
+    assert "物件状況報告書" in joined
+
+
+def test_the_most_useful_request_comes_first():
+    """個別に20問ぶつけるより、書類を1つ出してもらう方が早い。"""
+    from src.pro_scoring import agent_questions
+    qs = agent_questions(ProDetail(), _subject())
+    assert "物件状況報告書" in qs[0]
+    # 影響の大きい法規の確認が、設備の交換時期より前に来る
+    joined = qs
+    rebuild = next(i for i, q in enumerate(joined) if "再建築は可能" in q)
+    heater = next(i for i, q in enumerate(joined) if "給湯器はいつ" in q)
+    assert rebuild < heater
+
+
+def test_confirmation_certificate_asked_for_boundary_years():
+    from src.pro_scoring import agent_questions
+    qs = "".join(agent_questions(ProDetail(), _subject(build_year=1982)))
+    assert "確認済証の日付" in qs
+    qs2 = "".join(agent_questions(ProDetail(), _subject(build_year=1995)))
+    assert "確認済証の日付" not in qs2
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0
