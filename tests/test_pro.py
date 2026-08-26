@@ -218,12 +218,22 @@ def test_pro_result_does_not_offer_itself_again():
     assert "このまま詳細診断に進む" not in html
 
 
-def test_mansion_result_does_not_offer_the_house_pro():
-    """PRO診断は戸建のみ。マンションの結果からは誘導しない。"""
-    html = _client().post("/mansion_diagnose", data={
+def test_each_free_result_offers_its_own_pro():
+    """戸建の結果は戸建PROへ、マンションの結果はマンションPROへ送る。"""
+    c = _client()
+    house = c.post("/diagnose", data=FREE_INPUT).data.decode("utf-8")
+    assert 'action="/pro/start"' in house
+    assert "購入診断(戸建)(PRO)" in house
+
+    flat = c.post("/mansion_diagnose", data={
         "address": "神奈川県藤沢市鵠沼桜が岡3丁目", "price": "7480",
-        "area": "96.77", "byear": "2006", "station": "5"}).data.decode("utf-8")
-    assert "このまま詳細診断に進む" not in html
+        "area": "96.77", "byear": "2006", "station": "5",
+        "mfee": "20100", "rfund": "37550"}).data.decode("utf-8")
+    assert 'action="/pro/mansion_start"' in flat
+    assert "購入診断(マンション)(PRO)" in flat
+    # 未評価として挙げる中身も、物件の種類ごとに違う
+    assert "修繕積立金の残高" in flat
+    assert "接道や再建築の可否" in house
 
 def test_certifications_lift_the_property_score():
     """長期優良住宅・性能評価・耐震等級・瑕疵保険は中古で差が大きい。"""

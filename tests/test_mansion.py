@@ -13,6 +13,9 @@ from src.mansion_scoring import (is_new_quake_standard, score_mansion_asset,
                                  build_mansion_diagnosis)
 from src.loan import compute_loan
 from src.extract import parse_mansion_text
+from src.models import MansionProDetail
+from src.mansion_pro_scoring import (apply_pro_mansion,
+                                     score_management_detail)
 
 CURRENT_YEAR = 2026
 
@@ -408,6 +411,110 @@ def test_renovation_lifts_resale_a_little():
     b = score_mansion_asset(reno, CURRENT_YEAR).raw
     assert b > a
     assert "リフォーム済み(内容未評価)" in score_mansion_asset(reno, CURRENT_YEAR).reason
+
+# ---- マンションPRO ----
+
+def _free_diagnosis():
+    from src.models import PriceAnalysis
+    subj = _subject(price=74_800_000, floor=2, total_floors=5, direction="南東",
+                    management_fee=20_100, repair_fund=37_550)
+    pa = PriceAnalysis(50_800_000, 58_000_000, 60_800_000, "割高の可能性",
+                       28.9, "high", 6, "note")
+    loan = compute_loan(74_800_000, 0, 0.0125, 35, 8_000_000,
+                        monthly_extra=57_650)
+    return subj, build_mansion_diagnosis(subj, pa, loan)
+
+
+def _well_run():
+    return MansionProDetail(
+        reserve_balance_man=8_500, units=48, major_repair="recent",
+        long_term_plan="long", management_form="full", manager_style="daily",
+        arrears="none", reserve_increase="planned", management_cert="certified",
+        common_area="good", plumbing="ok", sash="ok", mold="ok", tilt="ok",
+        land_right="ownership", quake_diagnosis="ok")
+
+
+def _neglected():
+    return MansionProDetail(
+        reserve_balance_man=300, units=48, major_repair="never",
+        long_term_plan="none", management_form="self", manager_style="none",
+        arrears="many", reserve_increase="steep", management_cert="none",
+        common_area="concern", plumbing="concern", mold="concern",
+        land_right="leasehold", quake_diagnosis="need")
+
+
+def test_management_detail_separates_good_from_neglected():
+    """管理の中身で点が大きく動く。マンションの良し悪しはここで決まる。"""
+    subj, free = _free_diagnosis()
+    good = apply_pro_mansion(free, _well_run(), subj)
+    bad = apply_pro_mansion(free, _neglected(), subj)
+    assert good.total_score > free.total_score > bad.total_score
+    gm = [c for c in good.categories if c.name == "管理"][0]
+    bm = [c for c in bad.categories if c.name == "管理"][0]
+    assert gm.raw > 0.9 and bm.raw < 0.2
+
+
+def test_mansion_pro_raises_sufficiency_and_never_lowers_it():
+    subj, free = _free_diagnosis()
+    answered = apply_pro_mansion(free, _well_run(), subj)
+    blank = apply_pro_mansion(free, MansionProDetail(), subj)
+    assert answered.data_sufficiency > free.data_sufficiency
+    assert blank.data_sufficiency >= free.data_sufficiency
+
+
+def test_mansion_pro_does_not_touch_the_price():
+    """仕様書§1。マンション側でも価格には手を出さない。"""
+    subj, free = _free_diagnosis()
+    fp = [c for c in free.categories if c.name == "価格"][0]
+    for detail in (_well_run(), _neglected()):
+        pro = apply_pro_mansion(free, detail, subj)
+        pp = [c for c in pro.categories if c.name == "価格"][0]
+        assert (pp.raw, pp.points, pp.reason) == (fp.raw, fp.points, fp.reason)
+    import inspect
+    src = inspect.getsource(apply_pro_mansion)
+    assert "analyze_mansion_price" not in src
+
+
+def test_no_long_term_plan_is_a_high_risk():
+    subj, free = _free_diagnosis()
+    pro = apply_pro_mansion(free, _neglected(), subj)
+    kinds = {r.type: r for r in pro.critical_risks}
+    assert kinds["長期修繕計画がない"].severity == "high"
+    assert kinds["管理費等の滞納が多い"].severity == "high"
+    assert kinds["借地権"].severity == "high"
+    assert "自主管理" in kinds
+
+
+def test_answering_management_removes_the_unchecked_warning():
+    """無料版の「積立金残高と修繕履歴が未確認」は、答えたなら当たらない。"""
+    subj, free = _free_diagnosis()
+    assert any(r.type == "積立金残高と修繕履歴が未確認"
+               for r in free.critical_risks)
+    pro = apply_pro_mansion(free, _well_run(), subj)
+    assert not any(r.type == "積立金残高と修繕履歴が未確認"
+                   for r in pro.critical_risks)
+    # 答えていなければ残る
+    blank = apply_pro_mansion(free, MansionProDetail(), subj)
+    assert any(r.type == "積立金残高と修繕履歴が未確認"
+               for r in blank.critical_risks)
+
+
+def test_reserve_balance_is_shown_not_judged():
+    """残高がいくらなら十分かの公的な目安が無いので、額は出すだけにする。"""
+    subj, free = _free_diagnosis()
+    base = [c for c in free.categories if c.name == "管理"][0]
+    rich = score_management_detail(base, MansionProDetail(
+        reserve_balance_man=20_000, units=48))
+    poor = score_management_detail(base, MansionProDetail(
+        reserve_balance_man=100, units=48))
+    assert rich.raw == poor.raw          # 残高では点を動かさない
+    assert "1戸あたり" in rich.reason     # ただし必ず見せる
+
+
+def test_reserve_per_unit_needs_the_number_of_units():
+    d = MansionProDetail(reserve_balance_man=8_500, units=48)
+    assert d.reserve_per_unit_man() == 177.1
+    assert MansionProDetail(reserve_balance_man=8_500).reserve_per_unit_man() is None
 
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

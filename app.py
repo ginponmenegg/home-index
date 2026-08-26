@@ -153,6 +153,7 @@ MENU_ITEMS = [("/", "トップ"),
               ("/buy", "購入診断（戸建）"),
               ("/mansion", "購入診断（マンション）"),
               ("/pro/diagnose", "購入診断(戸建)(PRO)"),
+              ("/pro/mansion", "購入診断(マンション)(PRO)"),
               ("/pro/finance", "詳細な資金計画（PRO）"),
               ("/terms", "利用規約"),
               ("/privacy", "プライバシーポリシー")]
@@ -589,17 +590,17 @@ BRAND_BAR
   <div class="card" style="border-color:#111">
    <h2 style="margin-top:0">このまま詳細診断に進む（PRO）</h2>
    <p class="muted" style="margin:6px 0 10px">
-    いまの診断は、建物の中の状態・設備の更新時期・接道や再建築の可否を
+    いまの診断は、{{handover_unknowns}}を
     「未確認」として点数に入れていません。情報充足度は
     <b>{{d.suff}}%</b> です。これらに答えると、その分だけ評価に反映されます。
     <b>入力済みの内容はそのまま引き継がれます。</b><br>
     推定価格レンジは無料診断と同じ計算で、PROでも変わりません。
    </p>
-   <form method="post" action="/pro/start">
+   <form method="post" action="{{handover_action}}">
     {% for k, val in handover.items() %}
     <input type="hidden" name="{{k}}" value="{{val}}">
     {% endfor %}
-    <button type="submit">詳細診断に進む（購入診断(戸建)(PRO)）</button>
+    <button type="submit">詳細診断に進む（{{handover_label}}）</button>
    </form>
   </div>
   {% endif %}
@@ -1699,8 +1700,13 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
     # 無料診断の結果から、入力をそのままPROへ持っていくための値。
     # 年収などを含むのでURLには載せず、hiddenでPOSTする。
     handover = None
+    handover_action = handover_label = handover_unknowns = None
     if carry:
-        handover = {k: v for k, v in carry.items() if v not in (None, "")}
+        handover = {k: v for k, v in carry["_fields"].items()
+                    if v not in (None, "")}
+        handover_action = carry["action"]
+        handover_label = carry["label"]
+        handover_unknowns = carry["unknowns"]
     # PROのときだけ、無料診断からどれだけ情報が埋まったかを見せる
     pro_delta = None
     if free_diagnosis is not None:
@@ -1819,7 +1825,9 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
         p=price_ctx, cats=cats, d=dctx, loan=loan, warnings=res.warnings,
         enr=enr, ring_circ=round(circ, 1), ring_off=ring_off,
         grade_color=grade_color, grade_comment=grade_comment,
-        pro=pro_delta, handover=handover)
+        pro=pro_delta, handover=handover,
+        handover_action=handover_action, handover_label=handover_label,
+        handover_unknowns=handover_unknowns)
 
 
 def _run_diagnose(f, datetime):
@@ -1873,15 +1881,19 @@ def _run_diagnose(f, datetime):
              f"駅徒歩{dash(subject.station_walk_min)}分")
     sctx = dict(address=subject.address, ptype=ptype_ja, specs=specs)
     # PROへ持っていく入力。PRO側のフォームと同じ name にそろえてある。
-    carry = {"address": subject.address, "price": f.get("price") or "",
-             "byear": f.get("byear") or "", "land": f.get("land") or "",
-             "building": f.get("building") or "",
-             "station": f.get("station") or "",
-             "income": f.get("income") or "", "down": f.get("down") or "",
-             "loan_years": str(loan_years),
-             # 無料版は「リフォーム済み」の有無しか聞いていない。どの箇所かは
-             # 分からないので、チェックを勝手に入れず、選び直してもらう。
-             "renovated_hint": "1" if subject.renovated else ""}
+    carry = {
+        "action": "/pro/start", "label": "購入診断(戸建)(PRO)",
+        "unknowns": "建物の中の状態・設備の更新時期・接道や再建築の可否",
+        "_fields": {
+            "address": subject.address, "price": f.get("price") or "",
+            "byear": f.get("byear") or "", "land": f.get("land") or "",
+            "building": f.get("building") or "",
+            "station": f.get("station") or "",
+            "income": f.get("income") or "", "down": f.get("down") or "",
+            "loan_years": str(loan_years),
+            # 無料版は「リフォーム済み」の有無しか聞いていない。どの箇所かは
+            # 分からないので、チェックを勝手に入れず、選び直してもらう。
+            "renovated_hint": "1" if subject.renovated else ""}}
     return _render_result(res, subject, sctx,
                           to_yen(f.get("down")) or 0, loan_years, carry=carry)
 
@@ -2270,7 +2282,21 @@ def _run_mansion_diagnose(f):
                          if subject.name else subject.address),
                 ptype="中古マンション",
                 specs=" ・ ".join(bits))
-    return _render_result(res, subject, sctx, down_yen, loan_years)
+    carry = {
+        "action": "/pro/mansion_start", "label": "購入診断(マンション)(PRO)",
+        "unknowns": "修繕積立金の残高・大規模修繕の履歴・管理形態・滞納の有無",
+        "_fields": {
+            "address": subject.address, "name": subject.name or "",
+            "price": f.get("price") or "", "area": f.get("area") or "",
+            "byear": f.get("byear") or "", "station": f.get("station") or "",
+            "floor": f.get("floor") or "",
+            "total_floors": f.get("total_floors") or "",
+            "direction": subject.direction or "不明",
+            "mfee": f.get("mfee") or "", "rfund": f.get("rfund") or "",
+            "income": f.get("income") or "", "down": f.get("down") or "",
+            "loan_years": str(loan_years)}}
+    return _render_result(res, subject, sctx, down_yen, loan_years,
+                          carry=carry)
 
 # ---- PRO 購入診断（たたき台・戸建）--------------------------------
 # 仕様書§4-A/§4-C。ここで受けた詳細は物件スコアとリスクにだけ反映し、
@@ -2579,6 +2605,335 @@ def _run_pro_diagnose(f):
         bits.append(f"居住予定 {buyer.hold_years}年")
     sctx = dict(address=subject.address, ptype="中古戸建（PRO）",
                 specs=" ・ ".join(bits))
+    return _render_result(res, subject, sctx, down_yen, loan_years,
+                          free_diagnosis=free)
+
+
+# ---- マンションPRO 購入診断 ----------------------------------------
+# 無料版が「取得できない」として未評価のまま残している管理の中身を埋める。
+# 戸建PROと同じく、価格推定には渡さない。
+
+_MPRO_CHOICES = {
+    "major_repair": [("recent", "実施あり（直近10年以内）"),
+                     ("old", "実施あり（10年以上前）"),
+                     ("never", "未実施"), ("unknown", "未確認")],
+    "long_term_plan": [("long", "あり（30年以上）"),
+                       ("short", "あり（期間が短い・不明）"),
+                       ("none", "なし"), ("unknown", "未確認")],
+    "management_form": [("full", "全部委託"), ("partial", "一部委託"),
+                        ("self", "自主管理"), ("unknown", "未確認")],
+    "manager_style": [("live_in", "常駐"), ("daily", "日勤"),
+                      ("rounds", "巡回"), ("none", "なし"),
+                      ("unknown", "未確認")],
+    "arrears": [("none", "なし"), ("few", "少数あり"), ("many", "多い"),
+                ("unknown", "未確認")],
+    "reserve_increase": [("planned", "計画的な値上げ予定あり"),
+                         ("steep", "急な値上げ予定あり"),
+                         ("none", "予定なし"), ("unknown", "未確認")],
+    "management_cert": [("certified", "認定あり"), ("applying", "申請中"),
+                        ("none", "なし"), ("unknown", "未確認")],
+    "common_area": [("good", "良好"), ("normal", "普通"),
+                    ("concern", "気になる点あり"), ("unknown", "未確認")],
+    "condition": [("ok", "問題なし"), ("concern", "気になる点あり"),
+                  ("unknown", "未確認")],
+    "equipment": [("le5", "5年以内"), ("le10", "5〜10年"),
+                  ("gt10", "10年超"), ("unknown", "未確認")],
+    "land_right": [("ownership", "所有権"), ("leasehold", "借地権"),
+                   ("unknown", "未確認")],
+    "quake_diagnosis": [("ok", "実施済み・問題なし"),
+                        ("done", "実施済み・補強済み"),
+                        ("need", "実施済み・要補強"),
+                        ("never", "未実施"), ("unknown", "未確認")],
+    "performance": [("construction", "建設住宅性能評価あり"),
+                    ("design", "設計住宅性能評価のみ"),
+                    ("existing", "既存住宅性能評価あり"),
+                    ("none", "なし"), ("unknown", "未確認")],
+    "cert_yesno": [("yes", "あり"), ("no", "なし"), ("unknown", "未確認")],
+}
+
+_MPRO_SECTIONS = [
+    ("管理の健全性", "重要事項説明書と直近の総会議事録で確認できます。マンションの価値を一番左右するところです。",
+     [("major_repair", "大規模修繕の実施", "major_repair"),
+      ("long_term_plan", "長期修繕計画", "long_term_plan"),
+      ("management_form", "管理形態", "management_form"),
+      ("manager_style", "管理員の勤務", "manager_style"),
+      ("arrears", "管理費等の滞納", "arrears"),
+      ("reserve_increase", "修繕積立金の値上げ予定", "reserve_increase"),
+      ("management_cert", "管理計画認定・管理適正評価", "management_cert"),
+      ("common_area", "共用部の管理状態", "common_area")]),
+    ("専有部の状態", "内見で見た範囲でかまいません。未確認のままでも診断はできます。",
+     [("plumbing", "給排水の不具合", "condition"),
+      ("sash", "サッシ・建具の不具合", "condition"),
+      ("mold", "結露・カビ", "condition"),
+      ("tilt", "床の傾き", "condition")]),
+    ("主要設備の更新時期", None,
+     [("water_heater", "給湯器", "equipment"),
+      ("kitchen", "キッチン", "equipment"), ("bath", "浴室", "equipment")]),
+    ("権利・耐震・評価", "借地権か所有権かは、住宅ローンの可否と将来の売却に直結します。",
+     [("land_right", "敷地の権利", "land_right"),
+      ("quake_diagnosis", "耐震診断", "quake_diagnosis"),
+      ("performance_cert", "住宅性能評価書", "performance"),
+      ("defect_insurance", "既存住宅売買瑕疵保険", "cert_yesno")]),
+]
+
+_MPRO_RENO = [("reno_water", "水回り"), ("reno_interior", "内装"),
+              ("reno_pipes", "給排水管")]
+
+
+def _mpro_select(name, kind):
+    opts = "".join(
+        f'<option value="{val}" {{{{\'selected\' if v.{name}==\'{val}\' else \'\'}}}}>{label}</option>'
+        for val, label in _MPRO_CHOICES[kind])
+    return f'<select name="{name}">{opts}</select>'
+
+
+def _mpro_detail_html():
+    out = []
+    for title, note, fields in _MPRO_SECTIONS:
+        out.append('<div class="card">')
+        out.append(f'<h2 style="font-size:15px;margin:0 0 6px">{title}</h2>')
+        if note:
+            out.append(f'<div class="hint" style="margin-bottom:8px">{note}</div>')
+        if title == "管理の健全性":
+            out.append('<div class="row">'
+                       '<div><label>修繕積立金の残高（万円）</label>'
+                       '<input name="reserve_balance_man" value="{{v.reserve_balance_man}}"'
+                       ' placeholder="例）8500"></div>'
+                       '<div><label>総戸数</label>'
+                       '<input name="units" value="{{v.units}}" placeholder="例）48">'
+                       '<div class="hint">1戸あたりの残高を出します</div></div></div>')
+        for name, label, kind in fields:
+            out.append(f"<label>{label}</label>{_mpro_select(name, kind)}")
+        out.append("</div>")
+    out.append('<div class="card"><h2 style="font-size:15px;margin:0 0 6px">'
+               "リフォームした箇所</h2>")
+    for name, label in _MPRO_RENO:
+        out.append(f'<label style="display:flex;align-items:center;gap:8px">'
+                   f'<input type="checkbox" name="{name}" value="1" '
+                   f'style="width:auto" {{{{\'checked\' if v.{name} else \'\'}}}}>'
+                   f"{label}</label>")
+    out.append("</div>")
+    return "".join(out)
+
+
+MANSION_PRO_FORM = """
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+FONT_LINK_PLACEHOLDER
+<title>購入診断(マンション)(PRO)｜HOME INDEX</title>
+<style>
+MANSION_CSS_PLACEHOLDER
+</style></head><body>
+BRAND_BAR
+<div class="wrap">
+ <h1>購入診断(マンション)(PRO)</h1>
+ <p class="aim">無料診断は、修繕積立金の<b>残高</b>・大規模修繕の履歴・管理形態・滞納の有無を
+  「取得できない」として評価に入れていません。重要事項説明書と総会議事録を見れば分かるので、
+  ここで答えていただくとその分が評価に反映されます。</p>
+ <div class="banner">
+  <b>推定価格レンジは無料診断と同じ計算です。</b>ここで入力していただく内容は、
+  <b>管理・資産性・リスクにのみ</b>反映し、価格の推定には使いません。
+ </div>
+
+ {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
+
+ <form method="post" action="/pro/mansion">
+  <div class="card">
+   <h2 style="font-size:15px;margin:0 0 6px">物件の基本情報</h2>
+   <label>所在地（必須）</label>
+   <input name="address" value="{{v.address}}" placeholder="例）神奈川県藤沢市鵠沼桜が岡3丁目" required>
+   <label>マンション名</label>
+   <input name="name" value="{{v.name}}" placeholder="例）〇〇マンション">
+   <div class="row">
+    <div><label>売出価格（万円・必須）</label>
+     <input name="price" value="{{v.price}}" required></div>
+    <div><label>専有面積（㎡・必須）</label>
+     <input name="area" value="{{v.area}}" required></div>
+   </div>
+   <div class="row">
+    <div><label>築年（西暦）</label><input name="byear" value="{{v.byear}}"></div>
+    <div><label>駅まで徒歩（分）</label><input name="station" value="{{v.station}}"></div>
+   </div>
+   <div class="row">
+    <div><label>所在階</label><input name="floor" value="{{v.floor}}"></div>
+    <div><label>総階数</label><input name="total_floors" value="{{v.total_floors}}"></div>
+    <div><label>向き</label>
+     <select name="direction">
+      {% for d in directions %}
+      <option value="{{d}}" {{'selected' if v.direction==d else ''}}>{{d}}</option>
+      {% endfor %}
+     </select></div>
+   </div>
+   <div class="row">
+    <div><label>管理費（円／月）</label><input name="mfee" value="{{v.mfee}}"></div>
+    <div><label>修繕積立金（円／月）</label><input name="rfund" value="{{v.rfund}}"></div>
+   </div>
+  </div>
+
+MPRO_DETAIL_PLACEHOLDER
+
+  <div class="card">
+   <h2 style="font-size:15px;margin:0 0 6px">お住まいになる方について</h2>
+   <div class="row">
+    <div><label>世帯年収（万円）</label><input name="income" value="{{v.income}}"></div>
+    <div><label>頭金（万円）</label><input name="down" value="{{v.down}}"></div>
+    <div><label>借入年数（年）</label><input name="loan_years" value="{{v.loan_years}}"></div>
+   </div>
+   <div class="row">
+    <div><label>他の借入の月々返済（円）</label>
+     <input name="other_debt" value="{{v.other_debt}}" placeholder="例）35000">
+     <div class="hint">管理費・修繕積立金とあわせて返済負担率に含めます</div></div>
+    <div><label>何年住む見込みか</label><input name="hold_years" value="{{v.hold_years}}"></div>
+   </div>
+  </div>
+
+  <button type="submit">PROで診断する</button>
+ </form>
+</div></body></html>
+"""
+
+
+def _mpro_defaults():
+    v = {"address": "", "name": "", "price": "", "area": "", "byear": "",
+         "station": "", "floor": "", "total_floors": "", "direction": "不明",
+         "mfee": "", "rfund": "", "reserve_balance_man": "", "units": "",
+         "income": "", "down": "", "loan_years": "35", "other_debt": "",
+         "hold_years": ""}
+    for _t, _n, fields in _MPRO_SECTIONS:
+        for name, _label, _kind in fields:
+            v[name] = "unknown"
+    for name, _label in _MPRO_RENO:
+        v[name] = False
+    return v
+
+
+MANSION_PRO_FORM = (MANSION_PRO_FORM
+                    .replace("MPRO_DETAIL_PLACEHOLDER", _mpro_detail_html())
+                    .replace("MANSION_CSS_PLACEHOLDER", _FORM_CSS)
+                    .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
+                    .replace("BRAND_BAR", brand_bar("購入診断(マンション)(PRO)"))
+                    .replace("</div></body></html>",
+                             FOOTER + "</div></body></html>"))
+
+
+def _mpro_form_values(f):
+    v = _mpro_defaults()
+    for k in v:
+        if isinstance(v[k], bool):
+            v[k] = (f.get(k) == "1")
+        elif f.get(k) is not None:
+            v[k] = f.get(k)
+    return v
+
+
+@app.route("/pro/mansion_start", methods=["POST"])
+def pro_mansion_start():
+    """無料のマンション診断から、入力を引き継いでPROのフォームを開く。"""
+    return render_template_string(
+        MANSION_PRO_FORM, v=_mpro_form_values(request.form),
+        directions=DIRECTIONS,
+        banner="無料診断の入力を引き継ぎました。"
+               "管理の中身に答えるほど、情報充足度が上がります。")
+
+
+@app.route("/pro/mansion", methods=["GET", "POST"])
+def pro_mansion():
+    """マンションのPRO診断。まだログイン判定は入れていない。"""
+    if request.method == "GET":
+        return render_template_string(MANSION_PRO_FORM, v=_mpro_defaults(),
+                                      directions=DIRECTIONS, banner=None)
+    if not _rate_ok(_client_ip()):
+        return render_template_string(
+            MANSION_PRO_FORM, v=_mpro_form_values(request.form),
+            directions=DIRECTIONS,
+            banner=f"本日の診断回数の上限（{_RATE_LIMIT}回）に達しました。"), 429
+    if not _SEM.acquire(timeout=25):
+        return render_template_string(
+            MANSION_PRO_FORM, v=_mpro_form_values(request.form),
+            directions=DIRECTIONS,
+            banner="ただいまアクセスが集中しています。"), 503
+    try:
+        return _run_mansion_pro(request.form)
+    finally:
+        _SEM.release()
+
+
+def _run_mansion_pro(f):
+    import datetime
+    from src.models import MansionProDetail, BuyerProfile
+    from src.mansion_pro_scoring import apply_pro_mansion
+
+    address = (f.get("address") or "").strip()
+    city = district = ""
+    if address:
+        try:
+            code, _nm, dist = _resolver().resolve_from_address(address)
+            city, district = code or "", dist or ""
+        except Exception:
+            pass
+
+    area = to_float(f.get("area"))
+    if not area or area <= 0:
+        return render_template_string(
+            MANSION_PRO_FORM, v=_mpro_form_values(f), directions=DIRECTIONS,
+            banner="専有面積を入力してください。㎡単価で比較するため必須です。")
+
+    subject = MansionSubject(
+        address=address, name=(f.get("name") or "").strip() or None,
+        price=to_yen(f.get("price")) or 0, build_year=to_int(f.get("byear")),
+        station_walk_min=to_int(f.get("station")), exclusive_area_m2=area,
+        floor=to_int(f.get("floor")), total_floors=to_int(f.get("total_floors")),
+        direction=(f.get("direction") or "不明").strip(),
+        municipality_code=city or None, district_name=district or None,
+        management_fee=to_int(f.get("mfee")), repair_fund=to_int(f.get("rfund")),
+        renovated=any(f.get(n) == "1" for n, _l in _MPRO_RENO))
+
+    detail = MansionProDetail(
+        reserve_balance_man=to_int(f.get("reserve_balance_man")),
+        units=to_int(f.get("units")),
+        **{name: (f.get(name) or "unknown")
+           for _t, _n, fields in _MPRO_SECTIONS for name, _l, _k in fields},
+        **{name: (f.get(name) == "1") for name, _l in _MPRO_RENO})
+
+    buyer = BuyerProfile(other_debt_monthly=to_int(f.get("other_debt")),
+                         hold_years=to_int(f.get("hold_years")),
+                         own_funds=to_yen(f.get("down")))
+
+    loan_years = max(1, min(50, to_int(f.get("loan_years")) or 35))
+    down_yen = to_yen(f.get("down")) or 0
+
+    res = run_mansion_pipeline(
+        subject, reinfolib_key=os.environ.get("REINFOLIB_KEY"),
+        google_key=os.environ.get("GOOGLE_KEY"),
+        mock=(os.environ.get("SHINDAN_MOCK") == "1"),
+        annual_income=to_yen(f.get("income")), down_payment=down_yen,
+        loan_years=loan_years, estat_appid=os.environ.get("ESTAT_APPID"),
+        estat_table=os.environ.get("ESTAT_TABLE", "0000020201"))
+
+    # 他の借入も毎月出ていくので、管理費・修繕積立金と合わせて負担率に入れる
+    if buyer.other_debt_monthly:
+        from src.loan import compute_loan
+        extra = ((subject.management_fee or 0) + (subject.repair_fund or 0)
+                 + buyer.other_debt_monthly)
+        res.loan = compute_loan(subject.price, down_yen, 0.0125, loan_years,
+                                to_yen(f.get("income")), monthly_extra=extra)
+
+    free = res.diagnosis
+    res.diagnosis = apply_pro_mansion(free, detail, subject, buyer)
+
+    age = (datetime.date.today().year - subject.build_year) \
+        if subject.build_year else None
+    bits = [f"専有 {area}㎡"]
+    if subject.floor:
+        bits.append(f"{subject.floor}階" + (f"/{subject.total_floors}階"
+                                            if subject.total_floors else ""))
+    bits.append(f"築{age}年" if age is not None else "築年不明")
+    per_unit = detail.reserve_per_unit_man()
+    if per_unit is not None:
+        bits.append(f"積立金残高 1戸あたり約{per_unit:,.0f}万円")
+    sctx = dict(address=(f"{subject.address}　{subject.name}"
+                         if subject.name else subject.address),
+                ptype="中古マンション（PRO）", specs=" ・ ".join(bits))
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           free_diagnosis=free)
 
