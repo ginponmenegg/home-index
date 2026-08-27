@@ -15,8 +15,9 @@ class LoanResult:
     monthly_payment: int     # 月々返済額(円)
     annual_payment: int      # 年間返済額(円)
     total_payment: int       # 総返済額(円)
-    burden_ratio: Optional[float]  # 返済負担率(年間返済/年収)。年収不明ならNone
+    burden_ratio: Optional[float]  # 負担率(年間の支払/年収)。年収不明ならNone
     income: Optional[int] = None   # 年収(円)。年収不明ならNone
+    monthly_extra: int = 0         # 管理費・修繕積立金など毎月の固定費(円/月)
 
 
 def monthly_payment(principal: int, annual_rate: float, years: int) -> int:
@@ -33,12 +34,20 @@ def monthly_payment(principal: int, annual_rate: float, years: int) -> int:
 
 def compute_loan(price: int, down_payment: int = 0,
                  annual_rate: float = 0.0125, years: int = 35,
-                 annual_income: Optional[int] = None) -> LoanResult:
+                 annual_income: Optional[int] = None,
+                 monthly_extra: int = 0) -> LoanResult:
+    """monthly_extra はマンションの管理費・修繕積立金のような毎月の固定費。
+
+    住み続ける限り必ず出ていく金額なので、負担率にはこれを含めて見る。
+    戸建は 0 のまま呼ばれるため、既存の結果は変わらない。
+    """
     principal = max(0, price - (down_payment or 0))
     m = monthly_payment(principal, annual_rate, years)
+    extra = max(0, monthly_extra or 0)
     annual = m * 12
     total = m * years * 12
     burden = None
     if annual_income and annual_income > 0:
-        burden = round(annual / annual_income * 100.0, 1)
-    return LoanResult(principal, m, annual, total, burden, annual_income)
+        burden = round((annual + extra * 12) / annual_income * 100.0, 1)
+    return LoanResult(principal, m, annual, total, burden, annual_income,
+                      extra)

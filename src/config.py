@@ -21,6 +21,13 @@ DEFAULTS = {
                              "building_area": 0.18, "build_year": 0.0,
                              "recency": 0.13, "city_planning": 0.04,
                              "structure": 0.03},
+    # マンションの配点。②管理（管理費・積立金・修繕履歴）は次段で追加するため、
+    # その分を価格・資産性に寄せてある。管理を入れるときは価格35→30・資産性25→20。
+    "mansion_category_weights": {"価格": 35, "資産性": 25, "立地": 15,
+                                 "リスク": 15, "資金": 10},
+    # マンションの類似度重み（合計1.0）。㎡単価で見るので面積の重みは軽い。
+    "mansion_sim_weights": {"location": 0.35, "build_year": 0.30,
+                            "recency": 0.20, "area": 0.15},
     "neighbor_radius_m": 2000,   # 類似物件の近接半径(m)
     "k_nearest": 6,              # 価格算出に使う最類似件数
     "max_year_gap": 25,          # 築年が離れすぎた事例を除外(年)

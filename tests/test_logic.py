@@ -250,10 +250,54 @@ def test_haversine_and_facility_scoring():
                          nearest_hospital_m=800, nearest_school_m=500,
                          hospital_count_1km=5)
     cs = score_location(subj, "第一種住居地域", fac)
-    # 駅640m→徒歩約8分、病院・学校近接ボーナス、充足度UP
-    assert cs.sufficiency >= 0.85
+    # 駅640m→徒歩約8分。生活利便のうち医療と教育しか取れていないので、
+    # 点は出るが充足度は満点にしない（買い物・公共が未取得のため）。
+    assert 0.6 <= cs.sufficiency < 0.85
     assert "病院800m" in cs.reason and "学校500m" in cs.reason
-    assert cs.raw > 0.85
+    assert cs.raw > 0.8
+
+    # 買い物と公共まで揃えば充足度が上がる
+    from src.osm import ShopResult, Shop
+    fac2 = FacilityResult(checked=True, nearest_station_m=640,
+                          nearest_hospital_m=800, nearest_school_m=500,
+                          hospital_count_1km=5, nearest_preschool_m=400,
+                          nearest_library_m=900, nearest_hall_m=700,
+                          welfare_count_1km=2)
+    shops = ShopResult(checked=True, shops=[Shop("モール", "mall", 800),
+                                            Shop("スーパー", "supermarket", 500)])
+    cs2 = score_location(subj, "第一種住居地域", fac2, shops)
+    assert cs2.sufficiency > cs.sufficiency
+    assert "大型商業施設800m" in cs2.reason
+    assert "OpenStreetMap" in cs2.sources
+
+
+def test_location_and_asset_no_longer_track_each_other():
+    """立地と資産性が両方とも駅徒歩で動いていた重複を解消したことを固定する。
+
+    駅徒歩だけを変えたとき、資産性は大きく動き、立地は生活利便が主軸なので
+    あまり動かない。両方が同じだけ動くようなら分離できていない。
+    """
+    from src.enrichment import FacilityResult
+    from src.models import SubjectProperty
+    from src.osm import ShopResult, Shop
+    from src.scoring import score_location, score_asset
+
+    fac = FacilityResult(checked=True, nearest_hospital_m=400,
+                         hospital_count_1km=6, nearest_school_m=500,
+                         nearest_preschool_m=400, nearest_library_m=900,
+                         nearest_hall_m=700, welfare_count_1km=3)
+    shops = ShopResult(checked=True, shops=[Shop("モール", "mall", 700),
+                                            Shop("スーパー", "supermarket", 400)])
+
+    def pair(walk):
+        subj = SubjectProperty(property_type="chuko_kodate", price=1, address="x",
+                               station_walk_min=walk)
+        return (score_location(subj, None, fac, shops).raw,
+                score_asset(subj, None, None).raw)
+
+    near_loc, near_asset = pair(5)
+    far_loc, far_asset = pair(25)
+    assert near_asset - far_asset > near_loc - far_loc
 
 
 def test_estat_population_parser():

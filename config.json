@@ -1,7 +1,44 @@
 {
-  "category_weights": {"物件": 25, "立地": 20, "価格": 20, "リスク": 15, "資金": 10, "資産性": 10},
-  "sim_weights": {"location": 0.25, "land_area": 0.12, "building_area": 0.11, "build_year": 0.12, "recency": 0.28, "city_planning": 0.06, "structure": 0.06},
-  "newbuild_sim_weights": {"location": 0.32, "land_area": 0.14, "building_area": 0.12, "build_year": 0.0, "recency": 0.32, "city_planning": 0.05, "structure": 0.05},
+  "category_weights": {
+    "物件": 25,
+    "立地": 20,
+    "価格": 20,
+    "リスク": 15,
+    "資金": 10,
+    "資産性": 10
+  },
+  "sim_weights": {
+    "location": 0.25,
+    "land_area": 0.12,
+    "building_area": 0.11,
+    "build_year": 0.12,
+    "recency": 0.28,
+    "city_planning": 0.06,
+    "structure": 0.06
+  },
+  "newbuild_sim_weights": {
+    "location": 0.32,
+    "land_area": 0.14,
+    "building_area": 0.12,
+    "build_year": 0.0,
+    "recency": 0.32,
+    "city_planning": 0.05,
+    "structure": 0.05
+  },
+  "mansion_category_weights": {
+    "価格": 30,
+    "資産性": 20,
+    "管理": 15,
+    "リスク": 13,
+    "立地": 12,
+    "資金": 10
+  },
+  "mansion_sim_weights": {
+    "location": 0.35,
+    "build_year": 0.3,
+    "recency": 0.2,
+    "area": 0.15
+  },
   "neighbor_radius_m": 2000,
   "k_nearest": 6,
   "max_year_gap": 25,
@@ -9,5 +46,43 @@
   "loan_rate": 0.0125,
   "loan_years": 35,
   "reno_premium": 0.08,
-  "reno_min_age": 15
+  "reno_min_age": 15,
+  "mansion_repair_fund_guideline": {
+    "_source": "国土交通省 マンションの修繕積立金に関するガイドライン（令和6年6月改定）",
+    "_note": "専有床面積あたりの月額（円/㎡・月）。機械式駐車場分を除く。目安は「計画期間全体における修繕積立金の平均額」であって、現在の月額そのものではない。段階増額積立方式なら現在額は下回る。建築延床面積を入力に取っていないため、20階未満は4区分の幅を包絡して使う。",
+    "under_20f_bands": [
+      {
+        "max_floor_area_m2": 5000,
+        "low": 235,
+        "high": 430,
+        "avg": 335
+      },
+      {
+        "max_floor_area_m2": 10000,
+        "low": 170,
+        "high": 320,
+        "avg": 252
+      },
+      {
+        "max_floor_area_m2": 20000,
+        "low": 200,
+        "high": 330,
+        "avg": 271
+      },
+      {
+        "max_floor_area_m2": null,
+        "low": 190,
+        "high": 325,
+        "avg": 255
+      }
+    ],
+    "over_20f": {
+      "max_floor_area_m2": null,
+      "low": 240,
+      "high": 410,
+      "avg": 338
+    }
+  },
+  "mansion_trade_years": 10,
+  "mansion_recency_decay": 0.06
 }
