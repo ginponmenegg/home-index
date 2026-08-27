@@ -738,6 +738,8 @@ LP = """<!doctype html><html lang="ja"><head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>この家、かっていい？｜中古戸建を無料で100点診断 HOME INDEX</title>
 <meta name="description" content="気になる中古戸建の価格・災害リスク・住宅ローン返済を、国土交通省の成約データなど公的データから100点で採点します。会員登録不要・無料。物件は売りません。">
+<!-- Google Search Console の所有権確認。トップページに置く必要がある。外すと確認が外れるので消さないこと。 -->
+<meta name="google-site-verification" content="tER7-_YVLyWZvwij74TSUG5JBXrwLA9Z8xQ2GdtbRLc">
 <link rel="canonical" href="CANONICAL_URL">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="HOME INDEX">
