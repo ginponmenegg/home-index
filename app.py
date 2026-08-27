@@ -163,6 +163,23 @@ MENU_ITEMS = [("/", "トップ"),
               ("/privacy", "プライバシーポリシー")]
 
 
+def lp_menu_links():
+    """LPのメニュー。MENU_ITEMS から作る。
+
+    以前ここに直接リンクを書いていたため、メニューにページを足しても
+    LPだけ反映されないことがあった（PROの2ページが載っていなかった）。
+    同じ取りこぼしを繰り返さないよう、他のページと同じ一覧から組み立てる。
+    """
+    labels = {"/buy": "無料で診断する（戸建）",
+              "/mansion": "無料で診断する（マンション）"}
+    out = []
+    for href, label in MENU_ITEMS:
+        if href == "/":
+            continue          # LP自身への導線は要らない
+        cls = ' class="is-cta"' if href in labels else ""
+        out.append(f'    <a{cls} href="{href}">{labels.get(href, label)}</a>')
+    return "\n".join(out)
+
 def brand_bar(chip="購入診断"):
     """ページ最上部の固定ヘッダーバー（全ページ共通）。
 
@@ -1054,14 +1071,10 @@ footer a{color:var(--ink)}
     </div>
   </div>
   <nav class="menu" id="menu" hidden>
-    <a class="is-cta" href="/buy">無料で診断する（戸建）</a>
-    <a class="is-cta" href="/mansion">無料で診断する（マンション）</a>
-    <a href="/pro/finance">詳細な資金計画（PRO）</a>
+LP_MENU_PLACEHOLDER
     <a href="#wakaru">診断でわかること</a>
     <a href="#shikumi">仕組みと中立性</a>
     <a href="#faq">よくある質問</a>
-    <a href="/terms">利用規約</a>
-    <a href="/privacy">プライバシーポリシー</a>
   </nav>
 </div>
 
@@ -1488,6 +1501,7 @@ LP = (LP.replace("LP_FONT_LINK_PLACEHOLDER", LP_FONT_LINK)
       .replace("ICON_LINKS_PLACEHOLDER", ICON_LINKS)
       .replace("HI_SYMBOL_PLACEHOLDER", symbol_small())
       .replace("HI_WORDMARK_PLACEHOLDER", WORDMARK)
+      .replace("LP_MENU_PLACEHOLDER", lp_menu_links())
       .replace("FOOTER_PLACEHOLDER", FOOTER))
 
 GRADE_COLOR = {"A": "#15803d", "B": "#16a34a", "C": "#d97706",

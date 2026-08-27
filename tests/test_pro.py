@@ -361,6 +361,23 @@ def test_flat_questions_keep_their_own_wording():
     assert "重要事項調査報告書と、総会議事録" in html
     assert "物件状況報告書" not in html
 
+def test_landing_page_menu_lists_every_page():
+    """LPのメニューが他ページと食い違わないようにする。
+
+    以前ここにリンクを直接書いていたため、メニューにページを足しても
+    LPだけ古いままになり、PROの2ページが載っていなかった。
+    """
+    import re
+    import app
+    html = _client().get("/").data.decode("utf-8")
+    nav = re.search(r'<nav class="menu" id="menu" hidden>(.*?)</nav>',
+                    html, re.S).group(1)
+    hrefs = set(re.findall(r'href="([^"]+)"', nav))
+    for path, _label in app.MENU_ITEMS:
+        if path == "/":
+            continue      # LP自身への導線は要らない
+        assert path in hrefs, path
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0
