@@ -369,19 +369,19 @@ BRAND_BAR
   <label>物件の所在地</label>
   <input name="address" value="{{v.address}}" required>
   <div class="row">
-   <div><label>売出価格（万円）</label><input name="price" value="{{v.price}}" required></div>
-   <div><label>築年（西暦）</label><input name="byear" value="{{v.byear}}"></div>
+   <div><label>売出価格（万円）</label><input name="price" value="{{v.price}}" placeholder="例）3880" required></div>
+   <div><label>築年（西暦）</label><input name="byear" value="{{v.byear}}" placeholder="例）2005"></div>
   </div>
   <div class="row">
-   <div><label>土地面積（㎡）</label><input name="land" value="{{v.land}}"></div>
-   <div><label>建物面積（㎡）</label><input name="building" value="{{v.building}}"></div>
+   <div><label>土地面積（㎡）</label><input name="land" value="{{v.land}}" placeholder="例）147.07"></div>
+   <div><label>建物面積（㎡）</label><input name="building" value="{{v.building}}" placeholder="例）90.47"></div>
   </div>
   <div class="row">
-   <div><label>市区町村コード</label><input name="city" value="{{v.city}}"></div>
-   <div><label>町名</label><input name="district" value="{{v.district}}"></div>
+   <div><label>市区町村コード</label><input name="city" value="{{v.city}}" placeholder="住所から自動判定"></div>
+   <div><label>町名</label><input name="district" value="{{v.district}}" placeholder="住所から自動判定"></div>
   </div>
   <div class="row">
-   <div><label>駅/バス停まで徒歩（分）</label><input name="station" value="{{v.station}}"></div>
+   <div><label>駅/バス停まで徒歩（分）</label><input name="station" value="{{v.station}}" placeholder="例）20"></div>
    <div><label>駅までバス（分・バス便のみ）</label><input name="bus" value="{{v.bus}}">
      <div class="hint">バス便のときだけ入力</div></div>
   </div>
@@ -399,8 +399,8 @@ BRAND_BAR
     <div class="hint">築古でも「リフォーム済み」なら価格・建物評価を調整します</div></div>
   </div>
   <div class="row">
-   <div><label>世帯年収（万円・任意）</label><input name="income" value="{{v.income}}"></div>
-   <div><label>頭金（万円・任意）</label><input name="down" value="{{v.down}}"></div>
+   <div><label>世帯年収（万円・任意）</label><input name="income" value="{{v.income}}" placeholder="例）800"></div>
+   <div><label>頭金（万円・任意）</label><input name="down" value="{{v.down}}" placeholder="例）500"></div>
   </div>
   <div class="row">
    <div><label>借入年数（年）</label><input name="loan_years" value="{{v.loan_years}}">
@@ -447,9 +447,15 @@ BRAND_BAR
 
 
 def _example_v():
-    return dict(address="神奈川県小田原市城山4-20-18", price="3880", byear="2005",
-                land="147.07", building="90.47", city="14206", district="城山",
-                station="20", bus="", ptype="chuko_kodate", income="800", down="500",
+    """入力欄の初期値。すべて空にする。
+
+    以前ここに小田原の実例を入れていたため、フォームを開いた時点で住所も
+    価格も年収も埋まっていた。気づかずにそのまま診断すると、自分の物件では
+    ないものの結果が出る。例は placeholder で見せる。
+    """
+    return dict(address="", price="", byear="", land="", building="",
+                city="", district="", station="", bus="",
+                ptype="chuko_kodate", income="", down="",
                 reno=False, loan_years="35")
 
 

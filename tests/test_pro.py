@@ -378,6 +378,28 @@ def test_landing_page_menu_lists_every_page():
             continue      # LP自身への導線は要らない
         assert path in hrefs, path
 
+def test_forms_open_empty():
+    """フォームを開いた時点で値が入っていないこと。
+
+    戸建の入力欄に小田原の実例が初期値として入っていて、気づかず診断すると
+    他人の物件の結果が出ていた。例は placeholder で見せる。
+    """
+    import re
+    c = _client()
+    # 入れておいてよい既定値（借入年数・金利など、意味のある初期値）
+    allowed = {"35", "1.25", "1", "0", "unknown", "不明"}
+    for path in ("/buy", "/mansion", "/pro/diagnose", "/pro/mansion"):
+        html = c.get(path).data.decode("utf-8")
+        filled = [(m.group(1), m.group(2))
+                  for m in re.finditer(r'name="(\w+)" value="([^"]+)"', html)
+                  if m.group(2) not in allowed]
+        assert not filled, f"{path} に初期値が入っている: {filled}"
+        # 貼り付け欄も空
+        area = re.search(r'<textarea name="listing"[^>]*>(.*?)</textarea>',
+                         html, re.S)
+        if area:
+            assert area.group(1).strip() == "", path
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0
