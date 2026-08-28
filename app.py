@@ -153,12 +153,13 @@ BRAND_CSS = (
     '.hi-lock-sm .hi-wm{font-size:13px}')
 
 
+# PRO（/pro/diagnose・/pro/mansion・/pro/finance）はここに入れない。
+# ログインも課金もまだ噛ませていないので、メニューに常設すると課金前提の
+# 機能を誰にでも開いたままにすることになる。無料診断を終えた人にだけ、
+# 結果画面の導線から案内する。課金の仕組みが入ったら戻す。
 MENU_ITEMS = [("/", "トップ"),
               ("/buy", "購入診断（戸建）"),
               ("/mansion", "購入診断（マンション）"),
-              ("/pro/diagnose", "購入診断(戸建)(PRO)"),
-              ("/pro/mansion", "購入診断(マンション)(PRO)"),
-              ("/pro/finance", "詳細な資金計画（PRO）"),
               ("/terms", "利用規約"),
               ("/privacy", "プライバシーポリシー")]
 
@@ -920,6 +921,24 @@ a{color:inherit}
 .hero .btn-ghost:hover{background:rgba(240,238,233,.11)}
 .micro{font-size:12.5px; margin:16px 0 0; color:var(--paper-dim)}
 
+/* 入力の手順。ファーストビューのすぐ下に置いて、「何をすればいいか」を
+   スクロールせずに分からせる。URLではなく本文をコピーする点が伝わらないと
+   最初のつまずきになるので、そこだけ太字にしている。 */
+.howto{position:relative; z-index:2; background:rgba(240,238,233,.06);
+  border-top:1px solid rgba(240,238,233,.14)}
+.howto .wrap{padding:18px 20px}
+.howto ol{margin:0; padding-left:0; list-style:none; counter-reset:h;
+  display:grid; gap:10px}
+.howto li{counter-increment:h; position:relative; padding-left:34px;
+  font-size:14.5px; color:var(--paper); line-height:1.7}
+.howto li::before{content:counter(h); position:absolute; left:0; top:1px;
+  width:22px; height:22px; border-radius:50%; background:var(--pin);
+  color:var(--hero-bg); font-size:12px; font-weight:700;
+  display:flex; align-items:center; justify-content:center}
+.howto p{margin:12px 0 0; font-size:12.5px; color:var(--paper-dim)}
+@media (min-width:680px){
+  .howto ol{grid-template-columns:repeat(3,1fr); gap:18px}
+}
 .sources{position:relative; z-index:2; border-top:1px solid rgba(240,238,233,.14); background:rgba(8,18,29,.5)}
 .sources .wrap{padding:13px 20px; display:flex; flex-wrap:wrap; gap:5px 18px; align-items:baseline}
 .sources span{font-size:12px; color:var(--paper-dim)}
@@ -1102,6 +1121,17 @@ LP_MENU_PLACEHOLDER
     </div>
     <p class="micro">会員登録なし ／ 料金なし ／ 入力から結果まで約3分</p>
   </div>
+  <div class="howto">
+    <div class="wrap">
+      <ol>
+        <li><b>SUUMO等で</b>気になる物件のページを開く</li>
+        <li><b>説明文をコピー</b>（URLではなく、価格や面積が書かれた文章）</li>
+        <li><b>貼り付けて診断</b>。約3分で100点の採点が出ます</li>
+      </ol>
+      <p>販売図面のPDFからも読み取れます。入力し直しは不要です。</p>
+    </div>
+  </div>
+
   <div class="sources">
     <div class="wrap">
       <span class="k">DATA SOURCE</span>
@@ -1205,6 +1235,11 @@ LP_MENU_PLACEHOLDER
             </div>
           </div>
 
+          <p class="sample-note"><b>100点は「良い家度」ではありません。</b>
+           価格・立地・災害リスク・資金・資産性を公的データから評価した、
+           <b>購入判断の目安</b>です。点数が低い物件は「買ってはいけない物件」
+           ではなく、値引き交渉の材料や、契約前に確認すべきことが多い物件を
+           意味します。</p>
           <p class="sample-note">※ 表示はサンプルです。実際の結果には、採点に使った成約事例が1件ずつ（所在・面積・築年・成約価格・類似度）並びます。</p>
         </div>
       </div>
@@ -1336,7 +1371,7 @@ LP_MENU_PLACEHOLDER
       </a>
       <a class="btn btn-ghost" href="/mansion">マンションを診断する</a>
     </div>
-    <p class="soon">マンションは<a href="/mansion" style="color:inherit">こちらの診断</a>へ。管理費・修繕積立金の評価は含みません。</p>
+    <p class="soon">どちらも会員登録は不要です。マンションは管理費・修繕積立金も評価に含めます。</p>
   </div>
 </div>
 
