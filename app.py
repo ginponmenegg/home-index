@@ -362,7 +362,8 @@ BRAND_BAR
   <label>① 物件説明を貼り付け（SUUMO等の物件ページの<b>説明文</b>をコピペ）</label>
   <textarea name="listing" placeholder="例）中古一戸建て 神奈川県小田原市城山4-20-18 価格3,880万円 土地面積147.07㎡ 建物面積90.47㎡ 4LDK 築2005年 小田原駅 徒歩20分">{{listing or ''}}</textarea>
   <button class="sub" type="submit">貼り付けから自動入力する</button>
-  <div class="hint">※ <b>URLではなく、物件ページの文章</b>（価格・所在地・面積・築年・駅など）を選択してコピーしてください。ご自身がコピーした情報を解析します（私的利用）。抽出後、下で確認・修正できます。</div></form>
+  <div class="hint">※ <b>URLではなく、物件ページの文章</b>（価格・所在地・面積・築年・駅など）を選択してコピーしてください。ご自身がコピーした情報を解析します（私的利用）。抽出後、下で確認・修正できます。<br>
+   <b><a href="/copy-guide">スマホアプリで文字がコピーできない場合はこちら</a></b></div></form>
 
   <form class="card" method="post" action="/upload_pdf" enctype="multipart/form-data">
     <label>① 販売図面PDFから読み取る（文字が選択できるPDF）</label>
@@ -1131,7 +1132,8 @@ LP_MENU_PLACEHOLDER
     <div class="wrap">
       <ol>
         <li><b>SUUMO等で</b>気になる物件のページを開く</li>
-        <li><b>説明文をコピー</b>（URLではなく、価格や面積が書かれた文章）</li>
+        <li><b>説明文をコピー</b>（URLではなく、価格や面積が書かれた文章）<br>
+          <a href="/copy-guide" style="color:var(--pin)">アプリでコピーできないときは</a></li>
         <li><b>貼り付けて診断</b>。約3分で100点の採点が出ます</li>
       </ol>
       <p>販売図面のPDFからも読み取れます。入力し直しは不要です。</p>
@@ -1665,8 +1667,8 @@ def buy():
 
 # サイトマップに載せるのはGETで開ける5ページだけ。
 # 診断結果はPOSTでしか生成されず、固有のURLを持たないのでクロール対象にならない。
-SITEMAP_PATHS = ["/", "/buy", "/mansion", "/pro/diagnose", "/pro/mansion",
-                 "/pro/finance", "/terms", "/privacy"]
+SITEMAP_PATHS = ["/", "/buy", "/mansion", "/copy-guide", "/pro/diagnose",
+                 "/pro/mansion", "/pro/finance", "/terms", "/privacy"]
 
 
 @app.route("/robots.txt")
@@ -2061,6 +2063,7 @@ BRAND_BAR
   <textarea name="listing" placeholder="例）中古マンション 神奈川県藤沢市鵠沼桜が岡3丁目 価格7,480万円 専有面積96.77㎡ 3LDK 2階/5階建 築2006年 南東向き 管理費20,100円 修繕積立金37,550円 鵠沼海岸駅 徒歩5分">{{listing or ''}}</textarea>
   <button class="sub" type="submit">貼り付けから自動入力する</button>
   <div class="hint">※ <b>URLではなく、物件ページの文章</b>をコピーしてください。ご自身がコピーした情報を解析します（私的利用）。
+   <b><a href="/copy-guide">スマホアプリで文字がコピーできない場合はこちら</a></b>。
    マンション名は自動では取れないため、手で入力してください。抽出後、下で確認・修正できます。</div>
  </form>
 
@@ -3078,6 +3081,177 @@ def _run_mansion_pro(f):
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           free_diagnosis=free, questions=questions,
                           questions_note=questions_note)
+
+
+# ---- コピーの仕方 ----------------------------------------------------
+# SUUMOやアットホームのスマホアプリは、画面の文字をそのまま選択できない。
+# 「コピペしてください」とだけ書いても、アプリしか使っていない人はそこで
+# 止まってしまう。回避のしかたを1ページにまとめて、フォームから案内する。
+
+COPY_GUIDE = """
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>物件情報のコピーの仕方｜HOME INDEX</title>
+<meta name="description" content="SUUMOやアットホームのスマホアプリで文字がコピーできないときの対処。スクリーンショットから文字を読み取ってコピーする手順を、iPhone・Androidそれぞれで説明します。">
+FONT_LINK_PLACEHOLDER
+<style>
+MANSION_CSS_PLACEHOLDER
+ .steps{counter-reset:s; display:grid; gap:14px; margin:14px 0 0}
+ .step{display:grid; grid-template-columns:30px 1fr; gap:14px}
+ .step .n{width:30px;height:30px;border-radius:50%;background:#111;color:#fff;
+   font-size:14px;font-weight:700;display:flex;align-items:center;
+   justify-content:center;margin-top:2px}
+ .step h3{font-size:15px;margin:4px 0 4px}
+ .step p{margin:0;font-size:14px;color:var(--sub);line-height:1.85}
+ .fig{margin:6px 0 0}
+ .fig svg{display:block;width:100%;height:auto}
+ .os{border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:12px}
+ .os h3{margin:0 0 6px;font-size:15px}
+</style></head><body>
+BRAND_BAR
+<div class="wrap">
+ <a href="/buy" style="color:#111;font-size:14px">← 診断にもどる</a>
+ <h1>物件情報のコピーの仕方</h1>
+ <p class="aim">SUUMOやアットホームの<b>スマホアプリは、画面の文字をそのまま選択できません</b>。
+  「コピーして貼り付けてください」と言われても手が止まってしまうので、
+  やり方をまとめました。</p>
+
+ <div class="card">
+  <h2 style="font-size:16px;margin:0 0 4px">まずこれを試してください</h2>
+  <p class="hint" style="margin-bottom:10px">アプリではなく<b>ブラウザ</b>（Safari・Chrome）で
+   同じ物件ページを開くと、文字を普通に選択してコピーできます。
+   アプリの共有ボタンから「ブラウザで開く」を選ぶのが早いです。<br>
+   これができるなら、以下の手順は不要です。</p>
+ </div>
+
+ <div class="card">
+  <h2 style="font-size:16px;margin:0 0 4px">アプリしか使えないときは、画面を撮ってから文字を読み取る</h2>
+  <p class="hint">スマホには、写真の中の文字を認識してコピーする機能が入っています。
+   物件ページを撮影して、その写真から文字を取り出します。</p>
+  <div class="fig">COPY_FLOW_SVG</div>
+
+  <div class="steps">
+   <div class="step"><span class="n">1</span><div>
+    <h3>物件ページを表示したまま、スクリーンショットを撮る</h3>
+    <p>価格・所在地・面積・築年・駅からの徒歩分が写るようにしてください。
+     1枚に収まらなければ、スクロールして複数枚に分けて構いません。</p></div></div>
+   <div class="step"><span class="n">2</span><div>
+    <h3>写真から文字を読み取る</h3>
+    <p>端末ごとの手順は下にまとめています。</p></div></div>
+   <div class="step"><span class="n">3</span><div>
+    <h3>読み取った文字をコピーして、診断の貼り付け欄に貼る</h3>
+    <p>複数枚に分けた場合は、続けて貼り付けてください。順番は問いません。</p></div></div>
+  </div>
+
+  <div class="os">
+   <h3>iPhone の場合</h3>
+   <p class="hint">写真アプリでスクリーンショットを開き、<b>文字の部分を長押し</b>します。
+    または画面の隅に出る<b>テキスト認識のアイコン</b>を押すと、文字が選べる状態になります。
+    そのまま範囲を選んで「コピー」。<br>
+    日本語の読み取りは iOS 16 以降で使えます。うまくいかない場合は、
+    次のGoogleアプリを使う方法をお試しください。</p>
+  </div>
+
+  <div class="os">
+   <h3>Android の場合</h3>
+   <p class="hint">Google フォトでスクリーンショットを開き、下部の<b>「レンズ」</b>を押します。
+    文字が認識されたら、範囲を選んで「テキストをコピー」。<br>
+    機種によっては、スクリーンショットを撮った直後に出る通知から
+    直接コピーできることもあります。</p>
+  </div>
+
+  <div class="os">
+   <h3>パソコンの場合</h3>
+   <p class="hint">ブラウザで物件ページを開き、必要な範囲をドラッグして選択し、
+    Ctrl+C（Macは⌘+C）でコピーしてください。</p>
+  </div>
+ </div>
+
+ <div class="card">
+  <h2 style="font-size:16px;margin:0 0 4px">読み取りがうまくいかないときは</h2>
+  <p class="hint"><b>販売図面のPDFがあれば、そのままアップロードできます。</b>
+   文字が選択できるPDFなら、こちらのほうが確実です。診断の画面に
+   「販売図面PDFから読み取る」の欄があります。<br>
+   それも難しければ、<b>手入力でも構いません</b>。必要なのは、価格・所在地・面積・築年・
+   駅からの徒歩分の5つだけです。</p>
+ </div>
+
+ <div class="card">
+  <h2 style="font-size:16px;margin:0 0 4px">コピーする範囲</h2>
+  <p class="hint">物件ページの説明文をまるごと貼っていただいて構いません。
+   多すぎて困ることはありません。読み取れなかった項目は、貼り付けたあとの画面で
+   手直しできます。<br><br>
+   なお解析するのは、<b>ご自身がコピーした情報</b>です（私的利用の範囲）。
+   URLを送信して物件ページを自動で読みにいくことはしていません。</p>
+ </div>
+
+ <a class="cta" href="/buy" style="display:block;text-align:center;margin-top:18px;
+   padding:15px;background:#111;color:#fff;border-radius:10px;font-weight:700;
+   text-decoration:none">戸建の診断にもどる</a>
+ <a class="cta" href="/mansion" style="display:block;text-align:center;margin-top:10px;
+   padding:15px;background:#eef2f7;color:#111;border-radius:10px;font-weight:700;
+   text-decoration:none">マンションの診断にもどる</a>
+</div></body></html>
+"""
+
+
+def _copy_flow_svg():
+    """スクリーンショットから文字を取り出す流れの図。
+
+    画像ファイルではなくSVGにしてあるので、拡大しても崩れず、
+    スマホの細い画面でも読める。
+    """
+    phones = [
+        (0, "アプリの物件ページ", "文字を選べない"),
+        (1, "スクリーンショット", "画面を撮る"),
+        (2, "文字を読み取る", "長押し／レンズ"),
+        (3, "診断に貼り付け", "コピーして貼る"),
+    ]
+    out = ['<svg viewBox="0 0 640 200" role="img" aria-label="'
+           'アプリの物件ページをスクリーンショットで撮り、写真から文字を読み取って'
+           'コピーし、診断の貼り付け欄に貼るまでの流れ。">']
+    for i, title, note in phones:
+        x = 12 + i * 158
+        out.append(f'<rect x="{x}" y="18" width="96" height="132" rx="12" '
+                   'fill="none" stroke="#c7cfd8" stroke-width="2"/>')
+        out.append(f'<rect x="{x + 34}" y="24" width="28" height="5" rx="2.5" '
+                   'fill="#c7cfd8"/>')
+        # 画面の中身をそれらしく数本の線で表す
+        for j in range(4):
+            w = [64, 52, 70, 44][j]
+            fill = "#14395c" if (i == 2 and j in (1, 2)) else "#e1e5eb"
+            out.append(f'<rect x="{x + 14}" y="{44 + j * 18}" width="{w}" '
+                       f'height="9" rx="4.5" fill="{fill}"/>')
+        if i == 2:
+            out.append(f'<rect x="{x + 10}" y="{58}" width="{76}" height="{34}" '
+                       'rx="6" fill="none" stroke="#e0a83f" stroke-width="2"/>')
+        out.append(f'<text x="{x + 48}" y="170" text-anchor="middle" '
+                   'font-size="12" font-weight="700" fill="#14181d">'
+                   f'{title}</text>')
+        out.append(f'<text x="{x + 48}" y="187" text-anchor="middle" '
+                   f'font-size="11" fill="#68707b">{note}</text>')
+        if i < 3:
+            ax = x + 108
+            out.append(f'<path d="M{ax} 84 h30 M{ax + 24} 78 l6 6 -6 6" '
+                       'fill="none" stroke="#c7cfd8" stroke-width="2" '
+                       'stroke-linecap="round" stroke-linejoin="round"/>')
+    out.append("</svg>")
+    return "".join(out)
+
+
+COPY_GUIDE = (COPY_GUIDE
+              .replace("COPY_FLOW_SVG", _copy_flow_svg())
+              .replace("MANSION_CSS_PLACEHOLDER", _FORM_CSS)
+              .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
+              .replace("BRAND_BAR", brand_bar("コピーの仕方"))
+              .replace("</div></body></html>",
+                       FOOTER + "</div></body></html>"))
+
+
+@app.route("/copy-guide")
+def copy_guide():
+    """物件情報のコピーの仕方。フォームの注意書きから案内している。"""
+    return COPY_GUIDE
 
 
 PRO_FINANCE_FORM = """

@@ -430,6 +430,24 @@ def test_pro_pages_say_they_will_be_charged_for():
         assert "試験公開中です。" in html, path
         assert "将来は有料" in html, path
 
+def test_copy_guide_is_reachable_from_the_forms():
+    """アプリで文字がコピーできない人が、そこで止まらないようにする。"""
+    c = _client()
+    assert c.get("/copy-guide").status_code == 200
+    for path in ("/buy", "/mansion", "/"):
+        assert "/copy-guide" in c.get(path).data.decode("utf-8"), path
+
+
+def test_copy_guide_covers_both_phone_platforms():
+    html = _client().get("/copy-guide").data.decode("utf-8")
+    for word in ("iPhone", "Android", "スクリーンショット", "レンズ"):
+        assert word in html, word
+    # ブラウザで開けば済む場合を先に案内する（headの説明文は数えない）
+    body = html[html.index("<body>"):]
+    assert body.index("ブラウザ") < body.index("スクリーンショット")
+    # 読み取れないときの逃げ道も書く
+    assert "販売図面のPDF" in html and "手入力" in html
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0
