@@ -227,7 +227,13 @@ def brand_lockup(uid="lock"):
 OPERATOR = os.environ.get("OPERATOR_NAME", "〔運営者名〕")
 CONTACT = os.environ.get("CONTACT_EMAIL", "〔連絡先メール〕")
 
+PRO_LINKS = ('PRO（試験公開中）：'
+             '<a href="/pro/diagnose" style="color:#111">購入診断（戸建）</a>　・　'
+             '<a href="/pro/mansion" style="color:#111">購入診断（マンション）</a>　・　'
+             '<a href="/pro/finance" style="color:#111">詳細な資金計画</a>')
+
 FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#6b7280;line-height:1.9">'
+          + PRO_LINKS + '<br>'
           '<a href="/terms" style="color:#111">利用規約</a>　・　'
           '<a href="/privacy" style="color:#111">プライバシーポリシー</a><br>'
           '出典：国土交通省 不動産情報ライブラリ／総務省 e-Stat／国土地理院／Google<br>'
@@ -2531,6 +2537,7 @@ BRAND_BAR
  <h1>購入診断(戸建)(PRO)</h1>
  <p class="aim">無料診断で「未確認」として点数に入れていなかったことを、あなたの回答で埋めます。
   情報が増えるぶん、同じ物件でも点数は変わります。</p>
+ <div class="banner"><b>試験公開中です。</b>現在は無料でお使いいただけますが、将来は有料（月額）になる予定です。会員登録はまだ不要です。</div>
  <div class="banner">
   <b>推定価格レンジは無料診断と同じ計算です。</b>ここで入力していただく建物の状態や
   リフォームの内容は、<b>物件評価とリスクにのみ</b>反映し、価格の推定には使いません。
@@ -2864,6 +2871,7 @@ BRAND_BAR
  <p class="aim">分かる範囲で答えるほど、診断の確かさが上がります。
   <b>分からない項目は「未確認」のままで構いません。</b>
   答えられなかったことは、最後に「仲介業者に聞くこと」としてまとめてお渡しします。</p>
+ <div class="banner"><b>試験公開中です。</b>現在は無料でお使いいただけますが、将来は有料（月額）になる予定です。会員登録はまだ不要です。</div>
  <div class="banner">
   <b>推定価格レンジは無料診断と同じ計算です。</b>ここで入力していただく内容は、
   <b>管理・資産性・リスクにのみ</b>反映し、価格の推定には使いません。
@@ -3102,6 +3110,7 @@ FONT_LINK_PLACEHOLDER
 BRAND_BAR
 <div class="wrap">
  <h1>詳細な資金計画<span class="tag">PRO</span></h1>
+ <p style="background:#fafafa;border:1px solid #e5e5e5;border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.8;margin:12px 0"><b>試験公開中です。</b>現在は無料でお使いいただけますが、将来は有料（月額）になる予定です。会員登録はまだ不要です。</p>
  <p class="lead">購入にかかる諸費用、金利が上がったときの返済額、繰上返済の効果、住宅ローン控除の見込みを、
   公的な税率と料率にもとづいて試算します。<b>物件の価格を評価するものではありません。</b></p>
 

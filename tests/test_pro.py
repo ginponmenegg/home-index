@@ -400,6 +400,36 @@ def test_forms_open_empty():
         if area:
             assert area.group(1).strip() == "", path
 
+def test_pro_is_reachable_but_not_advertised():
+    """PROはメニューに出さず、フッターから辿れる状態にしておく。
+
+    ログインも課金もまだ噛ませていないので、メニューに常設すると課金前提の
+    機能を誰にでも開いたままにすることになる。かといってどこからも辿れないと
+    資金計画のページが孤立する。
+    """
+    import re
+    import app
+    c = _client()
+    html = c.get("/").data.decode("utf-8")
+    nav = re.search(r'<nav class="menu" id="menu" hidden>(.*?)</nav>',
+                    html, re.S).group(1)
+    assert "/pro/" not in nav
+    assert not [p for p, _l in app.MENU_ITEMS if p.startswith("/pro/")]
+    # フッターからは辿れる（全ページ共通）
+    for path in ("/", "/buy", "/mansion", "/terms"):
+        page = c.get(path).data.decode("utf-8")
+        for pro in ("/pro/diagnose", "/pro/mansion", "/pro/finance"):
+            assert pro in page, f"{path} から {pro} に辿れない"
+
+
+def test_pro_pages_say_they_will_be_charged_for():
+    """無料で出しておいて黙って課金を始めない。先に書いておく。"""
+    c = _client()
+    for path in ("/pro/diagnose", "/pro/mansion", "/pro/finance"):
+        html = c.get(path).data.decode("utf-8")
+        assert "試験公開中です。" in html, path
+        assert "将来は有料" in html, path
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0
