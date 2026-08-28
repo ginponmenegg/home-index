@@ -1106,8 +1106,11 @@ footer a{color:var(--ink)}
 
 @media (max-width:560px){
   .hero .wrap{padding-top:34px; padding-bottom:38px}
-  .pin{left:78%; top:26%}
-  .pin-label{left:auto; right:20px; top:calc(26% + 14px)}
+  /* スマホではピンを出さない。％で置くと本文の長さが変わるたびに
+     文字とぶつかるうえ、上は固定ヘッダー、下はすぐ見出しが来るので、
+     ぶつからない場所が無い。地図と傾斜のグラデーションは残るので、
+     ヒーローの見た目は保たれる。 */
+  .pin, .pin-label{display:none}
   section{padding:42px 0}
   .cta-row .btn{width:100%}
   .b{grid-template-columns:56px 1fr 48px}
