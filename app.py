@@ -908,6 +908,8 @@ a{color:inherit}
 .pin b, .pin s{position:absolute; inset:0; border-radius:50%; border:1px solid var(--pin); opacity:0; animation:ping 3.6s ease-out infinite}
 .pin s{animation-delay:1.8s}
 @keyframes ping{0%{transform:scale(1); opacity:.85}70%{transform:scale(3.6); opacity:0}100%{opacity:0}}
+/* スマホ用。輪が大きいと文字にかぶるので、広がり方を抑える。 */
+@keyframes ping-sm{0%{transform:scale(1); opacity:.85}70%{transform:scale(2.6); opacity:0}100%{opacity:0}}
 .pin-label{
   position:absolute; left:calc(72% + 16px); top:calc(34% - 9px); z-index:1;
   font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.1em;
@@ -1106,11 +1108,17 @@ footer a{color:var(--ink)}
 
 @media (max-width:560px){
   .hero .wrap{padding-top:34px; padding-bottom:38px}
-  /* スマホではピンを出さない。％で置くと本文の長さが変わるたびに
-     文字とぶつかるうえ、上は固定ヘッダー、下はすぐ見出しが来るので、
-     ぶつからない場所が無い。地図と傾斜のグラデーションは残るので、
-     ヒーローの見た目は保たれる。 */
-  .pin, .pin-label{display:none}
+  /* スマホで空いているのは、アイキャッチの行の右側だけ（見出しは
+     折り返さないので幅いっぱい、本文とボタンも幅いっぱいになる）。
+     ％ではなくpxで置いて、本文が伸び縮みしても動かないようにする。
+     今の大きさのままだと上下の余裕が8pxしかないので、輪を一回り
+     小さくして、固定ヘッダーとも見出しとも20px空ける。
+     幅の広いラベルは置く場所が無いので出さない。 */
+  .pin{left:auto; right:24px; top:88px; width:10px; height:10px;
+    margin:-5px 0 0 -5px}
+  .pin i{inset:3px}
+  .pin b, .pin s{animation-name:ping-sm}
+  .pin-label{display:none}
   section{padding:42px 0}
   .cta-row .btn{width:100%}
   .b{grid-template-columns:56px 1fr 48px}
