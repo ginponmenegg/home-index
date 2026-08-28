@@ -960,6 +960,15 @@ section h2{
 }
 section .sub{color:var(--sub); font-size:14px; margin:0 0 26px; max-width:36em}
 
+/* 自分ごと化のためのチェックリスト。読ませるのではなく、目で拾わせる。 */
+.checks{list-style:none; margin:18px 0 0; padding:0; display:grid; gap:10px}
+.checks li{position:relative; padding-left:30px; font-size:15px; line-height:1.8}
+.checks li::before{content:"☑"; position:absolute; left:0; top:0;
+  color:var(--accent); font-size:16px}
+@media (min-width:680px){
+  .checks{grid-template-columns:1fr 1fr; gap:10px 24px}
+}
+
 .rows{display:flex; flex-direction:column; border-top:1px solid var(--line)}
 .rowitem{display:flex; flex-direction:column; gap:5px; padding:19px 0; border-bottom:1px solid var(--line)}
 .rowitem .q{font-family:"Zen Kaku Gothic New",sans-serif; font-size:17px; font-weight:700; margin:0}
@@ -970,15 +979,19 @@ section .sub{color:var(--sub); font-size:14px; margin:0 0 26px; max-width:36em}
 }
 
 /* ---------- 結果サンプル ---------- */
-.sample{background:var(--surface); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow-lift); overflow:hidden}
+.sample{background:var(--surface); border:2px solid var(--ink);
+  border-radius:16px; box-shadow:var(--shadow-lift); overflow:hidden}
 .sample-head{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 18px; border-bottom:1px solid var(--line); background:var(--surface-2)}
 .sample-head .t{font-size:12px; color:var(--sub)}
 .stamp{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.14em; border:1px solid var(--line-strong); color:var(--sub); border-radius:4px; padding:2px 7px; white-space:nowrap}
 .sample-body{padding:22px 18px}
-.score{display:flex; align-items:flex-end; gap:12px; margin-bottom:6px}
-.score .n{font-family:"Zen Kaku Gothic New",sans-serif; font-weight:900; font-size:60px; line-height:.92; letter-spacing:-.03em; font-variant-numeric:tabular-nums}
-.score .d{font-size:14px; color:var(--sub); padding-bottom:9px}
-.verdict{font-size:14px; font-weight:700; color:var(--good); margin:0 0 20px}
+.score{display:flex; align-items:flex-end; gap:14px; margin-bottom:8px}
+.score .n{font-family:"Zen Kaku Gothic New",sans-serif; font-weight:900;
+  font-size:clamp(64px,17vw,96px); line-height:.9; letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums}
+.score .d{font-size:15px; color:var(--sub); padding-bottom:12px}
+.verdict{font-size:clamp(15px,4vw,17px); font-weight:700; color:var(--good);
+  margin:0 0 22px}
 .bars{display:flex; flex-direction:column; gap:10px; margin-bottom:22px}
 .b{display:grid; grid-template-columns:66px 1fr 52px; gap:10px; align-items:center}
 .b .lbl{font-size:12.5px; color:var(--sub)}
@@ -1154,9 +1167,18 @@ LP_MENU_PLACEHOLDER
 <main>
   <section>
     <div class="wrap reveal">
-      <p class="eyebrow">この3つが決められない</p>
-      <h2>数千万円の買い物なのに、<br>判断材料は営業さんの言葉だけ。</h2>
-      <p class="sub">内見して、気に入って、でも決め手がない。HOME INDEX は、その迷いを公的データで裏取りするためのツールです。</p>
+      <p class="eyebrow">こんな状態ではありませんか</p>
+      <h2>数千万円の買い物なのに、<br>手元にある判断材料が少なすぎる。</h2>
+      <ul class="checks">
+        <li>気に入った家だが、<b>この価格が妥当なのか分からない</b></li>
+        <li>近隣の相場と比べて高いのか安いのか、調べ方が分からない</li>
+        <li>「人気の物件です」と言われたが、確かめようがない</li>
+        <li>ハザードマップを見ても、結局どう判断すればいいか分からない</li>
+        <li>住宅ローンを<b>無理なく返し続けられるか不安</b></li>
+        <li>買ったあとに後悔しないか、それだけが怖い</li>
+      </ul>
+      <p class="sub" style="margin-top:16px">ひとつでも当てはまるなら、まず採点してみてください。
+       内見して、気に入って、でも決め手がない。その迷いを公的データで裏取りするためのツールです。</p>
       <div class="rows">
         <div class="rowitem">
           <p class="tagline">PRICE</p>
@@ -1180,7 +1202,7 @@ LP_MENU_PLACEHOLDER
   <section id="wakaru">
     <div class="wrap reveal">
       <p class="eyebrow">診断でわかること</p>
-      <h2>結果は、こう返ってきます。</h2>
+      <h2>点数と、その根拠が返ってきます。</h2>
       <p class="sub">総合点だけでなく、6つの観点それぞれの内訳と、その点数になった根拠（採点に使った成約事例の一覧）まで表示します。</p>
 
       <div class="sample">

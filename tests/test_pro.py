@@ -448,6 +448,24 @@ def test_copy_guide_covers_both_phone_platforms():
     # 読み取れないときの逃げ道も書く
     assert "販売図面のPDF" in html and "手入力" in html
 
+def test_checklist_only_claims_what_the_diagnosis_answers():
+    """自分ごと化のチェックリストに、まだ無い機能を書かない。
+
+    複数物件の比較はPROの未実装機能なので、ここに並べると
+    できないことを約束することになる。
+    """
+    import re
+    html = _client().get("/").data.decode("utf-8")
+    ul = re.search(r'<ul class="checks">(.*?)</ul>', html, re.S).group(1)
+    items = re.findall(r"<li>(.*?)</li>", ul, re.S)
+    assert len(items) >= 5
+    joined = re.sub(r"<[^>]+>", "", "".join(items))
+    # 診断が実際に答えを出せることだけ
+    for topic in ("価格", "ハザード", "ローン"):
+        assert topic in joined, topic
+    # 用意していない機能を匂わせない
+    assert "比較" not in joined
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0
