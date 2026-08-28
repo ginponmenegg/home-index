@@ -236,7 +236,7 @@ FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#6
           + PRO_LINKS + '<br>'
           '<a href="/terms" style="color:#111">利用規約</a>　・　'
           '<a href="/privacy" style="color:#111">プライバシーポリシー</a><br>'
-          '出典：国土交通省 不動産情報ライブラリ／総務省 e-Stat／国土地理院／Google<br>'
+          '出典：国土交通省 不動産情報ライブラリ／国土地理院<br>'
           '商業施設：© OpenStreetMap contributors（ODbL）<br>'
           '© HOME INDEX</div>')
 
@@ -947,8 +947,18 @@ a{color:inherit}
   .howto ol{grid-template-columns:repeat(3,1fr); gap:18px}
 }
 .sources{position:relative; z-index:2; border-top:1px solid rgba(240,238,233,.14); background:rgba(8,18,29,.5)}
-.sources .wrap{padding:13px 20px; display:flex; flex-wrap:wrap; gap:5px 18px; align-items:baseline}
-.sources span{font-size:12px; color:var(--paper-dim)}
+.sources .wrap{padding:16px 20px}
+.sources .k{display:block; margin-bottom:10px}
+.sources dl{margin:0; display:grid; gap:8px}
+.sources div{display:flex; gap:10px; align-items:baseline}
+.sources dt{font-size:12.5px; font-weight:700; color:var(--paper);
+  white-space:nowrap; min-width:7.5em}
+.sources dd{margin:0; font-size:12.5px; color:var(--paper-dim); line-height:1.6}
+@media (min-width:680px){
+  .sources dl{grid-template-columns:repeat(3,1fr); gap:18px}
+  .sources div{display:block}
+  .sources dt{margin-bottom:3px}
+}
 .sources .k{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.14em; color:var(--pin); opacity:.85}
 
 /* ---------- セクション共通 ---------- */
@@ -1047,6 +1057,15 @@ section .sub{color:var(--sub); font-size:14px; margin:0 0 26px; max-width:36em}
 .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:19px; box-shadow:var(--shadow)}
 .card h3{font-family:"Zen Kaku Gothic New",sans-serif; font-size:15px; font-weight:700; margin:0 0 6px}
 .card p{margin:0; font-size:13.5px; color:var(--sub)}
+
+/* 立場の表明。点数を信じてよいか判断するのは結果を見た直後なので、
+   サンプルのすぐ後ろに置く。詳しい説明は下の中立性セクションが担う。 */
+.stance{background:var(--accent); color:var(--accent-ink)}
+.stance .wrap{padding:28px 20px}
+.stance .big{font-family:"Zen Old Mincho",serif; font-weight:600;
+  font-size:clamp(19px,5vw,26px); line-height:1.6; margin:0 0 8px}
+.stance p:last-child{margin:0; font-size:14px; line-height:1.9; opacity:.9}
+.stance a{color:inherit; text-underline-offset:3px}
 
 /* ---------- CTAバンド ---------- */
 .band{position:relative; overflow:hidden; background:var(--hero-bg); color:var(--paper)}
@@ -1159,10 +1178,11 @@ LP_MENU_PLACEHOLDER
   <div class="sources">
     <div class="wrap">
       <span class="k">DATA SOURCE</span>
-      <span>国土交通省 不動産情報ライブラリ</span>
-      <span>総務省 e-Stat</span>
-      <span>国土地理院</span>
-      <span>OpenStreetMap</span>
+      <dl>
+        <div><dt>国土交通省</dt><dd>成約価格・災害リスク・用途地域・学区</dd></div>
+        <div><dt>国土地理院</dt><dd>住所から座標の特定</dd></div>
+        <div><dt>OpenStreetMap</dt><dd>スーパー・商業施設</dd></div>
+      </dl>
     </div>
   </div>
 </header>
@@ -1279,6 +1299,14 @@ LP_MENU_PLACEHOLDER
     </div>
   </section>
 
+  <div class="stance">
+    <div class="wrap">
+      <p class="big">HOME INDEX は、不動産を売りません。</p>
+      <p>仲介手数料も紹介料も受け取りません。だから、点数を上げる理由も、
+       下げる理由もありません。<a href="#shikumi">なぜ中立だと言えるのか</a></p>
+    </div>
+  </div>
+
   <section>
     <div class="wrap reveal">
       <p class="eyebrow">使い方</p>
@@ -1342,13 +1370,13 @@ LP_MENU_PLACEHOLDER
               <text x="192" y="33">成約価格（近隣・同規模）</text>
               <text x="192" y="94">ハザード（洪水・土砂・津波）</text>
               <text x="192" y="154">用途地域・周辺施設</text>
-              <text x="192" y="215">人口・世帯の推移</text>
+              <text x="192" y="215">将来推計人口（250mメッシュ）</text>
             </g>
             <g class="f-s" font-family="IBM Plex Mono, monospace" font-size="9" letter-spacing="1">
               <text x="192" y="48">国土交通省</text>
               <text x="192" y="109">国土交通省・国土地理院</text>
               <text x="192" y="169">国土交通省</text>
-              <text x="192" y="230">総務省 e-Stat</text>
+              <text x="192" y="230">国土交通省</text>
             </g>
 
             <g class="f-flow" stroke-width="1.2">

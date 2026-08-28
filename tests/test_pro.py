@@ -466,6 +466,33 @@ def test_checklist_only_claims_what_the_diagnosis_answers():
     # 用意していない機能を匂わせない
     assert "比較" not in joined
 
+def test_landing_page_lists_only_sources_actually_used():
+    """使っていない出典を並べない。出典を明示するという趣旨に反する。
+
+    総務省 e-Stat は ESTAT_APPID を設定していないと一度も呼ばれず、
+    人口は国土交通省の250mメッシュ推計から取っている。
+    """
+    import re
+    html = _client().get("/").data.decode("utf-8")
+    src = re.search(r'<div class="sources">(.*?)</dl>', html, re.S).group(1)
+    pairs = re.findall(r"<dt>([^<]*)</dt><dd>([^<]*)</dd>", src)
+    assert len(pairs) >= 3
+    names = [d for d, _u in pairs]
+    assert "国土交通省" in names and "OpenStreetMap" in names
+    # 何に使っているかまで書く（組織名だけでは信頼にならない）
+    assert all(use.strip() for _n, use in pairs)
+
+
+def test_neutrality_is_stated_next_to_the_score():
+    """点数を信じてよいか決めるのは結果を見た直後。そこで立場を言う。"""
+    html = _client().get("/").data.decode("utf-8")
+    body = html[html.index("<body>"):]
+    sample = body.index("SAMPLE")
+    stance = body.index('class="stance"')
+    howto = body.index("入力は3分")
+    assert sample < stance < howto
+    assert "不動産を売りません" in body
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0
