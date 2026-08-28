@@ -1108,17 +1108,19 @@ footer a{color:var(--ink)}
 
 @media (max-width:560px){
   .hero .wrap{padding-top:34px; padding-bottom:38px}
-  /* スマホで空いているのは、アイキャッチの行の右側だけ（見出しは
-     折り返さないので幅いっぱい、本文とボタンも幅いっぱいになる）。
-     ％ではなくpxで置いて、本文が伸び縮みしても動かないようにする。
-     今の大きさのままだと上下の余裕が8pxしかないので、輪を一回り
-     小さくして、固定ヘッダーとも見出しとも20px空ける。
-     幅の広いラベルは置く場所が無いので出さない。 */
-  .pin{left:auto; right:24px; top:88px; width:10px; height:10px;
+  /* スマホでは「買う前に、データで答え合わせ。」の行の右に置く。
+     この行は240pxほどで終わるので、右側が空く（見出しは折り返さず
+     幅いっぱい、本文とボタンも幅いっぱいなので、他に余地は無い）。
+     ％ではなくpxで指定する。％だと本文を書き換えるたびに動いて、
+     文字の上に乗ってしまう。
+     輪は一回り小さくして、上の見出しと下の本文それぞれと間隔を取る。
+     ラベルはピンの左側に置く（右側だと画面外にはみ出す）。
+     注意：タグラインを長くすると、ラベルとぶつかる。 */
+  .pin{left:auto; right:24px; top:183px; width:10px; height:10px;
     margin:-5px 0 0 -5px}
   .pin i{inset:3px}
   .pin b, .pin s{animation-name:ping-sm}
-  .pin-label{display:none}
+  .pin-label{left:auto; right:46px; top:176px; font-size:9px}
   section{padding:42px 0}
   .cta-row .btn{width:100%}
   .b{grid-template-columns:56px 1fr 48px}
