@@ -22,6 +22,7 @@ from src.models import SubjectProperty, MansionSubject  # noqa: E402
 from src.pipeline import run_pipeline, run_mansion_pipeline  # noqa: E402
 from src.extract import parse_listing_text, extract_from_url  # noqa: E402
 from src.citycode import CityCodeResolver  # noqa: E402
+from src import structure as structure_mod  # noqa: E402
 
 _RESOLVER = None
 
@@ -82,6 +83,11 @@ if db.enabled():
         db.init_schema()
     except Exception as e:          # pragma: no cover - 接続先依存
         print(f"[warn] DBに接続できませんでした（アカウント機能は無効）: {e}")
+
+
+# 構造の選択肢は複数のフォームで使う。render_template_string の呼び出しは
+# 9か所あるので、その都度渡さずテンプレート全体から見えるようにしておく。
+app.jinja_env.globals["structures"] = structure_mod.CHOICES
 
 
 def accounts_on() -> bool:
@@ -461,6 +467,18 @@ BRAND_BAR
     <div class="hint">築古でも「リフォーム済み」なら価格・建物評価を調整します</div></div>
   </div>
   <div class="row">
+   <div><label>構造</label>
+    <select name="structure">
+     {% for val, lbl in structures %}
+      <option value="{{val}}" {{'selected' if v.structure==val else ''}}>{{lbl}}</option>
+     {% endfor %}
+    </select>
+    <div class="hint">同じ築年数でも、構造によって建物の残り時間が違います。
+     国税庁の耐用年数（木造22年・RC47年など）を目安に、木造を基準として換算します。
+     不明なら選ばなくて構いません（木造として計算します）。</div></div>
+   <div></div>
+  </div>
+  <div class="row">
    <div><label>世帯年収（万円・任意）</label><input name="income" value="{{v.income}}" placeholder="例）800"></div>
    <div><label>頭金（万円・任意）</label><input name="down" value="{{v.down}}" placeholder="例）500"></div>
   </div>
@@ -518,7 +536,7 @@ def _example_v():
     return dict(address="", price="", byear="", land="", building="",
                 city="", district="", station="", bus="",
                 ptype="chuko_kodate", income="", down="",
-                reno=False, loan_years="35")
+                reno=False, structure="", loan_years="35")
 
 
 def _v_from_parsed(p):
@@ -530,7 +548,8 @@ def _v_from_parsed(p):
                 district=s(p.get("district")), station=s(p.get("station")),
                 bus=s(p.get("bus")),
                 ptype=p.get("ptype") or "chuko_kodate", income="", down="",
-                reno=bool(p.get("renovated")), loan_years="35")
+                reno=bool(p.get("renovated")),
+                structure=s(p.get("structure")), loan_years="35")
 
 
 def _parse_banner(p):
@@ -2196,6 +2215,7 @@ def _run_diagnose(f, datetime):
         district_name=district or None,
         station_walk_min=to_int(f.get("station")),
         bus_min=to_int(f.get("bus")),
+        structure=(f.get("structure") or "").strip() or None,
         renovated=((f.get("reno") or "0").strip() == "1"))
 
     # 借入年数（未入力・範囲外は35年）
@@ -2219,6 +2239,9 @@ def _run_diagnose(f, datetime):
     specs = (f"土地 {dash(subject.land_area_m2)}㎡ ・ 建物 "
              f"{dash(subject.building_area_m2)}㎡ ・ 築{age}年 ・ "
              f"駅徒歩{dash(subject.station_walk_min)}分")
+    skey = structure_mod.normalize(subject.structure)
+    if skey:
+        specs += f" ・ {structure_mod.label(skey)}"
     sctx = dict(address=subject.address, ptype=ptype_ja, specs=specs)
     # PROへ持っていく入力。PRO側のフォームと同じ name にそろえてある。
     carry = {
@@ -2231,6 +2254,7 @@ def _run_diagnose(f, datetime):
             "station": f.get("station") or "",
             "income": f.get("income") or "", "down": f.get("down") or "",
             "loan_years": str(loan_years),
+            "structure": subject.structure or "",
             # 無料版は「リフォーム済み」の有無しか聞いていない。どの箇所かは
             # 分からないので、チェックを勝手に入れず、選び直してもらう。
             "renovated_hint": "1" if subject.renovated else ""}}
@@ -2766,6 +2790,17 @@ BRAND_BAR
     <div><label>建物面積（㎡）</label><input name="building" value="{{v.building}}"></div>
     <div><label>駅まで徒歩（分）</label><input name="station" value="{{v.station}}"></div>
    </div>
+   <div class="row">
+    <div><label>構造</label>
+     <select name="structure">
+      {% for val, lbl in structures %}
+       <option value="{{val}}" {{'selected' if v.structure==val else ''}}>{{lbl}}</option>
+      {% endfor %}
+     </select>
+     <div class="hint">国税庁の耐用年数（木造22年・RC47年など）を目安に、
+      木造を基準として築年数を換算します。</div></div>
+    <div></div>
+   </div>
   </div>
 
 PRO_DETAIL_PLACEHOLDER
@@ -2808,7 +2843,7 @@ def _pro_defaults_full():
          "station": "", "age": "", "household_size": "", "children": "",
          "employment": "unknown", "tenure_years": "", "hold_years": "",
          "income": "", "down": "", "reserve": "", "other_debt": "",
-         "loan_years": "35"}
+         "structure": "", "loan_years": "35"}
     for _t, _n, fields in _PRO_SECTIONS:
         for name, _label, _kind in fields:
             v[name] = "unknown"
@@ -2897,6 +2932,7 @@ def _run_pro_diagnose(f):
         build_year=to_int(f.get("byear")),
         station_walk_min=to_int(f.get("station")),
         municipality_code=city or None, district_name=district or None,
+        structure=(f.get("structure") or "").strip() or None,
         renovated=any(f.get(n) == "1" for n, _l in _PRO_RENO))
 
     detail = ProDetail(

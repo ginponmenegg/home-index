@@ -108,6 +108,24 @@ def _parse_renovated(t: str) -> Optional[bool]:
     return None
 
 
+def _parse_structure(t: str) -> Optional[str]:
+    """構造の記載を拾う。表記ゆれの吸収は src/structure.py にまかせる。
+
+    「構造：〇〇」の形を先に見て、無ければ本文全体から構造名を探す。
+    「鉄骨造」とだけ書かれている場合は軽量として読む（structure.py の
+    説明のとおり、判断材料が無いときに評価を甘くしないため）。
+    読み取った値はフォームで確認・修正できる。
+    """
+    from .structure import normalize
+    m = re.search(r"構\s*造[^\S\n]*[：:｜|]?[^\S\n]*([^\n、,／/]{1,20})", t)
+    if m:
+        key = normalize(m.group(1))
+        if key:
+            return key
+    # 「構造」の見出しが無く、本文中に構造名だけがある図面も多い
+    return normalize(t)
+
+
 def _parse_layout(t: str) -> Optional[str]:
     m = re.search(r"([1-9][0-9]?)\s*(S?LDK|S?DK|S?K|LDK|DK)", t)
     if m:
@@ -214,6 +232,7 @@ def parse_listing_text(text: str) -> Dict[str, object]:
         "bus": _parse_bus(t),
         "ptype": ptype,
         "renovated": _parse_renovated(t),
+        "structure": _parse_structure(t),
         "address": addr,
         "city": city,
         "district": district,

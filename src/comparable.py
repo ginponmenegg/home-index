@@ -29,6 +29,13 @@ def is_newbuild_txn(t, max_age: int = NEWBUILD_MAX_AGE) -> bool:
     return 0 <= age <= max_age
 
 
+def _same_structure(a, b) -> float:
+    """構造が同じとみなせるか。どちらか不明なら0.0（加点しない）。"""
+    from .structure import normalize
+    ka, kb = normalize(a), normalize(b)
+    return 1.0 if (ka and kb and ka == kb) else 0.0
+
+
 def _ratio_similarity(a: Optional[float], b: Optional[float],
                       full: float = 0.10, zero: float = 0.50) -> float:
     """差の割合で減衰。±full以内=1.0、±zeroで0.5、それ以上は逓減。"""
@@ -100,8 +107,10 @@ def similarity(subj: SubjectProperty, txn: Transaction, current_year: int,
         "recency": _recency_similarity(txn, current_year),
         "city_planning": 1.0 if (subj.city_planning and txn.city_planning
                                  and subj.city_planning == txn.city_planning) else 0.0,
-        "structure": 1.0 if (subj.structure and txn.structure
-                             and subj.structure == txn.structure) else 0.0,
+        # 構造は表記をそろえてから比べる。フォームは "wood" のような区分値、
+        # 取引データは「木造」のような文字列で入ってくるため、
+        # そのまま突き合わせると常に不一致になる。
+        "structure": _same_structure(subj.structure, txn.structure),
     }
     score = sum(w.get(k, 0.0) * v for k, v in parts.items())
     return score, parts

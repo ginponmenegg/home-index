@@ -50,6 +50,9 @@ class Diagnosis:
     generated_at: str
 
 
+from . import structure
+
+
 def _clamp(x, lo=0.0, hi=1.0):
     return max(lo, min(hi, x))
 
@@ -60,42 +63,59 @@ def score_building(subj: SubjectProperty, current_year: int) -> CategoryScore:
     # 新築戸建：築年数では満点にしない。建物性能・設備・施工は未確認として評価。
     is_new = (subj.property_type == "shinchiku_kodate") or \
         (subj.build_year is not None and current_year - subj.build_year <= 0)
+    skey = structure.normalize(subj.structure)
     if is_new:
+        # 新築はどの構造もまだ古びていないので、実効築年数では差が出ない。
+        # それでも構造ごとに「これから何年もつか」は違うので、そこだけ
+        # 控えめに見る。木造を基準に、耐用年数の長さぶんを上限0.06で加点。
         raw = 0.8
-        if subj.structure and any(s in subj.structure for s in ("ＲＣ", "RC", "ＳＲＣ", "SRC")):
-            raw = min(1.0, raw + 0.03)
+        if skey:
+            raw = _clamp(raw + min(0.06, max(0.0, (
+                structure.life_years(skey) - structure.BASE_LIFE) / 400.0)))
         reason = "新築（築浅）。建物性能評価・設備仕様・施工会社は未確認"
+        if skey:
+            reason = f"新築（築浅・{structure.label(skey)}）。" \
+                     "建物性能評価・設備仕様・施工会社は未確認"
         return CategoryScore("物件", WEIGHTS["物件"], round(raw, 3),
-                             round(WEIGHTS["物件"] * raw, 1), 0.4, reason,
-                             ["user/URL"])
+                             round(WEIGHTS["物件"] * raw, 1),
+                             0.5 if skey else 0.4, reason, ["user/URL"])
     if subj.build_year:
         age = current_year - subj.build_year
-        if age <= 5:
+        # 構造ごとの耐用年数の違いを、木造なら何年ぶんかに換算してから
+        # 同じカーブに通す（src/structure.py の説明を参照）。
+        # 構造が不明なら木造として扱うので、換算しても値は変わらない。
+        eff = structure.effective_age(age, skey)
+        if eff <= 5:
             raw = 1.0
-        elif age <= 15:
+        elif eff <= 15:
             raw = 0.85
-        elif age <= 25:
+        elif eff <= 25:
             raw = 0.70
-        elif age <= 35:
+        elif eff <= 35:
             raw = 0.50
-        elif age <= 45:
+        elif eff <= 45:
             raw = 0.35
         else:
             raw = 0.20
-        reason = f"築{age}年"
+        if skey and skey != "wood":
+            reason = (f"築{age}年・{structure.label(skey)}"
+                      f"（木造換算で築{eff:.0f}年相当）")
+        elif skey:
+            reason = f"築{age}年・{structure.label(skey)}"
+        else:
+            reason = f"築{age}年（構造未確認・木造として計算）"
         src.append("user/URL")
     else:
-        raw, reason = 0.5, "築年不明"
-    # 構造の軽微な補正
-    if subj.structure and any(s in subj.structure for s in ("ＲＣ", "RC", "ＳＲＣ", "SRC")):
-        raw = _clamp(raw + 0.05)
-        reason += "・RC系"
+        raw = 0.5
+        reason = f"築年不明{'・' + structure.label(skey) if skey else ''}"
     # リフォーム済みは築古の評価を持ち上げる（無料版は有無のみ・内容は未評価）
     if getattr(subj, "renovated", False):
         raw = _clamp(raw + 0.12)
         reason += "・リフォーム済み(内容未評価)"
     # 建物状態(雨漏り/シロアリ等)は未取得のため充足度を抑える
     suff = 0.6 if subj.build_year else 0.3
+    if skey:
+        suff = min(1.0, suff + 0.1)
     reason += "（建物内部の状態は未確認）"
     return CategoryScore("物件", WEIGHTS["物件"], round(raw, 3),
                          round(WEIGHTS["物件"] * raw, 1), suff, reason, src)
