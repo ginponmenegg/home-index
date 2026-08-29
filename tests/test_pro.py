@@ -483,15 +483,31 @@ def test_landing_page_lists_only_sources_actually_used():
     assert all(use.strip() for _n, use in pairs)
 
 
-def test_neutrality_is_stated_next_to_the_score():
-    """点数を信じてよいか決めるのは結果を見た直後。そこで立場を言う。"""
+def test_neutrality_is_stated_before_the_last_call_to_action():
+    """立場の表明は、中立性の説明とひと続きに置く。
+
+    以前は結果サンプルの直後に置いていた（点数を信じてよいか決めるのは
+    結果を見た直後だ、という考え）。ただしそこで読み手が先に知りたいのは
+    「どうやって手に入れるのか」のほうで、手順を挟むと勢いが切れる。
+    いまは サンプル → 使い方 → 立場 → 中立性 → CTA の順にして、
+    信頼にかかわる話をひとまとまりで読ませ、その直後に誘導している。
+    """
     html = _client().get("/").data.decode("utf-8")
     body = html[html.index("<body>"):]
     sample = body.index("SAMPLE")
-    stance = body.index('class="stance"')
     howto = body.index("入力は3分")
-    assert sample < stance < howto
+    stance = body.index('class="stance"')
+    shikumi = body.index('id="shikumi"')
+    last_cta = body.index("いま採点してみますか")
+    assert sample < howto < stance < shikumi < last_cta
     assert "不動産を売りません" in body
+
+
+def test_the_steps_are_followed_by_a_call_to_action():
+    """手順を読み終えた直後がいちばん動きやすいので、そこにも導線を置く。"""
+    html = _client().get("/").data.decode("utf-8")
+    body = html[html.index("<body>"):]
+    assert body.index("入力は3分") < body.index("cta-mid")         < body.index('class="stance"')
 
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

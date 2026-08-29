@@ -1440,6 +1440,59 @@ LP_MENU_PLACEHOLDER
     </div>
   </section>
 
+  <section>
+    <div class="wrap reveal">
+      <p class="eyebrow">使い方</p>
+      <h2>入力は3分。物件ページのコピペから。</h2>
+      <p class="sub">用意するものは、気になっている物件のページだけです。
+       URLではなく、そこに書かれている<b>説明文</b>をコピーします。</p>
+      <div class="steps">
+        <div class="step">
+          <span class="num">1</span>
+          <div>
+            <h3>物件ページの説明文を貼り付ける</h3>
+            <p>SUUMOやアットホームのページ本文をコピーして貼るだけで、
+             <b>価格・所在地・土地／建物面積・築年・駅徒歩・構造</b>を読み取ります。
+             販売図面のPDFをアップロードしても同じことができます。</p>
+            <p class="fine">スマホアプリは文字を選択できません。
+             <a href="/copy-guide">コピーの仕方はこちら</a></p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="num">2</span>
+          <div>
+            <h3>読み取れた内容を確認して直す</h3>
+            <p>自動で埋まった欄を目で確かめ、空いているところだけ手で入れます。
+             必ず要るのは<b>価格・所在地・面積・築年・駅徒歩の5つ</b>だけです。</p>
+            <p class="fine">世帯年収と頭金は任意です。入れると、
+             月々の返済額と返済負担率まで見られます。</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="num">3</span>
+          <div>
+            <h3>診断する</h3>
+            <p>住所から座標を割り出し、公的データを照合して<b>100点で採点</b>します。
+             数十秒で終わります。結果は<b>1枚の画像として保存</b>できるので、
+             内見や商談の前に見返せます。</p>
+            <p class="fine">確かめられなかった項目は点数に入れず、「未取得」と表示します。
+             埋めた振りはしません。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="cta-row cta-mid">
+        <a class="btn btn-primary" href="/buy">
+          無料で診断する（戸建）
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h11M9 4l4.2 4L9 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a class="btn btn-ghost" href="/mansion">マンションを診断する</a>
+      </div>
+      <p class="sub" style="text-align:center;margin-top:10px">
+       会員登録も費用もかかりません。</p>
+    </div>
+  </section>
+
   <div class="stance">
     <div class="wrap">
       <p class="big">HOME INDEX は、不動産を売りません。</p>
@@ -1448,36 +1501,6 @@ LP_MENU_PLACEHOLDER
     </div>
   </div>
 
-  <section>
-    <div class="wrap reveal">
-      <p class="eyebrow">使い方</p>
-      <h2>入力は3分。物件ページのコピペから。</h2>
-      <p class="sub">物件のURLではなく、ページに書かれている説明文をそのままコピーして貼り付けてください。</p>
-      <div class="steps">
-        <div class="step">
-          <span class="num">1</span>
-          <div>
-            <h3>物件説明を貼り付ける</h3>
-            <p>SUUMO等の物件ページの説明文をコピペすると、価格・所在地・土地／建物面積・間取り・築年・駅徒歩を自動で読み取ります。物件チラシのPDFもそのまま使えます。</p>
-          </div>
-        </div>
-        <div class="step">
-          <span class="num">2</span>
-          <div>
-            <h3>内容を確認して直す</h3>
-            <p>自動で埋まった項目を目視で確認。読み取れなかった欄だけ手で入力します。年収・頭金・借入条件もここで指定します。</p>
-          </div>
-        </div>
-        <div class="step">
-          <span class="num">3</span>
-          <div>
-            <h3>診断する</h3>
-            <p>公的データを照合して100点で採点。結果はPDFレポートとして持ち出せます。内見や商談の前に目を通しておく資料として使ってください。</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
 
   <section id="shikumi">
     <div class="wrap reveal">
@@ -1549,7 +1572,7 @@ LP_MENU_PLACEHOLDER
         </div>
         <div class="card">
           <h3>使うのは公的データ</h3>
-          <p>国土交通省の成約価格、総務省の人口統計、国土地理院の地図・ハザード情報。商業施設については公的データに無いためOpenStreetMapを使用しています。出典はすべて結果画面に明示します。</p>
+          <p>国土交通省の成約価格・災害リスク・将来推計人口、国土地理院の住所検索。商業施設については公的データに無いためOpenStreetMapを使用しています。出典はすべて結果画面に明示します。</p>
         </div>
         <div class="card">
           <h3>なぜその点数なのか、たどれる</h3>
@@ -3949,6 +3972,10 @@ COPY_GUIDE = """
 FONT_LINK_PLACEHOLDER
 <style>
 MANSION_CSS_PLACEHOLDER
+ /* 手順の中の補足。本文より一段落として、読み飛ばせるようにする。 */
+ .step .fine{font-size:13px; color:var(--sub); line-height:1.8; margin-top:6px}
+ .step .fine a{color:var(--pin)}
+ .cta-mid{margin-top:26px; justify-content:center}
  .steps{counter-reset:s; display:grid; gap:14px; margin:14px 0 0}
  .step{display:grid; grid-template-columns:30px 1fr; gap:14px}
  .step .n{width:30px;height:30px;border-radius:50%;background:#111;color:#fff;
