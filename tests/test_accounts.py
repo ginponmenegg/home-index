@@ -420,3 +420,35 @@ def test_privacy_declares_storage_when_accounts_on(env):
     assert "メールアドレスをお預かり" in h
     assert "世帯年収は保存しません" in h
     assert "パスワードは保管しません" in h
+
+
+def test_short_label_drops_prefecture_and_city(env):
+    """狭い列に出す名前は、都道府県と市区町村を落として町名以降を使う。"""
+    f = env.app.short_label
+    assert f({"address": "神奈川県小田原市城山4-20-18"}) == "城山4-20-18"
+    assert f({"address": "東京都世田谷区北沢1-1"}) == "北沢1-1"
+    # 住所が無ければ表題で代替する
+    assert f({"address": "", "title": "中古戸建"}) == "中古戸建"
+    assert f({}) == "物件"
+
+
+def test_compare_table_carries_names_and_column_count(env):
+    """スマホでは見出し行を隠すので、値の側がどの物件かを持っていること。
+
+    列数も表自身に持たせる。CSSのauto-fit任せにすると3件目が折り返し、
+    横に並ばなくなって比較にならない。
+    """
+    c = env.app.app.test_client()
+    _login(c, env, "mobile@example.com")
+    uid = env.db.run("SELECT id FROM users WHERE email = ?",
+                     ("mobile@example.com",), "one")["id"]
+    u = env.accounts.get_user(uid)
+    ids = [env.saved.save(u, "chuko_kodate", f"物件{i}",
+                          f"神奈川県小田原市栄町{i}-1-1", 30000000 + i,
+                          60 + i, "C", _payload(total=60 + i))
+           for i in range(3)]
+    h = c.get("".join(f"/compare?id={ids[0]}" if i == 0 else f"&id={ids[i]}"
+                      for i in range(3))).get_data(as_text=True)
+    assert 'style="--n:3"' in h, "列数が表に出ていない"
+    assert 'data-name="栄町0-1-1"' in h
+    assert 'data-name="栄町2-1-1"' in h

@@ -3329,6 +3329,33 @@ _ACCOUNT_CSS = """
  table.cmp td.best{background:#ecfdf5;font-weight:700}
  table.cmp td.best::after{content:" ◎";color:#059669;font-size:11px}
  table.cmp tr.sect th{background:#f8fafc;color:#111;font-size:12px}
+ /* スマホでは表を積む。横スクロールだと比べたい2列を同時に見られず、
+    比較表の意味が無くなるため。DOMは共通でCSSだけ切り替える。 */
+ @media (max-width:600px){
+  .tablewrap{overflow:visible}
+  table.cmp{display:block; min-width:0}
+  table.cmp thead{display:none}
+  table.cmp tbody{display:block}
+  /* 列数は --n（保存件数、最大3）で決める。auto-fit にすると3件目が
+     折り返して横に並ばず、比べられなくなる。 */
+  table.cmp tr{display:grid; gap:7px; padding:12px 0;
+    grid-template-columns:repeat(var(--n,2),minmax(0,1fr));
+    border-bottom:1px solid #e5e7eb}
+  table.cmp th.rowlbl{grid-column:1/-1; display:block; position:static;
+    background:none; border:0; padding:0; white-space:normal; font-size:13px}
+  table.cmp td{display:block; border:0; padding:7px 9px; white-space:normal;
+    background:#f8fafc; border-radius:9px; font-size:14px; font-weight:700;
+    overflow-wrap:anywhere}
+  /* どの物件の値かを、セル自身に持たせる（見出し行を隠すため） */
+  table.cmp td::before{content:attr(data-name); display:block; font-size:11px;
+    color:#6b7280; font-weight:400; margin-bottom:3px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  table.cmp td.best{background:#ecfdf5; box-shadow:inset 0 0 0 1.5px #a7f3d0}
+  table.cmp tr.sect{display:block; padding:16px 0 2px; border-bottom:0}
+  table.cmp tr.sect th{background:none; padding:0}
+  table.cmp tr.sect th:not(.rowlbl){display:none}
+ }
+
  .selbar{position:sticky;bottom:0;background:#fff;border-top:1px solid #e5e7eb;
    padding:12px 0;margin-top:6px;display:flex;gap:10px;align-items:center}
  .selbar .n{font-size:13px;color:#6b7280}
@@ -3631,6 +3658,23 @@ def _fmt_pct(v):
     return "—" if v is None else f"{v:+.1f}%"
 
 
+def short_label(item):
+    """狭い列に出すための短い名前。都道府県と市区町村を落として町名以降を使う。
+
+    「神奈川県小田原市城山4-20-18」→「城山4-20-18」。
+    住所が無いか短縮できないときは表題を切り詰めて使う。
+    """
+    import re as _re
+    addr = (item.get("address") or "").strip()
+    if addr:
+        m = _re.match(r"^(?:.*?[都道府県])?(?:.*?[市区町村])?(.+)$", addr)
+        rest = (m.group(1) if m else "").strip()
+        if rest:
+            return rest[:14]
+        return addr[:14]
+    return (item.get("title") or "物件")[:14]
+
+
 def compare_rows(items):
     """比較表の行を組み立てる。best には「その行で優れている列」の番号を入れる。
 
@@ -3720,15 +3764,17 @@ COMPARE = """
  <p class="lead">◎ は、その行で条件の良いほうです。
   合計点だけで決めず、気になる行を見てください。</p>
 
- <div class="tablewrap"><table class="cmp">
+ <div class="tablewrap"><table class="cmp" style="--n:{{ cols }}">
   <thead><tr><th class="rowlbl">項目</th>
-   {% for it in items %}<th>{{ it.title }}<span>{{ it.address or '' }}</span></th>{% endfor %}
+   {% for it in items %}<th>{{ shorts[loop.index0] }}<span>{{ kindja(it.kind) }}
+     ／ {{ it.address or '—' }}</span></th>{% endfor %}
   </tr></thead>
   <tbody>
    {% for r in rows %}
     <tr><th class="rowlbl">{{ r.label }}{% if r.note %}<span class="sub"
       style="display:block;font-weight:400">{{ r.note }}</span>{% endif %}</th>
-     {% for t in r.texts %}<td class="{{ 'best' if loop.index0 in r.best }}">{{ t }}</td>{% endfor %}
+     {% for t in r.texts %}<td data-name="{{ shorts[loop.index0] }}"
+       class="{{ 'best' if loop.index0 in r.best }}">{{ t }}</td>{% endfor %}
     </tr>
    {% endfor %}
    {% if cats %}
@@ -3736,7 +3782,8 @@ COMPARE = """
      {% for it in items %}<th></th>{% endfor %}</tr>
     {% for r in cats %}
      <tr><th class="rowlbl">{{ r.label }}</th>
-      {% for t in r.texts %}<td class="{{ 'best' if loop.index0 in r.best }}">{{ t }}</td>{% endfor %}
+      {% for t in r.texts %}<td data-name="{{ shorts[loop.index0] }}"
+        class="{{ 'best' if loop.index0 in r.best }}">{{ t }}</td>{% endfor %}
      </tr>
     {% endfor %}
    {% endif %}
@@ -3748,7 +3795,7 @@ COMPARE = """
  <h2 style="margin-top:0">それぞれの弱点</h2>
  <p class="lead">点数に出ない部分です。上の表で拮抗しているときは、こちらが決め手になります。</p>
  {% for it in items %}
-  <h3 style="font-size:14px;margin:14px 0 4px">{{ it.title }}</h3>
+  <h3 style="font-size:14px;margin:14px 0 4px">{{ shorts[loop.index0] }}</h3>
   {% set w = it.payload.get('weaknesses') or [] %}
   {% if w %}<ul>{% for x in w %}<li>{{ x }}</li>{% endfor %}</ul>
   {% else %}<p class="sub">特筆すべき弱点は挙がっていません。</p>{% endif %}
@@ -3781,7 +3828,9 @@ def compare():
         return _account_page("比べる", body, chip="比べる")
     rows, cats, mixed = compare_rows(items)
     body = render_template_string(COMPARE, items=items, rows=rows, cats=cats,
-                                  mixed=mixed)
+                                  mixed=mixed, kindja=_kindja,
+                                  cols=min(len(items), 3),
+                                  shorts=[short_label(i) for i in items])
     return _account_page("比べる", body, chip="比べる")
 
 
