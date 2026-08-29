@@ -408,15 +408,23 @@ def test_pdf_report_renders_japanese():
 
 
 def test_menu_on_every_page():
-    """三本線メニューが全ページの固定バーに出ること。"""
+    """三本線メニューが全ページの固定バーに出ること。
+
+    LPだけは専用のバー（id="burger"）を持ち、他のページは共通の
+    brand_bar（id="hiBurger"）を使う。どちらでも三本線は出ている必要がある。
+    またLPは自分自身への「トップ」リンクを載せない（今そこにいるため）ので、
+    そこだけ除外して他のページへの導線が揃っていることを見る。
+    """
     import sys, os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     import app as webapp
     c = webapp.app.test_client()
     for path in ["/", "/terms", "/privacy", "/pro/finance"]:
         h = c.get(path).get_data(as_text=True)
-        assert "hiBurger" in h, path
+        assert ('id="hiBurger"' in h) or ('id="burger"' in h), path
         for href, label in webapp.MENU_ITEMS:
+            if path == "/" and href == "/":
+                continue
             assert label in h, (path, label)
 
 
