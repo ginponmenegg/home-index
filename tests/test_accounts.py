@@ -28,7 +28,10 @@ def env():
     path = os.path.join(tempfile.mkdtemp(prefix="hi_acc_"), "t.db")
     os.environ["DATABASE_URL"] = "sqlite:///" + path.replace("\\", "/")
     os.environ["SECRET_KEY"] = "test-secret-key"
-    os.environ.pop("RESEND_API_KEY", None)
+    # 空文字にする。消すだけだと app.py が .env を読み直して復活する
+    # （setdefault なので、キーが在れば上書きされない）。
+    prev_mail = os.environ.get("RESEND_API_KEY")
+    os.environ["RESEND_API_KEY"] = ""
 
     from src import db, accounts, saved
     import app as webapp
@@ -49,6 +52,10 @@ def env():
         os.environ.pop("SECRET_KEY", None)
     else:
         os.environ["SECRET_KEY"] = prev_key
+    if prev_mail is None:
+        os.environ.pop("RESEND_API_KEY", None)
+    else:
+        os.environ["RESEND_API_KEY"] = prev_mail
     for m in (db, accounts, saved, webapp):
         importlib.reload(m)
 

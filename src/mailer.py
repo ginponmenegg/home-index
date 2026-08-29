@@ -13,7 +13,16 @@ import urllib.request
 import urllib.error
 
 API = "https://api.resend.com/emails"
-TIMEOUT = 10
+TIMEOUT = 15
+
+# 名乗らないと Cloudflare に 403（error code 1010）で弾かれる。
+# Python-urllib という既定の名乗りが拒否されるので、明示する。
+UA = "home-index/1.0 (+https://home-index-h2hf.onrender.com)"
+
+# ここだけ requests ではなく urllib を使っている。requests は certifi の
+# CA束を見るため、証明書を差し替える環境（社内プロキシや一部のセキュリティ
+# ソフト）で検証に失敗する。urllib なら OS の証明書ストアを使うので、
+# 開発機でも本番でも同じように通る。検証を切る選択はしない。
 
 
 def enabled() -> bool:
@@ -37,7 +46,8 @@ def send(to: str, subject: str, html: str, text: str = "") -> tuple[bool, str]:
     req = urllib.request.Request(
         API, data=json.dumps(body).encode("utf-8"),
         headers={"Authorization": f"Bearer {key}",
-                 "Content-Type": "application/json"})
+                 "Content-Type": "application/json",
+                 "User-Agent": UA})
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             return True, json.loads(r.read().decode("utf-8")).get("id", "")
