@@ -27,5 +27,7 @@ services:
         sync: false
       - key: MAIL_FROM           # 例）HOME INDEX <login@example.com>
         sync: false
+      - key: CANONICAL_HOST    # 独自ドメイン（例 home-index.jp）。未設定なら転送しない
+        sync: false
       - key: PYTHON_VERSION
         value: "3.12.7"

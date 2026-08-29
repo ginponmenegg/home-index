@@ -90,6 +90,32 @@ if db.enabled():
 app.jinja_env.globals["structures"] = structure_mod.CHOICES
 
 
+# 正とするホスト名（例：home-index.jp）。未設定なら転送しない。
+CANONICAL_HOST = (os.environ.get("CANONICAL_HOST") or "").strip().lower()
+
+
+@app.before_request
+def _force_canonical_host():
+    """独自ドメイン以外で開かれたら、そちらへ転送する。
+
+    転送するのは GET と HEAD だけにしておく。POST を301で転送すると
+    メソッドが GET に変わる実装があり、フォームの送信内容が消える。
+    誤ったホストへのPOSTはそのまま処理させたほうが害がない。
+
+    /healthz は転送しない。UptimeRobot は onrender.com を叩いて
+    サービスを起こしているので、ここを転送すると監視の意味が薄れる。
+    """
+    if not CANONICAL_HOST or request.method not in ("GET", "HEAD"):
+        return None
+    host = (request.host or "").split(":")[0].lower()
+    if not host or host == CANONICAL_HOST or request.path == "/healthz":
+        return None
+    url = f"https://{CANONICAL_HOST}{request.path}"
+    if request.query_string:
+        url += "?" + request.query_string.decode("utf-8", "ignore")
+    return redirect(url, 301)
+
+
 def accounts_on() -> bool:
     """アカウント機能を出してよいか。DATABASE_URL が無ければ丸ごと隠す。"""
     return db.enabled()
