@@ -1,0 +1,415 @@
+# -*- coding: utf-8 -*-
+"""アカウント（ログイン・保存・比較・プラン）のテスト。ネットワーク不要。
+
+本番はNeon(PostgreSQL)だが、ここではsqliteに繋いで同じコードを通す。
+SQLは方言差の無い範囲で書いてあるので、これで論理は検証できる。
+
+app.py は起動時に DATABASE_URL を見てメニューやルートの出方を決めるため、
+このファイルでは環境変数を立ててから app を読み込み直す。終わったら
+元に戻すので、他のテストには影響しない。
+"""
+import os
+import sys
+import json
+import importlib
+import tempfile
+import datetime
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+@pytest.fixture(scope="module")
+def env():
+    """sqliteを繋いだ状態の app / src モジュール一式を返す。"""
+    prev = os.environ.get("DATABASE_URL")
+    prev_key = os.environ.get("SECRET_KEY")
+    path = os.path.join(tempfile.mkdtemp(prefix="hi_acc_"), "t.db")
+    os.environ["DATABASE_URL"] = "sqlite:///" + path.replace("\\", "/")
+    os.environ["SECRET_KEY"] = "test-secret-key"
+    os.environ.pop("RESEND_API_KEY", None)
+
+    from src import db, accounts, saved
+    import app as webapp
+    for m in (db, accounts, saved, webapp):
+        importlib.reload(m)
+    # reload の順で app が古い db を掴むことがあるので、確実に貼り直す
+    webapp.db, webapp.accounts, webapp.saved = db, accounts, saved
+    db.init_schema()
+
+    yield type("E", (), dict(app=webapp, db=db, accounts=accounts,
+                             saved=saved, path=path))
+
+    if prev is None:
+        os.environ.pop("DATABASE_URL", None)
+    else:
+        os.environ["DATABASE_URL"] = prev
+    if prev_key is None:
+        os.environ.pop("SECRET_KEY", None)
+    else:
+        os.environ["SECRET_KEY"] = prev_key
+    for m in (db, accounts, saved, webapp):
+        importlib.reload(m)
+
+
+# ---- 未設定のときは機能ごと隠れる -----------------------------------------
+
+def test_disabled_without_database_url():
+    """DATABASE_URL が無ければ、アカウント機能はメニューにも結果にも出ない。
+
+    削除ではなく空文字を入れる。app.py は起動時に .env を読み直すので、
+    消しただけでは .env の値が戻ってきてしまう（setdefault のため、
+    キーが在れば上書きされない）。
+    """
+    prev = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = ""
+    try:
+        from src import db
+        import app as webapp
+        importlib.reload(db)
+        importlib.reload(webapp)
+        assert not db.enabled()
+        assert all(h != "/mypage" for h, _ in webapp.MENU_ITEMS)
+        h = webapp.app.test_client().get("/login").get_data(as_text=True)
+        assert "準備中" in h
+        # 使っていない機能について「預かります」と書かないこと
+        pv = webapp.app.test_client().get("/privacy").get_data(as_text=True)
+        assert "メールアドレスをお預かり" not in pv
+        assert "恒久的な保存は行いません" in pv
+    finally:
+        if prev is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = prev
+
+
+# ---- ログイン -------------------------------------------------------------
+
+def test_login_token_roundtrip(env):
+    t = env.accounts.issue_login_token("Taro@Example.COM ")
+    u = env.accounts.consume_login_token(t)
+    assert u["email"] == "taro@example.com"
+    assert u["plan"] == "free"
+    # 使い捨て：2回目は通らない
+    assert env.accounts.consume_login_token(t) is None
+    # 存在しないトークンも静かに落ちる
+    assert env.accounts.consume_login_token("deadbeef") is None
+    assert env.accounts.consume_login_token("") is None
+
+
+def test_login_token_expires(env):
+    """期限切れのトークンは使えない。"""
+    import hashlib
+    tok = "expired-token-for-test"
+    past = (datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(minutes=1)).replace(microsecond=0).isoformat()
+    env.db.run("INSERT INTO login_tokens (token_hash, email, expires_at) "
+               "VALUES (?, ?, ?)",
+               (hashlib.sha256(tok.encode()).hexdigest(), "x@example.com",
+                past))
+    assert env.accounts.consume_login_token(tok) is None
+
+
+def test_token_is_not_stored_in_clear(env):
+    """DBにはハッシュだけを置く。漏れてもログインには使えない。"""
+    t = env.accounts.issue_login_token("hash@example.com")
+    rows = env.db.run("SELECT token_hash FROM login_tokens", (), "all")
+    assert all(r["token_hash"] != t for r in rows)
+    assert any(len(r["token_hash"]) == 64 for r in rows)
+
+
+def test_rate_limit_per_email(env):
+    """同じアドレスに何度も送らせない（Resendの無料枠を守るため）。"""
+    addr = "flood@example.com"
+    for _ in range(env.accounts.PER_EMAIL_PER_HOUR):
+        env.accounts.issue_login_token(addr)
+    with pytest.raises(env.accounts.TooManyRequests):
+        env.accounts.issue_login_token(addr)
+
+
+def test_valid_email(env):
+    ok = ["a@b.co", "taro.yamada+1@example.co.jp"]
+    ng = ["", "a@b", "a b@c.com", "@example.com", "noatmark", "a@@b.com"]
+    for x in ok:
+        assert env.accounts.valid_email(x), x
+    for x in ng:
+        assert not env.accounts.valid_email(x), x
+
+
+# ---- 保存 -----------------------------------------------------------------
+
+def _user(env, email):
+    return env.accounts.consume_login_token(
+        env.accounts.issue_login_token(email))
+
+
+def _payload(total=70, cats=None, kind="chuko_kodate", **kw):
+    p = {"kind": kind, "total": total, "grade": "B", "sufficiency": 48.0,
+         "categories": cats or [{"name": "物件", "points": 18, "weight": 25,
+                                 "pct": 72}],
+         "risks": [], "strengths": [], "weaknesses": [], "spec": {},
+         "price": {"verdict": "概ね適正", "dev": 1.0},
+         "loan": {"monthly": 100000, "burden": 20.0}}
+    p.update(kw)
+    return p
+
+
+def test_save_and_list(env):
+    u = _user(env, "saver@example.com")
+    sid = env.saved.save(u, "chuko_kodate", "中古戸建　小田原",
+                         "神奈川県小田原市", 34800000, 72, "B", _payload())
+    assert sid > 0
+    rows = env.saved.listing(u["id"])
+    assert len(rows) == 1 and rows[0]["total_score"] == 72
+
+
+def test_free_limit(env):
+    """無料プランは3件まで。上限に達したら例外で知らせる。"""
+    u = _user(env, "limit@example.com")
+    for i in range(env.saved.FREE_LIMIT):
+        env.saved.save(u, "chuko_kodate", f"物件{i}", "住所", 1, 50, "C",
+                       _payload())
+    with pytest.raises(env.saved.LimitReached):
+        env.saved.save(u, "chuko_kodate", "4件目", "住所", 1, 50, "C",
+                       _payload())
+    # PROなら増える
+    env.accounts.set_plan(u["id"], env.accounts.PLAN_PRO, None)
+    u2 = env.accounts.get_user(u["id"])
+    assert env.accounts.is_pro(u2)
+    assert env.saved.limit_for(u2) == env.saved.PRO_LIMIT
+    env.saved.save(u2, "chuko_kodate", "4件目", "住所", 1, 50, "C", _payload())
+
+
+def test_expired_plan_is_free(env):
+    u = _user(env, "expired@example.com")
+    past = "2000-01-01T00:00:00+00:00"
+    env.accounts.set_plan(u["id"], env.accounts.PLAN_PRO, past)
+    assert not env.accounts.is_pro(env.accounts.get_user(u["id"]))
+
+
+def test_cannot_read_others_saves(env):
+    """他人のIDを指定しても取れない。"""
+    a = _user(env, "a-owner@example.com")
+    b = _user(env, "b-other@example.com")
+    sid = env.saved.save(a, "chuko_kodate", "Aの物件", "住所", 1, 60, "C",
+                         _payload())
+    assert env.saved.get_many(b["id"], [sid]) == []
+    assert len(env.saved.get_many(a["id"], [sid])) == 1
+    # 削除も同様に効かない
+    env.saved.delete(b["id"], sid)
+    assert len(env.saved.get_many(a["id"], [sid])) == 1
+
+
+# ---- 比較 -----------------------------------------------------------------
+
+def _item(kind, payload, title="X"):
+    return {"id": 1, "kind": kind, "title": title, "address": "",
+            "payload": payload}
+
+
+def test_compare_marks_the_better_column(env):
+    items = [_item("chuko_kodate", _payload(total=60,
+                                            loan={"monthly": 120000,
+                                                  "burden": 25.0})),
+             _item("chuko_kodate", _payload(total=80,
+                                            loan={"monthly": 90000,
+                                                  "burden": 18.0}))]
+    rows, cats, mixed = env.app.compare_rows(items)
+    assert not mixed
+    by = {r["label"]: r for r in rows}
+    assert by["総合点"]["best"] == [1]        # 高いほうが良い
+    assert by["月々の返済"]["best"] == [1]      # 低いほうが良い
+    assert by["返済の負担率"]["best"] == [1]
+    assert cats, "同じ種別ならカテゴリ別も出る"
+
+
+def test_compare_hides_categories_when_kinds_differ(env):
+    """戸建とマンションは配点が違うので、カテゴリ別を並べない。"""
+    items = [_item("chuko_kodate", _payload()),
+             _item("chuko_mansion", _payload(kind="chuko_mansion"))]
+    rows, cats, mixed = env.app.compare_rows(items)
+    assert mixed is True
+    assert cats == []
+    assert rows, "共通の行は出す"
+
+
+def test_compare_no_best_when_all_equal_or_unknown(env):
+    """差が無い行・判定不可の行には印をつけない。"""
+    p = _payload(total=70, price={"verdict": "判定不可"})
+    rows, _, _ = env.app.compare_rows([_item("chuko_kodate", p),
+                                       _item("chuko_kodate", dict(p))])
+    by = {r["label"]: r for r in rows}
+    assert by["総合点"]["best"] == []
+    assert by["価格の妥当性"]["best"] == []
+
+
+# ---- 署名 -----------------------------------------------------------------
+
+def test_snapshot_signature_required(env):
+    """改ざんした保存内容は受け付けない。"""
+    tok = env.app.sign_snapshot({"kind": "chuko_kodate", "total": 70})
+    assert env.app._unsign_snapshot(tok)["total"] == 70
+    assert env.app._unsign_snapshot(tok + "x") is None
+    assert env.app._unsign_snapshot("") is None
+
+
+# ---- 画面（エンドツーエンド） ---------------------------------------------
+
+def _login(client, env, email):
+    t = env.accounts.issue_login_token(email)
+    r = client.get(f"/login/{t}")
+    assert r.status_code == 302
+    return r
+
+
+def test_pages_require_login(env):
+    c = env.app.app.test_client()
+    for path in ["/mypage", "/compare"]:
+        r = c.get(path)
+        assert r.status_code == 302 and "/login" in r.headers["Location"], path
+
+
+def test_login_page_shows_dev_link_without_mail_key(env):
+    """メールの鍵が無い環境では、リンクを画面に出して開発を止めない。"""
+    c = env.app.app.test_client()
+    h = c.post("/login", data={"email": "dev@example.com"}).get_data(
+        as_text=True)
+    assert "/login/" in h
+
+
+def test_bad_token_page(env):
+    r = env.app.app.test_client().get("/login/nonexistent-token")
+    assert r.status_code == 400
+    assert "リンクが使えません" in r.get_data(as_text=True)
+
+
+def test_end_to_end_save_and_compare(env):
+    """診断→保存→マイページ→比較、を実際の画面で通す。"""
+    c = env.app.app.test_client()
+    _login(c, env, "e2e@example.com")
+
+    os.environ["SHINDAN_MOCK"] = "1"
+    try:
+        form = dict(ptype="chuko_kodate", price="3480", address="神奈川県小田原市南町1-1-1",
+                    land="110", building="96", byear="2006", station="12",
+                    income="700", down="500", loan_years="35")
+        h = c.post("/diagnose", data=form).get_data(as_text=True)
+        assert "この結果を保存する" in h, "ログイン中なら保存ボタンが出る"
+        import re
+        tok = re.search(r'name="snap" value="([^"]+)"', h).group(1)
+
+        # 2件保存する（比較には2件必要）
+        assert c.post("/save", data={"snap": tok}).status_code == 302
+        form2 = dict(form, price="4200", address="神奈川県小田原市栄町2-2-2")
+        h2 = c.post("/diagnose", data=form2).get_data(as_text=True)
+        tok2 = re.search(r'name="snap" value="([^"]+)"', h2).group(1)
+        c.post("/save", data={"snap": tok2})
+    finally:
+        os.environ.pop("SHINDAN_MOCK", None)
+
+    page = c.get("/mypage").get_data(as_text=True)
+    assert "小田原市南町" in page and "小田原市栄町" in page
+
+    ids = [r["id"] for r in env.saved.listing(
+        env.accounts.consume_login_token(
+            env.accounts.issue_login_token("e2e@example.com"))["id"])]
+    assert len(ids) >= 2
+    cmp_page = c.get(f"/compare?id={ids[0]}&id={ids[1]}").get_data(as_text=True)
+    assert "総合点" in cmp_page and "月々の返済" in cmp_page
+
+
+def test_save_rejects_tampered_snapshot(env):
+    c = env.app.app.test_client()
+    _login(c, env, "tamper@example.com")
+    before = len(env.saved.listing(
+        env.db.run("SELECT id FROM users WHERE email = ?",
+                   ("tamper@example.com",), "one")["id"]))
+    r = c.post("/save", data={"snap": "not-a-valid-signed-token"})
+    assert r.status_code == 302
+    uid = env.db.run("SELECT id FROM users WHERE email = ?",
+                     ("tamper@example.com",), "one")["id"]
+    assert len(env.saved.listing(uid)) == before
+
+
+def test_logout_clears_session(env):
+    c = env.app.app.test_client()
+    _login(c, env, "bye@example.com")
+    assert c.get("/mypage").status_code == 200
+    assert c.post("/logout").status_code == 302
+    assert c.get("/mypage").status_code == 302
+
+
+def test_plan_page(env):
+    c = env.app.app.test_client()
+    h = c.get("/plan").get_data(as_text=True)
+    assert "試験公開中" in h
+    assert str(env.saved.FREE_LIMIT) in h
+
+
+def test_account_pages_are_noindex(env):
+    """個人のページは検索結果に出さない。"""
+    c = env.app.app.test_client()
+    _login(c, env, "noindex@example.com")
+    for path in ["/mypage", "/plan", "/login"]:
+        h = c.get(path).get_data(as_text=True)
+        assert 'name="robots" content="noindex"' in h, path
+
+
+def test_sitemap_has_no_account_pages(env):
+    h = env.app.app.test_client().get("/sitemap.xml").get_data(as_text=True)
+    for p in ["/mypage", "/login", "/compare", "/plan"]:
+        assert p not in h, p
+
+
+def test_healthz_does_not_touch_db(env):
+    """5分おきの死活監視でNeonを起こさないこと（無料枠を使い切らないため）。
+
+    /healthz が db を呼ぶようになったら、ここで気づけるようにしておく。
+    """
+    calls = []
+    orig = env.db.connect
+    env.db.connect = lambda *a, **k: (calls.append(1), orig(*a, **k))[1]
+    try:
+        assert env.app.app.test_client().get("/healthz").status_code == 200
+    finally:
+        env.db.connect = orig
+    assert calls == [], "healthz からDBに接続してはいけない"
+
+
+def test_mypage_has_no_nested_forms(env):
+    """<form>を入れ子にしない。
+
+    入れ子にするとブラウザが内側を捨て、2件目以降の削除ボタンが
+    「比べる」フォームに吸収されて、押すと比較画面へ飛んでしまう。
+    """
+    c = env.app.app.test_client()
+    _login(c, env, "nest@example.com")
+    u = env.db.run("SELECT id FROM users WHERE email = ?",
+                   ("nest@example.com",), "one")
+    for i in range(2):
+        env.saved.save(env.accounts.get_user(u["id"]), "chuko_kodate",
+                       f"物件{i}", "住所", 1, 60, "C", _payload())
+    h = c.get("/mypage").get_data(as_text=True)
+
+    start = h.index('<form method="get" action="/compare">')
+    end = h.index("</form>", start)
+    assert "<form" not in h[start + 6:end], "比べるフォームの中にフォームがある"
+    # 保存件数と同じだけ削除フォームがあること
+    assert h.count('action="/saved/') == 2
+
+def test_sufficiency_is_shown_as_is(env):
+    """情報充足度は既に百分率。二重に100倍しない。"""
+    items = [_item("chuko_kodate", _payload(sufficiency=48.0)),
+             _item("chuko_kodate", _payload(sufficiency=61.0))]
+    rows, _, _ = env.app.compare_rows(items)
+    row = {r["label"]: r for r in rows}["情報の充足度"]
+    assert row["texts"] == ["48%", "61%"]
+    assert row["best"] == [1]
+
+def test_privacy_declares_storage_when_accounts_on(env):
+    """保存機能を入れたら、ポリシーもそう書いてあること。"""
+    h = env.app.app.test_client().get("/privacy").get_data(as_text=True)
+    assert "メールアドレスをお預かり" in h
+    assert "世帯年収は保存しません" in h
+    assert "パスワードは保管しません" in h

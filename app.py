@@ -8,12 +8,16 @@ http://127.0.0.1:5000 を開いて使う。金額は万円で入力。
 import os
 import sys
 import time
+import json
+import secrets
 import threading
 import urllib.parse
 import webbrowser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from flask import Flask, request, render_template_string  # noqa: E402
+from flask import (Flask, request, render_template_string,  # noqa: E402
+                   session, redirect)
+from src import db, accounts, saved, mailer  # noqa: E402
 from src.models import SubjectProperty, MansionSubject  # noqa: E402
 from src.pipeline import run_pipeline, run_mansion_pipeline  # noqa: E402
 from src.extract import parse_listing_text, extract_from_url  # noqa: E402
@@ -53,6 +57,52 @@ def _load_dotenv():
 _load_dotenv()
 
 app = Flask(__name__)
+
+# セッションはサーバに持たず、署名つきCookieだけで完結させる。
+# Renderの無料プランは永続ディスクを持てないので、サーバ側にセッションを
+# 置く方式は最初から採れない。
+#
+# SECRET_KEY は本番では必ず環境変数で固定すること。起動のたびに変わると、
+# 再デプロイやスリープ復帰のたびに全員がログアウトされる。
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+app.config.update(SESSION_COOKIE_HTTPONLY=True,
+                  SESSION_COOKIE_SAMESITE="Lax",
+                  # RENDER は Render が全サービスに自動で入れる（値は "true"）。
+                  # 本番(https)だけ Secure を立てる。ローカルはhttpなので外す。
+                  SESSION_COOKIE_SECURE=bool(os.environ.get("RENDER")))
+
+if db.enabled():
+    # テーブル作成は起動時に1回。CREATE TABLE IF NOT EXISTS なので何度でも安全。
+    # ここで落ちても診断そのものは動かしたいので、握って警告に留める。
+    if not os.environ.get("SECRET_KEY"):
+        # 起動のたびに鍵が変わると、再デプロイのたびに全員ログアウトになる。
+        # 気づきにくい割に影響が大きいので、起動時に必ず知らせる。
+        print("[warn] SECRET_KEY が未設定です。起動するたびに全員ログアウトされます。")
+    try:
+        db.init_schema()
+    except Exception as e:          # pragma: no cover - 接続先依存
+        print(f"[warn] DBに接続できませんでした（アカウント機能は無効）: {e}")
+
+
+def accounts_on() -> bool:
+    """アカウント機能を出してよいか。DATABASE_URL が無ければ丸ごと隠す。"""
+    return db.enabled()
+
+
+def current_user():
+    """ログイン中の利用者。未ログイン・退会済みなら None。"""
+    if not accounts_on():
+        return None
+    uid = session.get("uid")
+    if not uid:
+        return None
+    try:
+        u = accounts.get_user(uid)
+    except Exception:               # pragma: no cover - 接続先依存
+        return None
+    if not u:
+        session.pop("uid", None)
+    return u
 
 # ブランド：HOME INDEX（シンボル＝家×棒グラフ / モノクロ #111111・#E5E5E5）
 # 欧文は Jost（Futura系ジオメトリックサンセリフ）。未読込環境では端末フォントへ退避。
@@ -162,6 +212,10 @@ MENU_ITEMS = [("/", "トップ"),
               ("/mansion", "購入診断（マンション）"),
               ("/terms", "利用規約"),
               ("/privacy", "プライバシーポリシー")]
+
+if db.enabled():
+    # 未ログインで開けばログイン画面に回るので、1項目で足りる。
+    MENU_ITEMS.insert(3, ("/mypage", "マイページ"))
 
 
 def lp_menu_links():
@@ -539,6 +593,14 @@ FONT_LINK_PLACEHOLDER
  ul.seen li{display:flex;gap:10px;font-size:13px;line-height:1.75;margin:0;
   padding:8px 0;border-top:1px solid var(--line)}
  ul.seen li b{flex:0 0 38px;color:var(--ink)}
+ .savebar{background:#fff;border:1px solid var(--line);border-radius:14px;
+  padding:14px 18px;margin-top:12px;display:flex;gap:12px;align-items:center;
+  flex-wrap:wrap;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+ .savebar button,.savebar a.b{display:inline-block;padding:11px 18px;
+  background:#111;color:#fff;border:0;border-radius:9px;font-weight:700;
+  font-size:14px;cursor:pointer;text-decoration:none;font-family:inherit}
+ .savebar .why{font-size:13px;color:var(--sub);line-height:1.7;flex:1;
+  min-width:200px}
  @media (max-width:560px){
   .wrap{padding:16px 12px} h1{font-size:18px} .card{padding:16px}
   .score{font-size:44px} .gletter{font-size:48px}
@@ -574,6 +636,24 @@ BRAND_BAR
    </div>
   </div>
  </div>
+
+ {% if save %}
+ <div class="savebar">
+  {% if save.logged_in %}
+   <form method="post" action="/save" style="margin:0">
+    <input type="hidden" name="snap" value="{{save.token}}">
+    <button type="submit">この結果を保存する</button>
+   </form>
+   <span class="why">保存すると、他の物件と項目ごとに並べて比べられます。
+    <a href="/mypage">保存した物件を見る</a></span>
+  {% else %}
+   <a class="b" href="/login" target="_blank" rel="noopener">ログインして保存する</a>
+   <span class="why">保存すると、他の物件と項目ごとに並べて比べられます。<br>
+    ログイン画面は<b>別のタブで開きます</b>。この結果は開いたまま残るので、
+    ログインしたあとこの画面に戻って保存してください。</span>
+  {% endif %}
+ </div>
+ {% endif %}
 
  <div class="card">
   <h2>価格評価</h2>
@@ -1690,19 +1770,45 @@ Open Database License（ODbL）に基づいて利用しています。
 <p>運営者：""" + OPERATOR + """<br>お問い合わせ：""" + CONTACT + """</p>
 """)
 
+# アカウント機能を使うときだけ足す記載。DATABASE_URL が無いときは
+# 空文字になり、ポリシーは今までどおり「保存しない」と述べる。
+_ACC_COLLECT = ("""
+あわせて、アカウントをご利用の場合はメールアドレスをお預かりします。"""
+                if db.enabled() else "")
+
+_ACC_STORE = ("""<p>アカウントをご利用の場合に限り、利用者ご自身が「保存する」を
+押した診断結果を、比較のためにお預かりします。保存されるのは、そのときの
+点数・カテゴリ別の内訳・価格判定・返済額と、対象物件の所在地・価格などの
+入力内容です。<b>世帯年収は保存しません</b>（返済額の計算結果のみを持ちます）。
+保存した内容は、マイページからいつでも削除できます。</p>
+<p>ログインはパスワードを用いず、メールアドレス宛の使い捨てリンクで行います。
+<b>パスワードは保管しません。</b>リンクの文字列そのものも保存せず、
+照合用のハッシュのみを持ち、30分・1回かぎりで無効になります。</p>"""
+              if db.enabled() else "")
+
+_ACC_PURPOSE = ("""、(4) アカウントの認証と、保存された診断結果の保管・表示"""
+                if db.enabled() else "")
+
+_ACC_MAIL = ("""<h2>5-2. メールの送信</h2>
+<p>ログイン用リンクの送信に、メール配信事業者（Resend）を利用します。
+この目的のためにメールアドレスを同社へ送信します。広告・宣伝のメールは
+お送りしません。</p>""" if db.enabled() else "")
+
 _PRIVACY_BODY = ("""
 <p class="sub">最終改定日：2026年8月28日</p>
 <h2>1. 取得する情報</h2>
 <p>本サービスは、診断のために利用者が入力・貼り付けした情報（物件の所在地・価格・面積・築年・
 駅距離・種別、任意入力の世帯年収・頭金等）を処理します。あわせて、アクセスに伴う技術情報
-（IPアドレス等）を、不正利用防止・レート制限の目的で一時的に参照する場合があります。</p>
+（IPアドレス等）を、不正利用防止・レート制限の目的で一時的に参照する場合があります。"""
++ _ACC_COLLECT + """</p>
 <h2>2. 利用目的</h2>
 <p>取得した情報は、(1) 診断結果の生成・表示、(2) 本サービスの品質改善、
-(3) 不正・過度なアクセスの防止、の目的にのみ利用します。診断のために不要な情報は取得しません。</p>
+(3) 不正・過度なアクセスの防止""" + _ACC_PURPOSE + """、
+の目的にのみ利用します。診断のために不要な情報は取得しません。</p>
 <h2>3. 保存・安全管理</h2>
 <p>入力情報は原則として診断処理のために用い、サーバー上での恒久的な保存は行いません
 （不正防止のためのアクセス記録を除く）。取り扱いにあたっては適切な安全管理措置を講じます。
-地図・座標情報は各提供元の利用条件に従って取り扱います。</p>
+地図・座標情報は各提供元の利用条件に従って取り扱います。</p>""" + _ACC_STORE + """
 <h2>4. 第三者提供</h2>
 <p>法令に基づく場合を除き、利用者の同意なく個人情報を第三者に提供しません。
 診断に必要な範囲で公的データAPI等の外部サービスに対し、住所等の照会を行う場合があります。</p>
@@ -1713,6 +1819,7 @@ OpenStreetMap の Overpass API を利用します。診断のために、<b>入�
 <b>世帯年収・頭金・他の借入などの家計に関する入力は、外部に送信していません。</b>
 これらは当サービス内での計算にのみ用います。
 これらへの照会内容は各提供元の規約・プライバシーポリシーに従います。</p>
+""" + _ACC_MAIL + """
 <h2>6. お問い合わせ・開示等の請求</h2>
 <p>本ポリシーに関するお問い合わせ、保有個人データの開示・訂正・削除等のご請求は、
 下記までご連絡ください。</p>
@@ -2037,8 +2144,23 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
     grade_color = GRADE_COLOR.get(d.grade, "#0d9488")
     grade_comment = GRADE_COMMENT.get(d.grade, "")
 
+    # 保存バー。DATABASE_URL が無ければ save は None のままで、
+    # テンプレート側ごと出ない。改ざん防止のため、保存する中身は
+    # ここで署名して hidden に載せる（受け取り側で署名を検証する）。
+    save = None
+    if accounts_on():
+        kind = getattr(subject, "property_type", "") or ""
+        title = f"{sctx.get('ptype', '物件')}　{sctx.get('address', '')}".strip()
+        save = {"logged_in": bool(current_user())}
+        if save["logged_in"]:
+            save["token"] = sign_snapshot(dict(
+                kind=kind, title=title, address=sctx.get("address"),
+                price=getattr(subject, "price", None),
+                total=d.total_score, grade=d.grade,
+                payload=saved.snapshot(res, subject, sctx, kind)))
+
     return render_template_string(
-        RESULT, s=sctx, price_man=man(subject.price), age=age,
+        RESULT, s=sctx, price_man=man(subject.price), age=age, save=save,
         p=price_ctx, cats=cats, d=dctx, loan=loan, warnings=res.warnings,
         enr=enr, ring_circ=round(circ, 1), ring_off=ring_off,
         grade_color=grade_color, grade_comment=grade_comment,
@@ -3161,6 +3283,546 @@ def _run_mansion_pro(f):
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           free_diagnosis=free, questions=questions,
                           questions_note=questions_note)
+
+
+# ---- アカウント（ログイン・保存・比較・プラン） ----------------------
+# DATABASE_URL が未設定のときは、この一連のルートは登録するが中身を出さない
+# （accounts_on() が False なら案内だけ返す）。診断そのものは今までどおり動く。
+
+_ACCOUNT_CSS = """
+ .lead{color:#6b7280;font-size:13px;line-height:1.9;margin:0 0 14px}
+ .btn{display:inline-block;padding:13px 20px;background:#111;color:#fff;
+   border:0;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;
+   text-decoration:none;font-family:inherit}
+ .btn.ghost{background:#eef2f7;color:#111}
+ .btn.sm{padding:7px 12px;font-size:13px;border-radius:8px}
+ .btn:disabled{opacity:.45;cursor:default}
+ input[type=email]{width:100%;padding:13px;border:1px solid #d1d5db;
+   border-radius:10px;font-size:16px;font-family:inherit}
+ .note{background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;
+   padding:12px 14px;font-size:13px;line-height:1.85;color:#374151}
+ .warn{background:#fff7ed;border-color:#fed7aa;color:#9a3412}
+ .ok{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
+ .plan-badge{display:inline-block;border-radius:999px;padding:3px 10px;
+   font-size:12px;font-weight:700;background:#eef2f7;color:#374151}
+ .plan-badge.is-pro{background:#111;color:#fff}
+ .items{list-style:none;padding:0;margin:12px 0 0}
+ .items li{border-top:1px solid #e5e7eb;padding:13px 0;display:flex;
+   gap:12px;align-items:flex-start}
+ .items li:first-child{border-top:0}
+ .items .pick{margin-top:3px;width:18px;height:18px;flex:0 0 auto}
+ .items .body{flex:1;min-width:0}
+ .items .ttl{font-size:14px;font-weight:700;line-height:1.5;
+   word-break:break-word}
+ .items .meta{font-size:12px;color:#6b7280;margin-top:3px}
+ .items .sc{font-size:20px;font-weight:800;white-space:nowrap;margin-left:6px}
+ .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:10px}
+ table.cmp{border-collapse:collapse;font-size:13px;min-width:100%}
+ table.cmp th,table.cmp td{border-bottom:1px solid #e5e7eb;padding:9px 11px;
+   text-align:left;white-space:nowrap}
+ table.cmp thead th{font-size:13px;color:#111;border-bottom:2px solid #111;
+   vertical-align:bottom}
+ table.cmp thead th span{display:block;font-weight:400;font-size:11px;
+   color:#6b7280;margin-top:2px}
+ table.cmp th.rowlbl{color:#6b7280;font-weight:600;position:sticky;left:0;
+   background:#fff}
+ table.cmp td.best{background:#ecfdf5;font-weight:700}
+ table.cmp td.best::after{content:" ◎";color:#059669;font-size:11px}
+ table.cmp tr.sect th{background:#f8fafc;color:#111;font-size:12px}
+ .selbar{position:sticky;bottom:0;background:#fff;border-top:1px solid #e5e7eb;
+   padding:12px 0;margin-top:6px;display:flex;gap:10px;align-items:center}
+ .selbar .n{font-size:13px;color:#6b7280}
+"""
+
+
+def _account_page(title, body, chip="マイページ"):
+    """アカウント系ページの共通の枠。フォームと同じ見た目にそろえる。"""
+    return ('<!doctype html><html lang="ja"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            '<meta name="robots" content="noindex">'
+            f'{FONT_LINK}{ICON_LINKS}'
+            f'<title>{title}｜HOME INDEX</title>'
+            f'<style>{_FORM_CSS}{_ACCOUNT_CSS}</style></head><body>'
+            + brand_bar(chip)
+            + f'<div class="wrap">{body}{FOOTER}</div></body></html>')
+
+
+_OFF_BODY = ('<div class="card"><h1>アカウント機能は準備中です</h1>'
+             '<p class="lead">保存と比較は、もうすこしお待ちください。'
+             '診断そのものは今までどおりご利用いただけます。</p>'
+             '<a class="btn" href="/buy">診断にもどる</a></div>')
+
+
+def _require_login():
+    """ログインしていなければリダイレクト応答を返す。していれば None。"""
+    if not accounts_on():
+        return _account_page("準備中", _OFF_BODY)
+    if not current_user():
+        return redirect("/login")
+    return None
+
+
+# ---- ログイン ------------------------------------------------------------
+
+LOGIN_PAGE = """
+<div class="card">
+ <h1>ログイン</h1>
+ {% if user %}
+  <p class="lead">{{ user.email }} でログイン中です。</p>
+  <a class="btn" href="/mypage">マイページへ</a>
+ {% else %}
+  <p class="lead">パスワードはありません。メールアドレスを入れると、
+   ログイン用のリンクをお送りします。<br>
+   保存した診断を、あとから別の端末でも見られるようにするためのものです。</p>
+  {% if error %}<div class="note warn">{{ error }}</div><br>{% endif %}
+  <form method="post" action="/login">
+   <label for="email" style="font-size:13px;font-weight:700">メールアドレス</label>
+   <div style="margin:6px 0 14px"><input id="email" type="email" name="email"
+     required autocomplete="email" placeholder="you@example.com"
+     value="{{ email or '' }}"></div>
+   <button class="btn" type="submit">ログイン用リンクを送る</button>
+  </form>
+  <p class="sub" style="margin-top:14px;line-height:1.9">
+   ご登録のメールアドレスは、ログインと、保存した診断をお預かりするためだけに
+   使います。広告メールはお送りしません。
+   詳しくは<a href="/privacy">プライバシーポリシー</a>をご覧ください。</p>
+ {% endif %}
+</div>
+"""
+
+LOGIN_SENT = """
+<div class="card">
+ <h1>リンクをお送りしました</h1>
+ <div class="note ok">{{ email }} 宛にログイン用のリンクを送りました。
+  メールを開いて、{{ ttl }}分以内にリンクを押してください。</div>
+ <p class="lead" style="margin-top:14px">届かない場合は、迷惑メールに入っていないか
+  ご確認ください。それでも見当たらなければ、
+  <a href="/login">もう一度お試しください</a>。</p>
+ {% if devlink %}
+  <div class="note warn" style="margin-top:10px">
+   <b>開発用の表示です。</b>メール送信が設定されていないため、リンクを直接出しています。<br>
+   <a href="{{ devlink }}" style="word-break:break-all">{{ devlink }}</a></div>
+ {% endif %}
+</div>
+"""
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if not accounts_on():
+        return _account_page("準備中", _OFF_BODY)
+    user = current_user()
+    if request.method == "GET" or user:
+        return _account_page("ログイン", render_template_string(
+            LOGIN_PAGE, user=user, error=None, email=None), chip="ログイン")
+
+    email = accounts.normalize_email(request.form.get("email"))
+    err = None
+    if not accounts.valid_email(email):
+        err = "メールアドレスの形式をご確認ください。"
+    if err:
+        return _account_page("ログイン", render_template_string(
+            LOGIN_PAGE, user=None, error=err, email=email), chip="ログイン")
+
+    try:
+        token = accounts.issue_login_token(email)
+    except accounts.TooManyRequests as e:
+        err = ("短い時間に何度も送信されています。しばらく置いてからお試しください。"
+               if str(e) == "email" else
+               "本日の送信上限に達しました。お手数ですが翌日にお試しください。")
+        return _account_page("ログイン", render_template_string(
+            LOGIN_PAGE, user=None, error=err, email=email), chip="ログイン")
+    except Exception:
+        return _account_page("ログイン", render_template_string(
+            LOGIN_PAGE, user=None, email=email,
+            error="ただいま混み合っています。時間をおいてお試しください。"),
+            chip="ログイン")
+
+    link = urllib.parse.urljoin(request.url_root, f"login/{token}")
+    ok, msg = mailer.send_login_link(email, link, accounts.TOKEN_TTL_MIN)
+    # メールを出せない環境（鍵未設定のローカル）では、画面にリンクを出す。
+    # 本番でこれを出すと誰でもログインできてしまうので、鍵が無いときに限る。
+    devlink = None if (ok or mailer.enabled()) else link
+    if not ok and mailer.enabled():
+        return _account_page("ログイン", render_template_string(
+            LOGIN_PAGE, user=None, email=email,
+            error=f"メールを送れませんでした。{msg}"), chip="ログイン")
+    return _account_page("確認", render_template_string(
+        LOGIN_SENT, email=email, ttl=accounts.TOKEN_TTL_MIN, devlink=devlink),
+        chip="ログイン")
+
+
+@app.route("/login/<token>")
+def login_verify(token):
+    if not accounts_on():
+        return _account_page("準備中", _OFF_BODY)
+    try:
+        user = accounts.consume_login_token(token)
+    except Exception:
+        user = None
+    if not user:
+        body = ('<div class="card"><h1>リンクが使えません</h1>'
+                '<div class="note warn">期限が切れているか、すでに使われたリンクです。'
+                'ログイン用リンクは30分・1回かぎり有効です。</div>'
+                '<p style="margin-top:14px"><a class="btn" href="/login">'
+                'もう一度送る</a></p></div>')
+        return _account_page("ログイン", body, chip="ログイン"), 400
+    session.clear()
+    session["uid"] = user["id"]
+    session.permanent = True
+    return redirect("/mypage")
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect("/")
+
+
+# ---- 保存 ----------------------------------------------------------------
+# 結果ページから戻ってくる内容は、こちらが署名したものだけを受け付ける。
+# 署名が無いと、任意のJSONを保存させられてしまう。
+
+def _snap_serializer():
+    from itsdangerous import URLSafeSerializer
+    return URLSafeSerializer(app.secret_key, salt="hi-snapshot")
+
+
+def sign_snapshot(meta: dict) -> str:
+    return _snap_serializer().dumps(meta)
+
+
+def _unsign_snapshot(token: str):
+    from itsdangerous import BadSignature
+    try:
+        return _snap_serializer().loads(token)
+    except BadSignature:
+        return None
+    except Exception:
+        return None
+
+
+@app.route("/save", methods=["POST"])
+def save_diagnosis():
+    r = _require_login()
+    if r is not None:
+        return r
+    user = current_user()
+    meta = _unsign_snapshot(request.form.get("snap") or "")
+    if not meta:
+        return redirect("/mypage")
+    try:
+        saved.save(user, meta.get("kind", ""), meta.get("title", "診断結果"),
+                   meta.get("address"), meta.get("price"),
+                   int(meta.get("total") or 0), meta.get("grade") or "",
+                   meta.get("payload") or {})
+    except saved.LimitReached:
+        return redirect("/mypage?full=1")
+    except Exception:
+        return redirect("/mypage?err=1")
+    return redirect("/mypage?added=1")
+
+
+@app.route("/saved/<int:sid>/delete", methods=["POST"])
+def delete_saved(sid):
+    r = _require_login()
+    if r is not None:
+        return r
+    saved.delete(current_user()["id"], sid)
+    return redirect("/mypage")
+
+
+# ---- マイページ ----------------------------------------------------------
+
+MYPAGE = """
+<div class="card">
+ <div style="display:flex;justify-content:space-between;align-items:baseline;
+   gap:10px;flex-wrap:wrap">
+  <h1 style="margin:0">保存した物件</h1>
+  <span class="plan-badge {{ 'is-pro' if pro }}">{{ 'PRO' if pro else '無料プラン' }}</span>
+ </div>
+ <p class="lead" style="margin-top:8px">{{ user.email }}
+  <span class="sub">保存 {{ items|length }} / {{ limit }} 件</span></p>
+
+ {% if added %}<div class="note ok">保存しました。</div>{% endif %}
+ {% if full %}<div class="note warn">保存できる件数（{{ limit }}件）に達しています。
+   いずれかを削除するか、PROで上限を増やしてください。</div>{% endif %}
+ {% if err %}<div class="note warn">保存できませんでした。時間をおいてお試しください。</div>{% endif %}
+
+ {% if not items %}
+  <div class="note" style="margin-top:12px">まだ保存がありません。
+   診断結果の画面にある「この結果を保存する」から追加できます。</div>
+  <p style="margin-top:14px">
+   <a class="btn" href="/buy">戸建を診断する</a>
+   <a class="btn ghost" href="/mansion">マンションを診断する</a></p>
+ {% else %}
+  {# 削除フォームは「比べる」フォームの外に置く。<form>は入れ子にできず、
+     入れ子にするとブラウザに捨てられて削除が効かなくなる。
+     ボタン側から form="del<id>" で紐づける。 #}
+  {% for it in items %}
+   <form method="post" action="/saved/{{ it.id }}/delete" id="del{{ it.id }}"
+     onsubmit="return confirm('この保存を削除します。よろしいですか？')"></form>
+  {% endfor %}
+  <form method="get" action="/compare">
+   <ul class="items">
+    {% for it in items %}
+     <li>
+      <input class="pick" type="checkbox" name="id" value="{{ it.id }}"
+        id="p{{ it.id }}" {% if items|length <= 3 %}checked{% endif %}>
+      <div class="body">
+       <label class="ttl" for="p{{ it.id }}">{{ it.title }}</label>
+       <div class="meta">{{ it.address or '—' }}</div>
+       <div class="meta">{{ it.created_at[:10] }}　{{ kindja(it.kind) }}
+        {%- if it.price %}　売出 {{ man(it.price) }}{% endif %}</div>
+      </div>
+      <div style="text-align:right">
+       <div class="sc">{{ it.total_score }}<span class="sub">点</span></div>
+       <button class="btn ghost sm" type="submit" form="del{{ it.id }}"
+         style="margin-top:6px">削除</button>
+      </div>
+     </li>
+    {% endfor %}
+   </ul>
+   <div class="selbar">
+    <button class="btn" type="submit">選んだ物件を比べる</button>
+    <span class="n">2件以上えらんでください</span>
+   </div>
+  </form>
+ {% endif %}
+</div>
+
+<div class="card" style="margin-top:14px">
+ <h2 style="margin-top:0">プランと設定</h2>
+ <p class="lead">いまは<b>{{ 'PRO' if pro else '無料プラン' }}</b>です。
+  保存できるのは{{ limit }}件までです。</p>
+ <p><a class="btn ghost sm" href="/plan">プランを見る</a></p>
+ <form method="post" action="/logout" style="margin-top:14px">
+  <button class="btn ghost sm" type="submit">ログアウト</button></form>
+</div>
+"""
+
+
+def _kindja(kind):
+    return {"chuko_kodate": "中古戸建", "shinchiku_kodate": "新築戸建",
+            "chuko_mansion": "中古マンション"}.get(kind, "物件")
+
+
+@app.route("/mypage")
+def mypage():
+    r = _require_login()
+    if r is not None:
+        return r
+    user = current_user()
+    items = saved.listing(user["id"])
+    body = render_template_string(
+        MYPAGE, user=user, items=items, man=man, kindja=_kindja,
+        pro=accounts.is_pro(user), limit=saved.limit_for(user),
+        added=request.args.get("added"), full=request.args.get("full"),
+        err=request.args.get("err"))
+    return _account_page("マイページ", body)
+
+
+# ---- 比較 ----------------------------------------------------------------
+# 「どちらが良いか」を行ごとに示すのが目的なので、単に並べるだけにはしない。
+# ただし戸建とマンションは配点そのものが違うため、種別が混ざったときは
+# カテゴリ別の行を出さない。出すと、比べてはいけないものを比べさせてしまう。
+
+def _fmt_pct(v):
+    return "—" if v is None else f"{v:+.1f}%"
+
+
+def compare_rows(items):
+    """比較表の行を組み立てる。best には「その行で優れている列」の番号を入れる。
+
+    優劣を機械的に決められる行だけに印をつける。たとえば情報充足度は
+    「物件の良さ」ではなく「診断の確かさ」なので、印はつけるが別の節に置く。
+    """
+    n = len(items)
+    pays = [it["payload"] for it in items]
+
+    def mk(label, vals, better=None, note=None):
+        """better: 'max' | 'min' | None。比較できない値は None を入れておく。"""
+        best = []
+        nums = [v[1] for v in vals]
+        usable = [x for x in nums if x is not None]
+        if better and len(usable) >= 2 and len(set(usable)) > 1:
+            target = max(usable) if better == "max" else min(usable)
+            best = [i for i, x in enumerate(nums) if x == target]
+        return dict(label=label, texts=[v[0] for v in vals], best=best,
+                    note=note)
+
+    rows = [mk("総合点", [(f'{p.get("total", "—")}点', p.get("total"))
+                          for p in pays], "max"),
+            mk("判定", [(p.get("grade", "—"), None) for p in pays])]
+
+    price = []
+    for p in pays:
+        pr = p.get("price") or {}
+        if pr.get("verdict") in (None, "判定不可"):
+            price.append(("判定不可", None))
+        else:
+            dev = pr.get("dev")
+            price.append((f'{pr["verdict"]}（{_fmt_pct(dev)}）', dev))
+    rows.append(mk("価格の妥当性", price, "min",
+                   "推定価格に対する差。マイナスが割安。"))
+
+    rows.append(mk("月々の返済", [
+        ((f'{(p.get("loan") or {}).get("monthly"):,}円'
+          if (p.get("loan") or {}).get("monthly") else "—"),
+         (p.get("loan") or {}).get("monthly")) for p in pays], "min"))
+    rows.append(mk("返済の負担率", [
+        ((f'{(p.get("loan") or {}).get("burden")}%'
+          if (p.get("loan") or {}).get("burden") is not None else "—"),
+         (p.get("loan") or {}).get("burden")) for p in pays], "min"))
+
+    risks = []
+    for p in pays:
+        rs = [r for r in (p.get("risks") or []) if r.get("sev") in ("高", "中")]
+        risks.append((f"{len(rs)}件" if rs else "なし", len(rs)))
+    rows.append(mk("重大なリスク", risks, "min"))
+
+    # data_sufficiency はすでに百分率（0〜100）で入っている。
+    # 結果ページも {{d.suff}}% とそのまま出しているので、ここでも掛けない。
+    rows.append(mk("情報の充足度", [
+        ((f'{int(round(p["sufficiency"]))}%'
+          if p.get("sufficiency") is not None else "—"), p.get("sufficiency"))
+        for p in pays], "max",
+        "物件の良し悪しではなく、診断の確かさです。"))
+
+    # カテゴリ別は、種別がそろっているときだけ
+    kinds = {it["kind"] for it in items}
+    cats = []
+    if len(kinds) == 1:
+        names = [c["name"] for c in (pays[0].get("categories") or [])]
+        for nm in names:
+            vals = []
+            for p in pays:
+                hit = next((c for c in (p.get("categories") or [])
+                            if c["name"] == nm), None)
+                if hit:
+                    vals.append((f'{hit["points"]}/{hit["weight"]}',
+                                 hit["points"]))
+                else:
+                    vals.append(("—", None))
+            cats.append(mk(nm, vals, "max"))
+    return rows, cats, (len(kinds) > 1)
+
+
+COMPARE = """
+<div class="card">
+ <a href="/mypage" style="font-size:14px">← 保存した物件へ</a>
+ <h1 style="margin-top:10px">比べる</h1>
+ {% if mixed %}
+  <div class="note warn">戸建とマンションが混ざっています。
+   この2つは配点の項目そのものが違うため、<b>カテゴリ別の比較は出していません</b>。
+   総合点も、同じものさしで並べたものではない点にご注意ください。</div>
+ {% endif %}
+ <p class="lead">◎ は、その行で条件の良いほうです。
+  合計点だけで決めず、気になる行を見てください。</p>
+
+ <div class="tablewrap"><table class="cmp">
+  <thead><tr><th class="rowlbl">項目</th>
+   {% for it in items %}<th>{{ it.title }}<span>{{ it.address or '' }}</span></th>{% endfor %}
+  </tr></thead>
+  <tbody>
+   {% for r in rows %}
+    <tr><th class="rowlbl">{{ r.label }}{% if r.note %}<span class="sub"
+      style="display:block;font-weight:400">{{ r.note }}</span>{% endif %}</th>
+     {% for t in r.texts %}<td class="{{ 'best' if loop.index0 in r.best }}">{{ t }}</td>{% endfor %}
+    </tr>
+   {% endfor %}
+   {% if cats %}
+    <tr class="sect"><th class="rowlbl">カテゴリ別</th>
+     {% for it in items %}<th></th>{% endfor %}</tr>
+    {% for r in cats %}
+     <tr><th class="rowlbl">{{ r.label }}</th>
+      {% for t in r.texts %}<td class="{{ 'best' if loop.index0 in r.best }}">{{ t }}</td>{% endfor %}
+     </tr>
+    {% endfor %}
+   {% endif %}
+  </tbody>
+ </table></div>
+</div>
+
+<div class="card" style="margin-top:14px">
+ <h2 style="margin-top:0">それぞれの弱点</h2>
+ <p class="lead">点数に出ない部分です。上の表で拮抗しているときは、こちらが決め手になります。</p>
+ {% for it in items %}
+  <h3 style="font-size:14px;margin:14px 0 4px">{{ it.title }}</h3>
+  {% set w = it.payload.get('weaknesses') or [] %}
+  {% if w %}<ul>{% for x in w %}<li>{{ x }}</li>{% endfor %}</ul>
+  {% else %}<p class="sub">特筆すべき弱点は挙がっていません。</p>{% endif %}
+ {% endfor %}
+</div>
+
+<div class="card" style="margin-top:14px">
+ <p class="sub" style="margin:0">保存した時点の診断結果を並べています。
+  公的データも配点も時間とともに変わるため、あとから再計算はしていません。
+  日付の離れた結果を比べるときはご注意ください。</p>
+</div>
+"""
+
+
+@app.route("/compare")
+def compare():
+    r = _require_login()
+    if r is not None:
+        return r
+    user = current_user()
+    try:
+        ids = [int(x) for x in request.args.getlist("id")][:6]
+    except ValueError:
+        ids = []
+    items = saved.get_many(user["id"], ids) if ids else []
+    if len(items) < 2:
+        body = ('<div class="card"><h1>比べる物件を選んでください</h1>'
+                '<p class="lead">2件以上を選ぶと、項目ごとに並べて比べられます。</p>'
+                '<a class="btn" href="/mypage">保存した物件へ</a></div>')
+        return _account_page("比べる", body, chip="比べる")
+    rows, cats, mixed = compare_rows(items)
+    body = render_template_string(COMPARE, items=items, rows=rows, cats=cats,
+                                  mixed=mixed)
+    return _account_page("比べる", body, chip="比べる")
+
+
+# ---- プラン --------------------------------------------------------------
+# 決済はまだ繋いでいない。特定商取引法に基づく表記や、課金・解約・返金の
+# 定めを整えてから繋ぐ。ここでは枠組み（プランの区別と上限）だけを持つ。
+
+PLAN_PAGE = """
+<div class="card">
+ <h1>プラン</h1>
+ <p class="lead">いまは<b>{{ 'PRO' if pro else '無料プラン' }}</b>をご利用中です。</p>
+ <div class="tablewrap"><table class="cmp">
+  <thead><tr><th class="rowlbl">できること</th><th>無料</th><th>PRO</th></tr></thead>
+  <tbody>
+   <tr><th class="rowlbl">購入診断（戸建・マンション）</th><td>○</td><td>○</td></tr>
+   <tr><th class="rowlbl">診断結果の保存</th><td>{{ free_limit }}件</td><td>{{ pro_limit }}件</td></tr>
+   <tr><th class="rowlbl">保存した物件の比較</th><td>○</td><td>○</td></tr>
+   <tr><th class="rowlbl">詳細診断（PRO）</th><td>—</td><td>○</td></tr>
+   <tr><th class="rowlbl">仲介業者に聞くことの一覧</th><td>—</td><td>○</td></tr>
+   <tr><th class="rowlbl">資金計画のPDF</th><td>—</td><td>○</td></tr>
+  </tbody>
+ </table></div>
+ <div class="note warn" style="margin-top:14px">
+  <b>PROは試験公開中です。</b>いまのところ料金はいただいていません。
+  どなたでも<a href="/pro/diagnose">戸建</a>・<a href="/pro/mansion">マンション</a>の
+  詳細診断をお試しいただけます。<br>
+  有料でのご提供を始めるときは、事前にこのページでご案内します。
+ </div>
+ <p style="margin-top:14px"><a class="btn ghost" href="/mypage">マイページへ</a></p>
+</div>
+"""
+
+
+@app.route("/plan")
+def plan_page():
+    if not accounts_on():
+        return _account_page("準備中", _OFF_BODY)
+    body = render_template_string(
+        PLAN_PAGE, pro=accounts.is_pro(current_user()),
+        free_limit=saved.FREE_LIMIT, pro_limit=saved.PRO_LIMIT)
+    return _account_page("プラン", body, chip="プラン")
 
 
 # ---- コピーの仕方 ----------------------------------------------------

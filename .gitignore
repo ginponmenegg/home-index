@@ -15,3 +15,6 @@ citycode_cache.json
 
 # ローカルのプレビュー設定
 .claude/
+
+# ローカル確認用のSQLite（本番はNeon）
+*.db
