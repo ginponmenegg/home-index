@@ -75,3 +75,18 @@ def test_overpass_has_more_than_one_endpoint():
     from src import osm
     assert len(osm.OVERPASS_ENDPOINTS) >= 2
     assert osm.OVERPASS == osm.OVERPASS_ENDPOINTS[0]
+
+
+def test_population_falls_back_to_the_mesh_estimate():
+    """e-Statを使っていないので、人口はメッシュ推計を出すこと。
+
+    en.population は常に空になる（ESTAT_APPID を設定していないため）。
+    そのままだと結果画面の「人口」が出っぱなしで「—」になる。
+    """
+    import io
+    src = io.open(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "app.py"), encoding="utf-8").read()
+    assert "mesh_pop_now" in src, "メッシュの人数を表示に使っていない"
+    i = src.index("pop_label = ")
+    block = src[i:i + 400]
+    assert "250mメッシュ" in block, "出典の粒度を明示する"

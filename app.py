@@ -2334,7 +2334,12 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
             districts.append(f"小学校区 {en.elementary_district}")
         if getattr(en, "junior_district", None):
             districts.append(f"中学校区 {en.junior_district}")
+        # e-Stat（市区町村の総人口）は使っていないので en.population は空。
+        # 代わりに国交省の250mメッシュ将来推計を出す。市全体の人口より、
+        # その地点に何人住んでいるかのほうが立地の判断に効く。
         pop_label = f"{en.population:,}人" if en.population else "—"
+        if not en.population and getattr(en, "mesh_pop_now", None):
+            pop_label = f"この地点周辺 約{round(en.mesh_pop_now):,}人（250mメッシュ）"
         trend = en.population_trend or "—"
         if getattr(en, "mesh_pop_change_pct", None) is not None:
             trend = f"この地点の推計 2050年に{en.mesh_pop_change_pct:+}%"
