@@ -27,6 +27,17 @@ services:
         sync: false
       - key: MAIL_FROM           # 例）HOME INDEX <login@example.com>
         sync: false
+      # --- 有料プラン。5つすべて揃うまで課金の画面は出ない ---
+      - key: BILLING_ENABLED    # "1" で有効。課金開始日が決まってから立てる
+        sync: false
+      - key: OPERATOR_NAME      # 特商法：個人事業者は戸籍上の氏名。屋号は不可
+        sync: false
+      - key: OPERATOR_ADDRESS   # 特商法：省略できない
+        sync: false
+      - key: OPERATOR_TEL       # 特商法：省略できない
+        sync: false
+      - key: CONTACT_EMAIL
+        sync: false
       - key: CANONICAL_HOST    # 独自ドメイン（例 home-index.jp）。未設定なら転送しない
         sync: false
       - key: PYTHON_VERSION

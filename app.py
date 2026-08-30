@@ -312,6 +312,37 @@ def brand_lockup(uid="lock"):
 # 運営者情報（Renderの環境変数で設定可能。未設定は仮表示）
 OPERATOR = os.environ.get("OPERATOR_NAME", "〔運営者名〕")
 CONTACT = os.environ.get("CONTACT_EMAIL", "〔連絡先メール〕")
+# 特定商取引法に基づく表記に要る項目。氏名・住所・電話番号は省略できない
+# （請求があれば開示する、という省略規定の対象外）。
+OPERATOR_ADDRESS = os.environ.get("OPERATOR_ADDRESS", "")
+OPERATOR_TEL = os.environ.get("OPERATOR_TEL", "")
+
+# ---- 課金 -----------------------------------------------------------------
+# 決済サービスはまだ繋いでいない。課金開始日も未定なので、
+# BILLING_ENABLED が立つまでプランの申込・解約の画面は出さない。
+# 立てるのは、特定商取引法に基づく表記が実名・実住所で出せるようになり、
+# 規約の課金条項も整えてから。
+PRICE_YEN = 1980                     # 税込。総額表示義務があるため税別で持たない
+PRICE_LABEL = f"月額 {PRICE_YEN:,}円（税込）"
+
+
+def billing_on() -> bool:
+    """課金の画面を出してよいか。
+
+    特商法の表記に必要な項目が揃っていない状態で申込画面を出すのは、
+    表示義務違反になる。フラグだけでなく、実際に値があるかも見る。
+    """
+    if (os.environ.get("BILLING_ENABLED") or "").strip() not in ("1", "true"):
+        return False
+    return bool(OPERATOR_ADDRESS and OPERATOR_TEL
+                and not OPERATOR.startswith("〔")
+                and not CONTACT.startswith("〔"))
+
+# 有料提供を始めたら、特定商取引法に基づく表記への導線が要る。
+LEGAL_LINKS = ('<a href="/terms" style="color:#111">利用規約</a>　・　'
+               '<a href="/privacy" style="color:#111">プライバシーポリシー</a>'
+               + ('　・　<a href="/tokushoho" style="color:#111">'
+                  '特定商取引法に基づく表記</a>' if billing_on() else ''))
 
 PRO_LINKS = ('PRO（試験公開中）：'
              '<a href="/pro/diagnose" style="color:#111">購入診断（戸建）</a>　・　'
@@ -320,8 +351,7 @@ PRO_LINKS = ('PRO（試験公開中）：'
 
 FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#6b7280;line-height:1.9">'
           + PRO_LINKS + '<br>'
-          '<a href="/terms" style="color:#111">利用規約</a>　・　'
-          '<a href="/privacy" style="color:#111">プライバシーポリシー</a><br>'
+          + LEGAL_LINKS + '<br>'
           '出典：国土交通省 不動産情報ライブラリ／国土地理院<br>'
           '商業施設：© OpenStreetMap contributors（ODbL）<br>'
           '© HOME INDEX</div>')
@@ -1798,6 +1828,33 @@ def healthz():
     return "ok", 200
 
 
+_BILLING_TERMS = ("""<h2>第9条（有料プラン）</h2>
+<p>本サービスには、無料で利用できる範囲と、有料プラン（以下「PRO」）があります。
+PROの内容・料金・支払方法・提供時期・解約の方法は、申込みの最終確認画面および
+<a href="/tokushoho">特定商取引法に基づく表記</a>に表示します。</p>
+<p>PROは、""" + PRICE_LABEL + """の月額制です。
+<b>解約されない限り、毎月同じ日に自動で更新されます。</b>
+初回と2回目以降で金額が変わることはありません。</p>
+<h2>第10条（解約）</h2>
+<p>利用者は、マイページからいつでもPROを解約できます。解約の手続に、
+電話や書面は必要ありません。</p>
+<p>解約後も、支払済みの期間の末日まではPROをご利用いただけます。
+その後は無料プランに切り替わります。</p>
+<h2>第11条（返金）</h2>
+<p>本サービスは役務の提供であり、その性質上、返品はできません。
+<b>日割りその他の返金は行いません。</b>
+ただし、当方の責めに帰すべき事由により長期間サービスを提供できなかった場合は、
+個別に対応します。</p>
+<h2>第12条（保存データの扱い）</h2>
+<p>解約しても、保存された診断結果およびメモは消去しません。
+無料プランの保存件数を超えている分についても、引き続き閲覧および比較が
+できます。ただし、上限を超えている間は新たな保存ができません。</p>
+<h2>第13条（料金の改定）</h2>
+<p>料金を改定する場合は、<b>改定の1か月前までに本サービス上で告知します。</b>
+改定後の料金は、告知後に到来する更新日から適用します。改定に同意されない
+場合は、更新日までに解約してください。</p>
+""" if billing_on() else "")
+
 _TERMS_BODY = ("""
 <p class="sub">最終改定日：2026年8月28日</p>
 <h2>第1条（本サービス）</h2>
@@ -1831,6 +1888,7 @@ Open Database License（ODbL）に基づいて利用しています。
 物件情報サイト等の規約に反する形での情報取得・利用は行わないでください。</p>
 <h2>第6条（変更・中断）</h2>
 <p>運営者は、利用者への事前通知なく本サービスの内容を変更・中断・終了することがあります。</p>
+""" + _BILLING_TERMS + """
 <h2>第7条（準拠法・管轄）</h2>
 <p>本規約は日本法に準拠し、本サービスに関する紛争は運営者所在地を管轄する裁判所を
 第一審の専属的合意管轄とします。</p>
@@ -1905,6 +1963,59 @@ def terms():
 @app.route("/privacy")
 def privacy():
     return _legal_page("プライバシーポリシー", _PRIVACY_BODY)
+
+
+# ---- 特定商取引法に基づく表記 ----------------------------------------
+# 有償で提供するときに義務が生じる。氏名（個人事業者は戸籍上の氏名）・住所・
+# 電話番号は「請求があれば遅滞なく提供する」という省略規定の対象外で、
+# 広告に表示しなければならない。
+# 仮の値のまま出すと表示義務を満たさないので、揃うまでページごと出さない。
+
+_TOKUSHO_BODY = ("""
+<p class="sub">本表記は、有料プラン（PRO）の提供に関するものです。
+ 無料でご利用いただける範囲には課金は発生しません。</p>
+<h2>販売事業者</h2>
+<p>""" + OPERATOR + """</p>
+<h2>運営責任者</h2>
+<p>""" + OPERATOR + """</p>
+<h2>所在地</h2>
+<p>""" + (OPERATOR_ADDRESS or "〔所在地〕") + """</p>
+<h2>電話番号</h2>
+<p>""" + (OPERATOR_TEL or "〔電話番号〕") + """<br>
+<span class="sub">受付時間および連絡方法は、下記のメールでもお受けします。</span></p>
+<h2>メールアドレス</h2>
+<p>""" + CONTACT + """</p>
+<h2>販売価格</h2>
+<p>""" + PRICE_LABEL + """<br>
+<span class="sub">解約されるまで毎月同額が発生します。初回と2回目以降で
+ 金額が変わることはありません。</span></p>
+<h2>商品代金以外に必要な費用</h2>
+<p>インターネット接続に要する通信料は、お客様のご負担となります。
+ それ以外に当方が申し受ける費用はありません。</p>
+<h2>支払方法・支払時期</h2>
+<p>クレジットカード決済。お申込み時に初回分をお支払いいただき、
+ 以降は毎月同日に自動で決済されます。</p>
+<h2>サービスの提供時期</h2>
+<p>決済の完了後、ただちにご利用いただけます。</p>
+<h2>解約・返金について</h2>
+<p>マイページの「プランと設定」からいつでも解約できます。
+ 解約後も、お支払い済みの期間の末日まではご利用いただけます。<br>
+ <b>本サービスは役務の提供であり、性質上、返品はできません。</b>
+ 日割りでの返金も行っておりません。<br>
+ 解約後も、保存された診断結果は消去されません。無料プランの保存件数を
+ 超えている分も引き続きご覧いただけます（新たな保存はできません）。</p>
+<h2>動作環境</h2>
+<p>インターネットに接続できる端末と、標準的なウェブブラウザ。</p>
+""")
+
+
+@app.route("/tokushoho")
+def tokushoho():
+    """特定商取引法に基づく表記。有料提供の準備が整うまでは出さない。"""
+    if not billing_on():
+        from flask import abort
+        abort(404)
+    return _legal_page("特定商取引法に基づく表記", _TOKUSHO_BODY)
 
 
 @app.route("/")
@@ -3829,6 +3940,12 @@ MYPAGE = """
  {% if added %}<div class="note ok">保存しました。</div>{% endif %}
  {% if full %}<div class="note warn">保存できる件数（{{ limit }}件）に達しています。
    いずれかを削除するか、PROで上限を増やしてください。</div>{% endif %}
+ {% if items|length > limit %}
+  <div class="note">PROのときに保存した分が残っています。
+   <b>これまでの保存はすべてご覧いただけます</b>が、
+   いまの上限（{{ limit }}件）を超えているため、新しく保存するには
+   いずれかを削除してください。</div>
+ {% endif %}
  {% if err %}<div class="note warn">保存できませんでした。時間をおいてお試しください。</div>{% endif %}
 
  {% if not items %}
@@ -4119,25 +4236,251 @@ PLAN_PAGE = """
    <tr><th class="rowlbl">資金計画のPDF</th><td>—</td><td>○</td></tr>
   </tbody>
  </table></div>
+
+{% if not billing %}
  <div class="note warn" style="margin-top:14px">
   <b>PROは試験公開中です。</b>いまのところ料金はいただいていません。
   どなたでも<a href="/pro/diagnose">戸建</a>・<a href="/pro/mansion">マンション</a>の
   詳細診断をお試しいただけます。<br>
   有料でのご提供を始めるときは、事前にこのページでご案内します。
  </div>
- <p style="margin-top:14px"><a class="btn ghost" href="/mypage">マイページへ</a></p>
+{% elif pro %}
+ <div class="note ok" style="margin-top:14px">
+  PROをご利用中です。{{ price_label }}が毎月かかります。
+  {% if expires %}<br>次回の更新日：{{ expires[:10] }}{% endif %}
+ </div>
+ <p style="margin-top:14px"><a class="btn ghost" href="/plan/cancel">解約する</a></p>
+{% else %}
+ <div class="note" style="margin-top:14px">
+  <p style="margin:0 0 6px"><b>PRO　{{ price_label }}</b></p>
+  <p style="margin:0">解約されるまで毎月自動で更新されます。
+   金額は初回も2回目以降も同じです。<br>
+   <b>マイページからいつでも解約できます。</b>
+   解約後も、保存した診断はそのままご覧いただけます。</p>
+ </div>
+ <p style="margin-top:14px">
+  <a class="btn" href="/plan/confirm">PROに申し込む</a></p>
+ <p class="sub" style="margin-top:10px">
+  <a href="/tokushoho">特定商取引法に基づく表記</a>　・
+  <a href="/terms">利用規約</a>　・
+  <a href="/privacy">プライバシーポリシー</a></p>
+{% endif %}
+ <p style="margin-top:14px"><a class="btn ghost sm" href="/mypage">マイページへ</a></p>
 </div>
 """
+
+
+# ---- 申込の最終確認画面 --------------------------------------------------
+# 特定商取引法（令和4年6月施行）は、注文確定の直前画面に
+#   ①分量 ②販売価格・対価 ③支払の時期・方法 ④提供時期
+#   ⑤申込みの撤回・解除に関すること ⑥申込期間（定めがある場合）
+# を表示することを義務づけている。表示が無い、または誤認させる表示をした
+# 場合、誤認して申し込んだ人は契約を取り消せる。
+# ⑤は「顧客が見やすい位置に」とされているので、規約へのリンクではなく
+# この画面に手順そのものを書く。
+# ⑥は期間限定販売ではないため該当しない。
+PLAN_CONFIRM = """
+<div class="card">
+ <a href="/plan" style="font-size:14px">← プランへもどる</a>
+ <h1 style="margin-top:10px">お申込み内容の確認</h1>
+ <p class="lead">下記の内容でお申込みになります。
+  内容をご確認のうえ、いちばん下のボタンを押してください。</p>
+
+ <div class="tablewrap"><table class="cmp">
+  <tbody>
+   <tr><th class="rowlbl">内容</th>
+    <td>HOME INDEX PRO<br>
+     <span class="sub">契約期間中、詳細診断・仲介業者に聞くことの一覧・
+      資金計画のPDFをご利用いただけます。診断の回数に制限はありません。
+      診断結果の保存は{{ pro_limit }}件までです。</span></td></tr>
+   <tr><th class="rowlbl">料金</th>
+    <td><b>{{ price_label }}</b><br>
+     <span class="sub">2回目以降も同額です。初回だけ安くなる、
+      あとから値上がりする、といったことはありません。</span></td></tr>
+   <tr><th class="rowlbl">支払総額</th>
+    <td><b>解約されるまで、毎月{{ price_yen }}円（税込）が発生します。</b><br>
+     <span class="sub">契約期間の定めがないため、総額はご利用期間によります。
+      3か月なら{{ price_yen * 3 }}円、6か月なら{{ price_yen * 6 }}円です。</span></td></tr>
+   <tr><th class="rowlbl">支払方法</th><td>クレジットカード</td></tr>
+   <tr><th class="rowlbl">支払時期</th>
+    <td>初回はお申込み時。以降は<b>毎月同じ日に自動で決済</b>されます。</td></tr>
+   <tr><th class="rowlbl">提供時期</th>
+    <td>決済の完了後、ただちにご利用いただけます。</td></tr>
+   <tr><th class="rowlbl">解約の方法</th>
+    <td><b>マイページ →「プランと設定」→「プランを見る」→「解約する」</b><br>
+     <span class="sub">いつでも解約できます。解約後も、お支払い済みの期間の
+      末日まではご利用いただけます。<b>日割りでの返金は行っておりません。</b><br>
+      本サービスは役務の提供であり、性質上、返品はできません。</span></td></tr>
+   <tr><th class="rowlbl">解約後の保存データ</th>
+    <td>消去されません。無料プランの{{ free_limit }}件を超えている分も、
+     引き続きご覧いただけます（新たな保存はできません）。</td></tr>
+  </tbody>
+ </table></div>
+
+ <p class="sub" style="margin-top:14px">
+  <a href="/tokushoho">特定商取引法に基づく表記</a>　・
+  <a href="/terms">利用規約</a>　・
+  <a href="/privacy">プライバシーポリシー</a></p>
+
+ <form method="post" action="/plan/subscribe" style="margin-top:16px">
+  <button class="btn" type="submit">上記に同意して申し込む</button>
+ </form>
+ <p class="sub" style="margin-top:8px">
+  このボタンを押すと有料の契約が成立し、初回の決済が行われます。</p>
+</div>
+"""
+
+
+# ---- 解約 ----------------------------------------------------------------
+# 引き止めは置かない。一方でボタン1つで即完了にもしない。
+# 誤操作を防ぐためと、「いつまで使えるか」は解約する人が知るべき情報だから。
+# アンケートは完了画面に置く。解約の前に置くと妨害になるが、後ならならない。
+PLAN_CANCEL = """
+<div class="card">
+ <a href="/plan" style="font-size:14px">← プランへもどる</a>
+ <h1 style="margin-top:10px">解約の確認</h1>
+ <div class="note" style="margin-top:12px">
+  <p style="margin:0 0 8px"><b>解約すると、こうなります。</b></p>
+  <ul style="margin:0;padding-left:18px">
+   <li>{% if expires %}<b>{{ expires[:10] }}まで</b>は、これまでどおりPROをご利用いただけます{% else %}お支払い済みの期間の末日までご利用いただけます{% endif %}</li>
+   <li>その後は無料プランに切り替わります</li>
+   <li><b>保存した診断は消えません。</b>無料プランの{{ free_limit }}件を超えている分も、
+    引き続き閲覧・比較できます（新たな保存はできなくなります）</li>
+   <li>メモもそのまま残ります</li>
+   <li>日割りでの返金はありません</li>
+   <li>いつでも再開できます。そのときデータはそのままです</li>
+  </ul>
+ </div>
+ <form method="post" action="/plan/cancel" style="margin-top:16px">
+  <button class="btn" type="submit">解約を確定する</button>
+  <a class="btn ghost" href="/plan" style="margin-left:8px">やめる</a>
+ </form>
+</div>
+"""
+
+PLAN_CANCELED = """
+<div class="card">
+ <h1>解約しました</h1>
+ <div class="note ok">
+  {% if expires %}{{ expires[:10] }}まではPROをご利用いただけます。
+  その後は無料プランに切り替わります。{% else %}無料プランに切り替わりました。{% endif %}<br>
+  保存した診断とメモはそのまま残っています。
+ </div>
+ <p class="lead" style="margin-top:14px">ご利用ありがとうございました。
+  またお使いいただけるよう、<a href="/plan">プランのページ</a>からいつでも再開できます。</p>
+
+ <form method="post" action="/plan/cancel/why" style="margin-top:8px">
+  <p style="font-size:14px;font-weight:700;margin:0 0 8px">
+   よろしければ、理由を1つだけ教えてください（任意）</p>
+  {% for val, lbl in reasons %}
+   <label style="display:block;font-size:14px;line-height:2.1">
+    <input type="radio" name="why" value="{{ val }}"> {{ lbl }}</label>
+  {% endfor %}
+  <button class="btn ghost sm" type="submit" style="margin-top:10px">送信する</button>
+  <a class="btn ghost sm" href="/mypage" style="margin-left:8px">答えずに戻る</a>
+ </form>
+</div>
+"""
+
+# 1問だけにする。設問が多いほど答えてもらえなくなるうえ、
+# 解約したい人を引き止める形になってしまう。
+CANCEL_REASONS = [
+    ("bought", "住まいが決まった"),
+    ("stopped", "購入の検討をやめた"),
+    ("not_useful", "期待した内容ではなかった"),
+    ("price", "料金が見合わなかった"),
+    ("other", "その他"),
+]
 
 
 @app.route("/plan")
 def plan_page():
     if not accounts_on():
         return _account_page("準備中", _OFF_BODY)
+    u = current_user()
     body = render_template_string(
-        PLAN_PAGE, pro=accounts.is_pro(current_user()),
+        PLAN_PAGE, pro=accounts.is_pro(u), billing=billing_on(),
+        price_label=PRICE_LABEL,
+        expires=(u or {}).get("plan_expires_at"),
         free_limit=saved.FREE_LIMIT, pro_limit=saved.PRO_LIMIT)
     return _account_page("プラン", body, chip="プラン")
+
+
+@app.route("/plan/confirm")
+def plan_confirm():
+    """申込の最終確認画面（特定商取引法の表示義務を満たす画面）。"""
+    r = _require_login()
+    if r is not None:
+        return r
+    if not billing_on():
+        from flask import abort
+        abort(404)
+    if accounts.is_pro(current_user()):
+        return redirect("/plan")
+    body = render_template_string(
+        PLAN_CONFIRM, price_label=PRICE_LABEL, price_yen=PRICE_YEN,
+        free_limit=saved.FREE_LIMIT, pro_limit=saved.PRO_LIMIT)
+    return _account_page("お申込みの確認", body, chip="プラン")
+
+
+@app.route("/plan/subscribe", methods=["POST"])
+def plan_subscribe():
+    """ここで決済サービスのCheckoutを開く。まだ繋いでいない。
+
+    課金開始日が決まり、特定商取引法に基づく表記が実名・実住所で出せて、
+    規約の課金条項を整えてから接続する。それまでは billing_on() が
+    False なので、この経路には入らない。
+    """
+    r = _require_login()
+    if r is not None:
+        return r
+    if not billing_on():
+        from flask import abort
+        abort(404)
+    body = ('<div class="card"><h1>準備中です</h1>'
+            '<p class="lead">決済サービスの接続はこれからです。'
+            'いましばらくお待ちください。</p>'
+            '<a class="btn ghost" href="/plan">プランへもどる</a></div>')
+    return _account_page("準備中", body, chip="プラン")
+
+
+@app.route("/plan/cancel", methods=["GET", "POST"])
+def plan_cancel():
+    """解約。GETで確認画面、POSTで確定する。"""
+    r = _require_login()
+    if r is not None:
+        return r
+    u = current_user()
+    if not accounts.is_pro(u):
+        return redirect("/plan")
+    if request.method == "GET":
+        body = render_template_string(
+            PLAN_CANCEL, expires=u.get("plan_expires_at"),
+            free_limit=saved.FREE_LIMIT)
+        return _account_page("解約の確認", body, chip="プラン")
+
+    # 決済側の解約はここで呼ぶ（未接続）。いまは期限を残したまま
+    # プランを free に落とす＝支払い済みの期間は使えるという扱い。
+    expires = u.get("plan_expires_at")
+    accounts.set_plan(u["id"], accounts.PLAN_FREE, expires)
+    body = render_template_string(PLAN_CANCELED, expires=expires,
+                                  reasons=CANCEL_REASONS)
+    return _account_page("解約しました", body, chip="プラン")
+
+
+@app.route("/plan/cancel/why", methods=["POST"])
+def plan_cancel_why():
+    """解約理由の任意アンケート。答えても答えなくても結果は変わらない。"""
+    r = _require_login()
+    if r is not None:
+        return r
+    why = (request.form.get("why") or "").strip()
+    if why:
+        # いまは記録先を持たないのでログに残すだけ。
+        # 集計が要るようになったら列を足す。
+        print(f"[cancel-reason] {why}")
+    return redirect("/mypage")
+
 
 
 # ---- コピーの仕方 ----------------------------------------------------
