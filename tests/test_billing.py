@@ -89,16 +89,25 @@ def test_hidden_until_the_operator_details_are_real():
 
 
 def test_billing_flag_alone_is_not_enough():
-    keep = os.environ.get("BILLING_ENABLED")
+    """フラグを立てても、運営者情報が無ければ課金の画面は出ない。
+
+    値を消すのではなく空文字にする。app.py は起動時に .env を読み直すので、
+    消しただけでは開発用のダミーが戻ってきてしまう。
+    """
+    keys = ["BILLING_ENABLED", "OPERATOR_NAME", "OPERATOR_ADDRESS",
+            "OPERATOR_TEL", "CONTACT_EMAIL"]
+    keep = {k: os.environ.get(k) for k in keys}
     try:
-        webapp, _, _ = _reload({"BILLING_ENABLED": "1"})
-        # 運営者情報が仮のまま（〔運営者名〕）なので False
+        env = {k: "" for k in keys}
+        env["BILLING_ENABLED"] = "1"
+        webapp, _, _ = _reload(env)
         assert not webapp.billing_on()
     finally:
-        if keep is None:
-            os.environ.pop("BILLING_ENABLED", None)
-        else:
-            os.environ["BILLING_ENABLED"] = keep
+        for k, v in keep.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
         _reload()
 
 

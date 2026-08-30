@@ -26,6 +26,11 @@ FREE_LIMIT = 3
 PRO_LIMIT = 20
 NOTE_MAX = 1000     # メモの上限（画面の但し書きと合わせる）
 
+# 再診断のために入力を残すが、家計に関わるものは保存しない。
+# プライバシーポリシーで「世帯年収は保存しません」と明言しているので、
+# ここを破ると記載と実装が食い違う。定数にして保存の直前で落とす。
+NEVER_SAVE = ("income", "down", "reserve", "other_debt")
+
 
 class LimitReached(Exception):
     """保存件数の上限。呼び出し側でPROへの導線を出す。"""
@@ -120,7 +125,7 @@ def delete(user_id, sid) -> None:
 
 # ---- 比較用の整形 ---------------------------------------------------------
 
-def snapshot(res, subject, sctx, kind: str, enr=None) -> dict:
+def snapshot(res, subject, sctx, kind: str, enr=None, redo=None) -> dict:
     """診断結果から、保存と読み返しに要る分を抜き出す。
 
     画面が持っている値をまるごと写すのではなく、あとから見て意味のある
@@ -130,6 +135,9 @@ def snapshot(res, subject, sctx, kind: str, enr=None) -> dict:
 
     enr は結果ページが組み立てた立地・防災・人口の表示用の辞書。
     同じ整形をここで書き直すと必ず食い違うので、受け取って使う。
+
+    redo は再診断のときにフォームへ戻す入力。キーは入力フォームの
+    name にそろえてある。NEVER_SAVE の項目はここで落とす。
     """
     d = res.diagnosis
     p = getattr(res, "price", None)
@@ -153,6 +161,10 @@ def snapshot(res, subject, sctx, kind: str, enr=None) -> dict:
         "spec": dict(sctx or {}),
         "enr": dict(enr) if enr else None,
     }
+    if redo:
+        # 再診断のときにフォームへ戻す値。家計の入力は落とす。
+        out["redo"] = {k: v for k, v in redo.items()
+                       if k not in NEVER_SAVE and v not in (None, "")}
     if p and p.verdict != "判定不可":
         out["price"] = {"verdict": p.verdict, "dev": p.deviation_pct,
                         "mid": p.estimate_mid, "count": p.comparable_count,

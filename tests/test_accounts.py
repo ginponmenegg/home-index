@@ -548,3 +548,128 @@ def test_cannot_read_or_edit_another_users_detail(env):
     assert c.get(f"/saved/{sid}").status_code == 404
     c.post(f"/saved/{sid}/note", data={"note": "他人のメモ"})
     assert env.saved.get_one(a["id"], sid)["note"] is None
+
+
+# ---- 再診断 ---------------------------------------------------------------
+
+def test_household_income_is_never_saved(env):
+    """世帯年収と頭金は保存しない。
+
+    プライバシーポリシーに「世帯年収は保存しません（返済額の計算結果のみを
+    持ちます）」と書いてある。再診断のために入力を残すようにしたので、
+    ここに紛れ込みやすい。保存物のどこにも出てこないことを固定する。
+    """
+    import json
+    from src import saved as sv
+
+    class _Cat:
+        name, points, weight, raw, reason = "物件", 18, 25, 0.72, "築14年"
+
+    class _D:
+        total_score, grade, data_sufficiency, comment = 70, "B", 48.0, ""
+        categories = [_Cat()]
+        critical_risks, strengths, weaknesses, to_confirm = [], [], [], []
+
+    class _Res:
+        diagnosis, price, loan = _D(), None, None
+
+    redo = {"kind": "kodate", "address": "神奈川県小田原市南町2-3-4",
+            "price": "4200", "income": "720", "down": "550",
+            "reserve": "300", "other_debt": "100", "structure": "rc"}
+    snap = sv.snapshot(_Res(), None, {"specs": "x"}, "chuko_kodate",
+                       None, redo)
+    assert set(snap["redo"]) == {"kind", "address", "price", "structure"}
+    blob = json.dumps(snap, ensure_ascii=False)
+    for leaked in ("720", "550", "300", "100", "income", "down"):
+        assert leaked not in blob, leaked
+
+
+def test_redo_restores_the_property_inputs(env):
+    """再診断は、物件の入力を戻したフォームを出す。"""
+    c = env.app.app.test_client()
+    _login(c, env, "redo@example.com")
+    uid = env.db.run("SELECT id FROM users WHERE email = ?",
+                     ("redo@example.com",), "one")["id"]
+    p = _payload()
+    p["redo"] = {"kind": "kodate", "ptype": "chuko_kodate",
+                 "address": "神奈川県小田原市南町2-3-4", "price": "4200",
+                 "byear": "2008", "land": "140", "building": "98",
+                 "station": "12", "structure": "heavy_steel", "reno": "1",
+                 "loan_years": "35"}
+    sid = env.saved.save(env.accounts.get_user(uid), "chuko_kodate", "物件",
+                         "神奈川県小田原市南町2-3-4", 42000000, 70, "B", p)
+    # 詳細ページに導線が出る
+    assert f"/saved/{sid}/redo" in c.get(f"/saved/{sid}").get_data(as_text=True)
+    h = c.get(f"/saved/{sid}/redo").get_data(as_text=True)
+    for v in ["神奈川県小田原市南町2-3-4", "4200", "2008", "140", "98"]:
+        assert v in h, v
+    assert 'value="heavy_steel" selected' in h.replace("  ", " ") \
+        or "heavy_steel" in h
+    # 年収・頭金は空のまま、その理由も書いてある
+    assert "世帯年収と頭金はお預かりしていないため" in h
+
+
+def test_redo_is_refused_for_saves_made_before_the_feature(env):
+    """入力を残す前の保存には、再診断の導線を出さない。"""
+    c = env.app.app.test_client()
+    _login(c, env, "oldredo@example.com")
+    uid = env.db.run("SELECT id FROM users WHERE email = ?",
+                     ("oldredo@example.com",), "one")["id"]
+    sid = env.saved.save(env.accounts.get_user(uid), "chuko_kodate", "古い",
+                         "住所", 1, 60, "C", _payload())   # redo なし
+    assert f"/saved/{sid}/redo" not in \
+        c.get(f"/saved/{sid}").get_data(as_text=True)
+    h = c.get(f"/saved/{sid}/redo").get_data(as_text=True)
+    assert "再診断できません" in h
+
+
+def test_redo_of_another_users_save_is_refused(env):
+    a = _user(env, "redo-own@example.com")
+    p = _payload()
+    p["redo"] = {"kind": "kodate", "address": "住所"}
+    sid = env.saved.save(a, "chuko_kodate", "Aの物件", "住所", 1, 60, "C", p)
+    c = env.app.app.test_client()
+    _login(c, env, "redo-other@example.com")
+    assert c.get(f"/saved/{sid}/redo").status_code == 404
+
+
+def test_compare_offers_the_saves_not_yet_shown(env):
+    """比較画面から、そのまま次の物件を足せること。
+
+    以前はマイページに戻って選び直すしかなく、比較の途中で
+    「もう1件見てみよう」と思ったときに動線が切れていた。
+    """
+    c = env.app.app.test_client()
+    _login(c, env, "addmore@example.com")
+    uid = env.db.run("SELECT id FROM users WHERE email = ?",
+                     ("addmore@example.com",), "one")["id"]
+    u = env.accounts.get_user(uid)
+    env.accounts.set_plan(uid, env.accounts.PLAN_PRO, None)   # 3件以上保存する
+    u = env.accounts.get_user(uid)
+    ids = [env.saved.save(u, "chuko_kodate", f"物件{i}",
+                          f"神奈川県小田原市栄町{i}-1-1", 30000000, 60 + i,
+                          "C", _payload(total=60 + i)) for i in range(3)]
+    h = c.get(f"/compare?id={ids[0]}&id={ids[1]}").get_data(as_text=True)
+    assert "もう1件くらべる" in h
+    # 並べていない3件目が、いまの2件に足す形のリンクで出る
+    assert f"/compare?id={ids[0]}&amp;id={ids[1]}&amp;id={ids[2]}" in h \
+        or f"/compare?id={ids[0]}&id={ids[1]}&id={ids[2]}" in h
+    # すでに並べているものは候補に出さない
+    body = h[h.index("もう1件くらべる"):]
+    assert "物件0" not in body and "物件1" not in body
+
+
+def test_compare_stops_offering_more_at_six(env):
+    """6件を超えると表が読めなくなるので、それ以上は勧めない。"""
+    c = env.app.app.test_client()
+    _login(c, env, "sixmax@example.com")
+    uid = env.db.run("SELECT id FROM users WHERE email = ?",
+                     ("sixmax@example.com",), "one")["id"]
+    env.accounts.set_plan(uid, env.accounts.PLAN_PRO, None)
+    u = env.accounts.get_user(uid)
+    ids = [env.saved.save(u, "chuko_kodate", f"多{i}", f"住所{i}", 1, 60, "C",
+                          _payload()) for i in range(7)]
+    q = "&".join(f"id={i}" for i in ids[:6])
+    h = c.get(f"/compare?{q}").get_data(as_text=True)
+    assert "ほかに保存された物件がありません" in h \
+        or "もう1件くらべる" not in h.split("多6")[0]

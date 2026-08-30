@@ -2157,7 +2157,7 @@ def diagnose():
 
 def _render_result(res, subject, sctx, down_yen, loan_years,
                    free_diagnosis=None, carry=None, questions=None,
-                   questions_note=None):
+                   questions_note=None, redo=None):
     """診断結果ページを描画する。戸建とマンションで共通。
 
     res は run_pipeline / run_mansion_pipeline のどちらの戻り値でもよい。
@@ -2336,7 +2336,8 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
                 kind=kind, title=title, address=sctx.get("address"),
                 price=getattr(subject, "price", None),
                 total=d.total_score, grade=d.grade,
-                payload=saved.snapshot(res, subject, sctx, kind, enr)))
+                payload=saved.snapshot(res, subject, sctx, kind, enr,
+                                       redo)))
 
     return render_template_string(
         RESULT, s=sctx, price_man=man(subject.price), age=age, save=save,
@@ -2418,8 +2419,19 @@ def _run_diagnose(f, datetime):
             # 無料版は「リフォーム済み」の有無しか聞いていない。どの箇所かは
             # 分からないので、チェックを勝手に入れず、選び直してもらう。
             "renovated_hint": "1" if subject.renovated else ""}}
+    # 再診断のためにフォームへ戻す値。キーは入力欄の name にそろえる。
+    # 世帯年収・頭金は src/saved.py の NEVER_SAVE で落とされる。
+    redo = {"kind": "kodate", "ptype": subject.property_type,
+            "address": subject.address, "price": f.get("price") or "",
+            "byear": f.get("byear") or "", "land": f.get("land") or "",
+            "building": f.get("building") or "",
+            "station": f.get("station") or "", "bus": f.get("bus") or "",
+            "structure": subject.structure or "",
+            "reno": "1" if subject.renovated else "",
+            "loan_years": str(loan_years)}
     return _render_result(res, subject, sctx,
-                          to_yen(f.get("down")) or 0, loan_years, carry=carry)
+                          to_yen(f.get("down")) or 0, loan_years, carry=carry,
+                          redo=redo)
 
 
 
@@ -2820,8 +2832,18 @@ def _run_mansion_diagnose(f):
             "mfee": f.get("mfee") or "", "rfund": f.get("rfund") or "",
             "income": f.get("income") or "", "down": f.get("down") or "",
             "loan_years": str(loan_years)}}
+    redo = {"kind": "mansion", "address": subject.address,
+            "name": subject.name or "", "price": f.get("price") or "",
+            "area": f.get("area") or "", "byear": f.get("byear") or "",
+            "station": f.get("station") or "", "floor": f.get("floor") or "",
+            "total_floors": f.get("total_floors") or "",
+            "direction": subject.direction or "不明",
+            "layout": f.get("layout") or "",
+            "mfee": f.get("mfee") or "", "rfund": f.get("rfund") or "",
+            "reno": "1" if subject.renovated else "",
+            "loan_years": str(loan_years)}
     return _render_result(res, subject, sctx, down_yen, loan_years,
-                          carry=carry)
+                          carry=carry, redo=redo)
 
 # ---- PRO 購入診断（たたき台・戸建）--------------------------------
 # 仕様書§4-A/§4-C。ここで受けた詳細は物件スコアとリスクにだけ反映し、
@@ -3880,7 +3902,14 @@ SAVED_DETAIL = """
 <div class="card" style="margin-top:14px">
  <p class="sub" style="margin:0">{{ it.created_at[:10] }}に診断した時点の結果です。
   公的データも配点も時間とともに変わるため、開くたびに計算し直すことはしていません。
-  時間が経っている場合は、もう一度診断し直してください。</p>
+  {% if p.redo %}下のボタンで、そのときの入力を戻して採り直せます。
+  {% else %}時間が経っている場合は、もう一度診断し直してください。{% endif %}</p>
+ {% if p.redo %}
+  <p style="margin-top:12px">
+   <a class="btn" href="/saved/{{ it.id }}/redo">最新のデータで再診断する</a></p>
+  <p class="sub" style="margin-top:8px">物件の入力は戻りますが、
+   <b>世帯年収と頭金はお預かりしていないため空欄</b>になります。</p>
+ {% endif %}
  <p style="margin-top:12px">
   <a class="btn ghost sm" href="/buy">戸建をもう1件診断する</a>
   <a class="btn ghost sm" href="/mansion">マンションを診断する</a></p>
@@ -3905,6 +3934,60 @@ def saved_detail(sid):
         catcolor=_catcolor, short=short_label(it),
         note_max=saved.NOTE_MAX)
     return _account_page("保存した診断", body)
+
+
+@app.route("/saved/<int:sid>/redo")
+def saved_redo(sid):
+    """保存した入力をフォームに戻し、最新の公的データで採り直してもらう。
+
+    その場で計算し直さずフォームに戻すのは、値下げされていたり、
+    あとから構造が分かっていたりするため。確認・修正してから診断できる。
+
+    世帯年収と頭金は保存していないので空欄になる。入れ直していただく必要が
+    あることを、画面で伝える。
+    """
+    r = _require_login()
+    if r is not None:
+        return r
+    it = saved.get_one(current_user()["id"], sid)
+    if not it:
+        from flask import abort
+        abort(404)
+    redo = (it["payload"] or {}).get("redo")
+    if not redo:
+        # 入力を残す前に保存されたもの。作り直してもらうしかない。
+        body = ('<div class="card"><h1>この保存からは再診断できません</h1>'
+                '<p class="lead">再診断の仕組みを入れる前に保存されたため、'
+                'そのときの入力が残っていません。'
+                'お手数ですが、新しく診断してください。</p>'
+                '<p><a class="btn" href="/buy">戸建を診断する</a> '
+                '<a class="btn ghost" href="/mansion">マンションを診断する</a></p>'
+                f'<p style="margin-top:12px"><a href="/saved/{sid}">'
+                '保存した診断にもどる</a></p></div>')
+        return _account_page("再診断", body)
+
+    banner = ("以前の入力を戻しました。<b>最新の公的データで採り直します。</b>"
+              "価格が変わっていれば直してから診断してください。<br>"
+              "<b>世帯年収と頭金はお預かりしていないため、空欄です。</b>"
+              "返済の評価も見たい場合は入れ直してください。")
+    if redo.get("kind") == "mansion":
+        v = _mansion_example_v()
+        for k in ("address", "name", "price", "area", "byear", "station",
+                  "floor", "total_floors", "direction", "layout",
+                  "mfee", "rfund", "loan_years"):
+            if redo.get(k):
+                v[k] = redo[k]
+        v["reno"] = redo.get("reno") == "1"
+        return render_template_string(MANSION_FORM, v=v, listing="",
+                                      directions=DIRECTIONS, banner=banner)
+
+    v = _example_v()
+    for k in ("address", "price", "byear", "land", "building", "station",
+              "bus", "structure", "loan_years", "ptype"):
+        if redo.get(k):
+            v[k] = redo[k]
+    v["reno"] = redo.get("reno") == "1"
+    return render_template_string(FORM, v=v, listing="", banner=banner)
 
 
 @app.route("/saved/<int:sid>/note", methods=["POST"])
@@ -4186,6 +4269,36 @@ COMPARE = """
 </div>
 
 <div class="card" style="margin-top:14px">
+ <h2 style="margin-top:0">もう1件くらべる</h2>
+ {% if others %}
+  <p class="lead">保存済みの物件を、この比較に足せます。</p>
+  <ul class="items">
+   {% for o in others %}
+    <li>
+     <div class="body">
+      <span class="ttl">{{ o.short }}</span>
+      <div class="meta">{{ kindja(o.kind) }}
+       {%- if o.price %}　売出 {{ man(o.price) }}{% endif %}</div>
+     </div>
+     <div style="text-align:right">
+      <div class="sc">{{ o.total_score }}<span class="sub">点</span></div>
+      <a class="btn ghost sm" href="{{ o.href }}"
+        style="margin-top:6px">くらべる</a>
+     </div>
+    </li>
+   {% endfor %}
+  </ul>
+ {% else %}
+  <p class="lead">ほかに保存された物件がありません。
+   もう1件診断すると、ここに並べて比べられます。</p>
+ {% endif %}
+ <p style="margin-top:12px">
+  <a class="btn ghost sm" href="/buy">戸建を診断する</a>
+  <a class="btn ghost sm" href="/mansion">マンションを診断する</a>
+  <a class="btn ghost sm" href="/mypage">保存した物件へ</a></p>
+</div>
+
+<div class="card" style="margin-top:14px">
  <p class="sub" style="margin:0">保存した時点の診断結果を並べています。
   公的データも配点も時間とともに変わるため、あとから再計算はしていません。
   日付の離れた結果を比べるときはご注意ください。</p>
@@ -4210,9 +4323,19 @@ def compare():
                 '<a class="btn" href="/mypage">保存した物件へ</a></div>')
         return _account_page("比べる", body, chip="比べる")
     rows, cats, mixed = compare_rows(items)
+    # まだ並べていない保存。ここから足せるようにする。
+    # 6件を超えると表が読めなくなるので、そのときは出さない。
+    others = []
+    if len(items) < 6:
+        shown = {int(i["id"]) for i in items}
+        for r in saved.listing(user["id"]):
+            if int(r["id"]) in shown:
+                continue
+            q = "&".join(f"id={i}" for i in ids + [r["id"]])
+            others.append(dict(r, short=short_label(r), href=f"/compare?{q}"))
     body = render_template_string(COMPARE, items=items, rows=rows, cats=cats,
-                                  mixed=mixed, kindja=_kindja,
-                                  cols=min(len(items), 3),
+                                  mixed=mixed, kindja=_kindja, man=man,
+                                  cols=min(len(items), 3), others=others,
                                   shorts=[short_label(i) for i in items])
     return _account_page("比べる", body, chip="比べる")
 
