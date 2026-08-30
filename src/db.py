@@ -169,6 +169,14 @@ def schema_sql() -> list[str]:
     ]
 
 
+# 後から足した列。CREATE TABLE 側は既存の環境では実行されないので、
+# ALTER で追加する。sqlite に IF NOT EXISTS が無いため、失敗を握って進める
+# （すでに在る場合のエラーは無視してよい）。
+ADDED_COLUMNS = [
+    ("saved_diagnoses", "note", "TEXT"),
+]
+
+
 def init_schema() -> None:
     """テーブルを作る。何度呼んでも安全。"""
     if not enabled():
@@ -180,3 +188,9 @@ def init_schema() -> None:
             exec_(q)
 
     run_many(_go)
+
+    for table, col, typ in ADDED_COLUMNS:
+        try:
+            run(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+        except Exception:
+            pass          # すでに在る

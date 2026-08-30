@@ -2225,7 +2225,7 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
                 kind=kind, title=title, address=sctx.get("address"),
                 price=getattr(subject, "price", None),
                 total=d.total_score, grade=d.grade,
-                payload=saved.snapshot(res, subject, sctx, kind)))
+                payload=saved.snapshot(res, subject, sctx, kind, enr)))
 
     return render_template_string(
         RESULT, s=sctx, price_man=man(subject.price), age=age, save=save,
@@ -3441,6 +3441,31 @@ _ACCOUNT_CSS = """
   table.cmp tr.sect th:not(.rowlbl){display:none}
  }
 
+ /* 保存した診断の詳細 */
+ .sc-big{display:flex;align-items:baseline;gap:10px;margin:2px 0 4px}
+ .sc-big b{font-size:44px;font-weight:800;line-height:1}
+ .sc-big .g{font-size:22px;font-weight:800}
+ .bars{margin-top:8px}
+ .bars .b{margin:11px 0}
+ .bars .top{display:flex;justify-content:space-between;gap:10px;
+   font-size:14px;align-items:baseline}
+ .bars .top b{font-weight:700}
+ .bars .track{height:9px;background:#eef2f7;border-radius:5px;overflow:hidden;
+   margin:5px 0 3px}
+ .bars .fill{display:block;height:100%}
+ .bars .why{font-size:12.5px;color:#6b7280;line-height:1.75}
+ .rsk{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;
+   padding:10px 12px;margin:8px 0;font-size:13.5px;line-height:1.8}
+ .rsk b{color:#9a3412}
+ .memo textarea{width:100%;min-height:110px;padding:12px;font-size:15px;
+   border:1px solid #d1d5db;border-radius:10px;font-family:inherit;
+   line-height:1.8;resize:vertical}
+ .memo-read{white-space:pre-wrap;font-size:14px;line-height:1.9;
+   background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;
+   padding:12px 14px}
+ .items .memo-tag{font-size:12px;color:#6b7280;margin-top:5px;
+   display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
  .selbar{position:sticky;bottom:0;background:#fff;border-top:1px solid #e5e7eb;
    padding:12px 0;margin-top:6px;display:flex;gap:10px;align-items:center}
  .selbar .n{font-size:13px;color:#6b7280}
@@ -3635,6 +3660,151 @@ def save_diagnosis():
     return redirect("/mypage?added=1")
 
 
+SAVED_DETAIL = """
+<div class="card">
+ <a href="/mypage" style="font-size:14px">← 保存した物件へ</a>
+ <p class="sub" style="margin:10px 0 2px">{{ it.address or '' }}</p>
+ <h1 style="margin:0 0 2px">{{ short }}</h1>
+ <p class="sub">{{ kindja(it.kind) }}
+  {%- if it.price %}　売出 {{ man(it.price) }}{% endif %}
+  　診断日 {{ it.created_at[:10] }}</p>
+ {% if p.spec and p.spec.specs %}<p class="lead" style="margin:8px 0 0">{{ p.spec.specs }}</p>{% endif %}
+
+ <div class="sc-big">
+  <b>{{ p.total }}</b><span class="sub">/ 100点</span>
+  <span class="g">{{ p.grade }}</span>
+ </div>
+ <p class="sub" style="margin:0">情報充足度 {{ p.sufficiency }}%
+  未確認の項目は点数に入れていません</p>
+ {% if p.comment %}<p class="lead" style="margin-top:10px">{{ p.comment }}</p>{% endif %}
+</div>
+
+<div class="card memo" style="margin-top:14px">
+ <h2 style="margin-top:0">メモ</h2>
+ <p class="lead">点数に出ないことを書き留めておけます。
+  駐車場の停めやすさ、隣家との距離、内見したときの印象など。
+  <b>採点には使いません。</b></p>
+ <form method="post" action="/saved/{{ it.id }}/note">
+  <textarea name="note" maxlength="{{ note_max }}"
+    placeholder="例）駐車場が縦列で出し入れがしにくい。南隣が空き地で、将来建つと日当たりが変わりそう。">{{ it.note or '' }}</textarea>
+  <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
+   <button class="btn" type="submit">メモを保存</button>
+   <span class="sub">{{ note_max }}文字まで</span>
+  </div>
+ </form>
+</div>
+
+<div class="card" style="margin-top:14px">
+ <h2 style="margin-top:0">価格と返済</h2>
+ <table class="cmp" style="width:100%">
+  <tbody>
+   <tr><th class="rowlbl">価格の妥当性</th>
+    <td>{% if p.price and p.price.verdict != '判定不可' %}{{ p.price.verdict }}
+     （中央値比 {{ '%+.1f'|format(p.price.dev) if p.price.dev is not none else '—' }}%
+      ・類似{{ p.price.count }}件）{% else %}判定不可（類似成約が不足）{% endif %}</td></tr>
+   {% if p.price and p.price.mid %}
+   <tr><th class="rowlbl">推定価格の中央値</th><td>{{ man(p.price.mid) }}</td></tr>
+   {% endif %}
+   {% if p.loan %}
+   <tr><th class="rowlbl">月々の返済</th><td>{{ '{:,}'.format(p.loan.monthly) }}円</td></tr>
+   <tr><th class="rowlbl">返済の負担率</th><td>{{ p.loan.burden }}%</td></tr>
+   {% endif %}
+  </tbody>
+ </table>
+</div>
+
+<div class="card" style="margin-top:14px">
+ <h2 style="margin-top:0">スコアの内訳</h2>
+ <div class="bars">
+  {% for c in p.categories %}
+   <div class="b">
+    <div class="top"><span>{{ c.name }}</span>
+     <b>{{ c.points }} / {{ c.weight }}</b></div>
+    <span class="track"><span class="fill"
+      style="width:{{ c.pct }}%;background:{{ catcolor(c.pct / 100.0) }}"></span></span>
+    {% if c.reason %}<div class="why">{{ c.reason }}</div>{% endif %}
+   </div>
+  {% endfor %}
+ </div>
+</div>
+
+{% if p.risks %}
+<div class="card" style="margin-top:14px">
+ <h2 style="margin-top:0">重大なリスク</h2>
+ {% for r in p.risks %}
+  <div class="rsk"><b>[{{ r.sev }}] {{ r.type }}</b>（{{ r.status }}）
+   {% if r.ev %}<br>{{ r.ev }}{% endif %}</div>
+ {% endfor %}
+</div>
+{% endif %}
+
+{% if p.enr %}
+<div class="card" style="margin-top:14px">
+ <h2 style="margin-top:0">立地・防災・人口</h2>
+ <table class="cmp" style="width:100%"><tbody>
+  <tr><th class="rowlbl">用途地域</th><td>{{ p.enr.use_district }}</td></tr>
+  <tr><th class="rowlbl">人口</th><td>{{ p.enr.population }}（動向 {{ p.enr.trend }}）</td></tr>
+  {% if p.enr.districts %}<tr><th class="rowlbl">学区</th><td>{{ p.enr.districts }}</td></tr>{% endif %}
+  {% if p.enr.facilities %}<tr><th class="rowlbl">周辺施設</th><td>{{ p.enr.facilities }}</td></tr>{% endif %}
+ </tbody></table>
+ {% if p.enr.hazard_items %}
+  <div style="margin-top:10px">
+   {% for h in p.enr.hazard_items %}<span class="hz {{ h.cls }}">{{ h.label }}</span>{% endfor %}
+  </div>
+ {% endif %}
+</div>
+{% endif %}
+
+{% if p.strengths or p.weaknesses or p.confirm %}
+<div class="card" style="margin-top:14px">
+ {% if p.strengths %}<h2 style="margin-top:0">強み</h2>
+  <ul>{% for x in p.strengths %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+ {% if p.weaknesses %}<h2>弱み</h2>
+  <ul>{% for x in p.weaknesses %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+ {% if p.confirm %}<h2>要確認（情報不足）</h2>
+  <ul>{% for x in p.confirm %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:14px">
+ <p class="sub" style="margin:0">{{ it.created_at[:10] }}に診断した時点の結果です。
+  公的データも配点も時間とともに変わるため、開くたびに計算し直すことはしていません。
+  時間が経っている場合は、もう一度診断し直してください。</p>
+ <p style="margin-top:12px">
+  <a class="btn ghost sm" href="/buy">戸建をもう1件診断する</a>
+  <a class="btn ghost sm" href="/mansion">マンションを診断する</a></p>
+</div>
+"""
+
+
+@app.route("/saved/<int:sid>")
+def saved_detail(sid):
+    """保存した診断を見返す。保存した時点の内容をそのまま出す。"""
+    r = _require_login()
+    if r is not None:
+        return r
+    it = saved.get_one(current_user()["id"], sid)
+    if not it:
+        body = ('<div class="card"><h1>見つかりません</h1>'
+                '<p class="lead">削除されたか、別のアカウントの保存です。</p>'
+                '<a class="btn" href="/mypage">保存した物件へ</a></div>')
+        return _account_page("保存した診断", body), 404
+    body = render_template_string(
+        SAVED_DETAIL, it=it, p=it["payload"], man=man, kindja=_kindja,
+        catcolor=_catcolor, short=short_label(it),
+        note_max=saved.NOTE_MAX)
+    return _account_page("保存した診断", body)
+
+
+@app.route("/saved/<int:sid>/note", methods=["POST"])
+def saved_note(sid):
+    r = _require_login()
+    if r is not None:
+        return r
+    saved.set_note(current_user()["id"], sid, request.form.get("note") or "")
+    return redirect(f"/saved/{sid}")
+
+
 @app.route("/saved/<int:sid>/delete", methods=["POST"])
 def delete_saved(sid):
     r = _require_login()
@@ -3680,12 +3850,15 @@ MYPAGE = """
     {% for it in items %}
      <li>
       <input class="pick" type="checkbox" name="id" value="{{ it.id }}"
-        id="p{{ it.id }}" {% if items|length <= 3 %}checked{% endif %}>
+        id="p{{ it.id }}" aria-label="比較に含める"
+        {% if items|length <= 3 %}checked{% endif %}>
       <div class="body">
-       <label class="ttl" for="p{{ it.id }}">{{ it.title }}</label>
+       <a class="ttl" href="/saved/{{ it.id }}"
+         style="display:block">{{ it.title }}</a>
        <div class="meta">{{ it.address or '—' }}</div>
        <div class="meta">{{ it.created_at[:10] }}　{{ kindja(it.kind) }}
         {%- if it.price %}　売出 {{ man(it.price) }}{% endif %}</div>
+       {% if it.note %}<span class="memo-tag">📝 {{ it.note }}</span>{% endif %}
       </div>
       <div style="text-align:right">
        <div class="sc">{{ it.total_score }}<span class="sub">点</span></div>
@@ -3862,6 +4035,13 @@ COMPARE = """
        class="{{ 'best' if loop.index0 in r.best }}">{{ t }}</td>{% endfor %}
     </tr>
    {% endfor %}
+   {% if items|selectattr('note')|list %}
+    <tr><th class="rowlbl">メモ<span class="sub"
+      style="display:block;font-weight:400">点数には入れていません</span></th>
+     {% for it in items %}<td data-name="{{ shorts[loop.index0] }}"
+       style="white-space:normal;font-weight:400">{{ it.note or '—' }}</td>{% endfor %}
+    </tr>
+   {% endif %}
    {% if cats %}
     <tr class="sect"><th class="rowlbl">カテゴリ別</th>
      {% for it in items %}<th></th>{% endfor %}</tr>
@@ -3880,7 +4060,8 @@ COMPARE = """
  <h2 style="margin-top:0">それぞれの弱点</h2>
  <p class="lead">点数に出ない部分です。上の表で拮抗しているときは、こちらが決め手になります。</p>
  {% for it in items %}
-  <h3 style="font-size:14px;margin:14px 0 4px">{{ shorts[loop.index0] }}</h3>
+  <h3 style="font-size:14px;margin:14px 0 4px">
+   <a href="/saved/{{ it.id }}">{{ shorts[loop.index0] }}</a></h3>
   {% set w = it.payload.get('weaknesses') or [] %}
   {% if w %}<ul>{% for x in w %}<li>{{ x }}</li>{% endfor %}</ul>
   {% else %}<p class="sub">特筆すべき弱点は挙がっていません。</p>{% endif %}

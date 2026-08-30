@@ -9,6 +9,11 @@
 ■保存件数の上限
 無料プランは3件まで、PROは20件まで。無料でも複数物件を並べられるように
 （比較したいのは2〜3件目が出てきたときなので、1件では意味がない）。
+
+■メモ
+点数に出ない条件（駐車場の広さ、隣家との距離、内見したときの印象）を
+書き留めるための欄。採点には一切使わない。ルール計算で出した点数に
+主観を混ぜないため、保存するだけで読み返すのは人。
 """
 from __future__ import annotations
 
@@ -19,6 +24,7 @@ from . import accounts
 
 FREE_LIMIT = 3
 PRO_LIMIT = 20
+NOTE_MAX = 1000     # メモの上限（画面の但し書きと合わせる）
 
 
 class LimitReached(Exception):
@@ -62,7 +68,8 @@ def save(user: dict, kind: str, title: str, address: str, price,
 def listing(user_id) -> list[dict]:
     """一覧（payloadは読まない・軽い列だけ）。新しい順。"""
     return db.run(
-        "SELECT id, kind, title, address, price, total_score, grade, created_at "
+        "SELECT id, kind, title, address, price, total_score, grade, "
+        "       created_at, note "
         "FROM saved_diagnoses WHERE user_id = ? ORDER BY id DESC",
         (user_id,), "all") or []
 
@@ -86,6 +93,26 @@ def get_many(user_id, ids: list[int]) -> list[dict]:
     return rows
 
 
+def get_one(user_id, sid):
+    """1件を中身つきで返す。他人のものは user_id で弾かれる。"""
+    row = db.run("SELECT * FROM saved_diagnoses WHERE user_id = ? AND id = ?",
+                 (user_id, int(sid)), "one")
+    if not row:
+        return None
+    try:
+        row["payload"] = json.loads(row["payload"])
+    except Exception:
+        row["payload"] = {}
+    return row
+
+
+def set_note(user_id, sid, note: str) -> None:
+    """メモを書き換える。空文字なら消す。"""
+    note = (note or "").strip()[:NOTE_MAX] or None
+    db.run("UPDATE saved_diagnoses SET note = ? WHERE user_id = ? AND id = ?",
+           (note, user_id, int(sid)))
+
+
 def delete(user_id, sid) -> None:
     db.run("DELETE FROM saved_diagnoses WHERE user_id = ? AND id = ?",
            (user_id, int(sid)))
@@ -93,11 +120,16 @@ def delete(user_id, sid) -> None:
 
 # ---- 比較用の整形 ---------------------------------------------------------
 
-def snapshot(res, subject, sctx, kind: str) -> dict:
-    """診断結果から、保存・比較に必要な分だけ抜き出す。
+def snapshot(res, subject, sctx, kind: str, enr=None) -> dict:
+    """診断結果から、保存と読み返しに要る分を抜き出す。
 
-    画面の描画に使っている値をそのまま持つのではなく、比較表に出す項目に
-    絞る。全部持つと0.5GBの無料枠を圧迫するし、後で形を変えにくくなる。
+    画面が持っている値をまるごと写すのではなく、あとから見て意味のある
+    ものに絞る。全部持つと0.5GBの無料枠を圧迫するし、形も変えにくくなる。
+    逆に絞りすぎると詳細を見返せないので、点数の根拠にあたるもの
+    （カテゴリ別の理由・災害リスクの根拠・要確認）は残す。
+
+    enr は結果ページが組み立てた立地・防災・人口の表示用の辞書。
+    同じ整形をここで書き直すと必ず食い違うので、受け取って使う。
     """
     d = res.diagnosis
     p = getattr(res, "price", None)
@@ -109,13 +141,17 @@ def snapshot(res, subject, sctx, kind: str) -> dict:
         "sufficiency": d.data_sufficiency,
         "comment": d.comment,
         "categories": [{"name": c.name, "points": c.points,
-                        "weight": c.weight, "pct": int(round(c.raw * 100))}
+                        "weight": c.weight, "pct": int(round(c.raw * 100)),
+                        "reason": c.reason}
                        for c in d.categories],
-        "risks": [{"sev": r.severity, "type": r.type, "status": r.status}
+        "risks": [{"sev": r.severity, "type": r.type, "status": r.status,
+                   "ev": r.evidence}
                   for r in d.critical_risks],
-        "strengths": list(d.strengths or [])[:4],
-        "weaknesses": list(d.weaknesses or [])[:4],
+        "strengths": list(d.strengths or [])[:8],
+        "weaknesses": list(d.weaknesses or [])[:8],
+        "confirm": list(getattr(d, "to_confirm", None) or [])[:8],
         "spec": dict(sctx or {}),
+        "enr": dict(enr) if enr else None,
     }
     if p and p.verdict != "判定不可":
         out["price"] = {"verdict": p.verdict, "dev": p.deviation_pct,

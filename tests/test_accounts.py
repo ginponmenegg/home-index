@@ -452,3 +452,99 @@ def test_compare_table_carries_names_and_column_count(env):
     assert 'style="--n:3"' in h, "列数が表に出ていない"
     assert 'data-name="栄町0-1-1"' in h
     assert 'data-name="栄町2-1-1"' in h
+
+
+# ---- 保存した診断の詳細とメモ ---------------------------------------------
+
+def test_detail_page_shows_the_saved_result(env):
+    """保存した時点の中身を、そのまま読み返せること。"""
+    c = env.app.app.test_client()
+    _login(c, env, "detail@example.com")
+    uid = env.db.run("SELECT id FROM users WHERE email = ?",
+                     ("detail@example.com",), "one")["id"]
+    p = _payload(total=78, cats=[{"name": "物件", "points": 21.2, "weight": 25,
+                                  "pct": 85, "reason": "築14年・RC・SRC造"}])
+    p["risks"] = [{"sev": "medium", "type": "ハザード未確認",
+                   "status": "unknown", "ev": "洪水/土砂を要確認"}]
+    p["confirm"] = ["価格: 類似成約が不足"]
+    p["enr"] = {"use_district": "第一種低層", "population": "1,200人",
+                "trend": "横ばい", "hazard_items": [], "districts": None,
+                "facilities": "スーパー 400m"}
+    p["spec"] = {"specs": "土地 130㎡ ・ 建物 105㎡"}
+    sid = env.saved.save(env.accounts.get_user(uid), "chuko_kodate",
+                         "中古戸建　小田原", "神奈川県小田原市中町1-1-1",
+                         49800000, 78, "B", p)
+    h = c.get(f"/saved/{sid}").get_data(as_text=True)
+    for must in ["78", "中町1-1-1", "土地 130㎡", "築14年・RC・SRC造",
+                 "洪水/土砂を要確認", "第一種低層", "スーパー 400m",
+                 "要確認（情報不足）", "メモ"]:
+        assert must in h, must
+
+
+def test_detail_page_survives_an_older_snapshot(env):
+    """項目を足す前に保存したものも、開けること。
+
+    payload の形は後から増えている。古い保存に新しい項目は無いので、
+    無ければその節ごと出さない作りになっていないと500になる。
+    """
+    c = env.app.app.test_client()
+    _login(c, env, "oldsnap@example.com")
+    uid = env.db.run("SELECT id FROM users WHERE email = ?",
+                     ("oldsnap@example.com",), "one")["id"]
+    old = {"kind": "chuko_kodate", "total": 69, "grade": "B",
+           "sufficiency": 48.0, "comment": "", "categories": [],
+           "risks": [], "strengths": [], "weaknesses": [], "spec": {},
+           "price": {"verdict": "判定不可"}}
+    sid = env.saved.save(env.accounts.get_user(uid), "chuko_kodate",
+                         "古い保存", "住所", 1, 69, "B", old)
+    r = c.get(f"/saved/{sid}")
+    assert r.status_code == 200
+    assert "69" in r.get_data(as_text=True)
+
+
+def test_note_round_trip(env):
+    c = env.app.app.test_client()
+    _login(c, env, "note@example.com")
+    uid = env.db.run("SELECT id FROM users WHERE email = ?",
+                     ("note@example.com",), "one")["id"]
+    sid = env.saved.save(env.accounts.get_user(uid), "chuko_kodate", "物件",
+                         "住所", 1, 60, "C", _payload())
+    c.post(f"/saved/{sid}/note", data={"note": "駐車場が狭い"})
+    assert env.saved.get_one(uid, sid)["note"] == "駐車場が狭い"
+    # 一覧にも出る
+    assert "駐車場が狭い" in c.get("/mypage").get_data(as_text=True)
+    # 空にすると消える
+    c.post(f"/saved/{sid}/note", data={"note": "   "})
+    assert env.saved.get_one(uid, sid)["note"] is None
+
+
+def test_note_is_capped(env):
+    uid = env.db.run("SELECT id FROM users WHERE email = ?",
+                     ("note@example.com",), "one")["id"]
+    sid = env.saved.listing(uid)[0]["id"]
+    env.saved.set_note(uid, sid, "あ" * (env.saved.NOTE_MAX + 500))
+    assert len(env.saved.get_one(uid, sid)["note"]) == env.saved.NOTE_MAX
+
+
+def test_note_never_reaches_the_score(env):
+    """メモは採点に一切使わない。点数はルール計算のままであること。"""
+    uid = env.db.run("SELECT id FROM users WHERE email = ?",
+                     ("note@example.com",), "one")["id"]
+    sid = env.saved.listing(uid)[0]["id"]
+    before = env.saved.get_one(uid, sid)
+    env.saved.set_note(uid, sid, "とても良い物件だと思う")
+    after = env.saved.get_one(uid, sid)
+    assert after["total_score"] == before["total_score"]
+    assert after["payload"] == before["payload"]
+
+
+def test_cannot_read_or_edit_another_users_detail(env):
+    a = _user(env, "own@example.com")
+    b = _user(env, "other2@example.com")
+    sid = env.saved.save(a, "chuko_kodate", "Aの物件", "住所", 1, 60, "C",
+                         _payload())
+    c = env.app.app.test_client()
+    _login(c, env, "other2@example.com")
+    assert c.get(f"/saved/{sid}").status_code == 404
+    c.post(f"/saved/{sid}/note", data={"note": "他人のメモ"})
+    assert env.saved.get_one(a["id"], sid)["note"] is None
