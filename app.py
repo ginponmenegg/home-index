@@ -55,6 +55,35 @@ def _load_dotenv():
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
+def _resolve_city(address):
+    """住所 → (市区町村コード, 市区町村名, 町名)。
+
+    都道府県が書かれていないと市区町村コードが決まらず、取引データを
+    1件も取れない。手入力では省かれやすいので、そのときだけ
+    地理院のジオコーダに住所を正規化させ、都道府県だけを補う。
+
+    正規化した住所をそのまま使わないのは、町名が「城山四丁目」のように
+    丁目付きになり、成約データ側の町名「城山」と一致しなくなるため。
+    補うのは都道府県だけにして、市区町村名と町名は元の住所から取る。
+    """
+    address = (address or "").strip()
+    if not address:
+        return None, None, None
+    code, name, dist = _resolver().resolve_from_address(address)
+    if code:
+        return code, name, dist
+    try:
+        from src.geocoding import make_geocoder
+        from src.citycode import detect_prefecture
+        g = make_geocoder(os.environ.get("GOOGLE_KEY")).geocode(address)
+        pref = detect_prefecture(g.address_normalized or "")
+    except Exception:
+        return None, None, None
+    if not pref:
+        return None, None, None
+    return _resolver().resolve_from_address(address, pref_hint=pref)
+
+
 _load_dotenv()
 
 app = Flask(__name__)
@@ -2065,7 +2094,7 @@ def resolve_city():
     if not addr:
         return jsonify({})
     try:
-        code, name, dist = _resolver().resolve_from_address(addr)
+        code, name, dist = _resolve_city(addr)
         return jsonify({"city": code or "", "cityname": name or "",
                         "district": dist or ""})
     except Exception:
@@ -2082,7 +2111,7 @@ def parse():
     # 全国：住所から市区町村コード・町名を解決（神奈川以外も対応）
     if p.get("address"):
         try:
-            code, cityname, dist = _resolver().resolve_from_address(p["address"])
+            code, cityname, dist = _resolve_city(p["address"])
             if code:
                 p["city"] = code
             if dist and not p.get("district"):
@@ -2119,7 +2148,7 @@ def upload_pdf():
         p = parse_listing_text(text)
         if p.get("address"):
             try:
-                code, cityname, dist = _resolver().resolve_from_address(p["address"])
+                code, cityname, dist = _resolve_city(p["address"])
                 if code:
                     p["city"] = code
                 if dist and not p.get("district"):
@@ -2357,7 +2386,7 @@ def _run_diagnose(f, datetime):
     # 手入力で市区町村コードが空でも、住所から自動補完（保険）
     if not city and address:
         try:
-            code, _nm, dist = _resolver().resolve_from_address(address)
+            code, _nm, dist = _resolve_city(address)
             if code:
                 city = code
             if dist and not district:
@@ -2670,7 +2699,7 @@ def mansion_parse():
     p = parse_mansion_text(text)
     if p.get("address") and not p.get("city"):
         try:
-            code, _nm, dist = _resolver().resolve_from_address(p["address"])
+            code, _nm, dist = _resolve_city(p["address"])
             if code:
                 p["city"] = code
             if dist and not p.get("district"):
@@ -2702,7 +2731,7 @@ def mansion_upload_pdf():
         p = parse_mansion_text(text)
         if p.get("address") and not p.get("city"):
             try:
-                code, _nm, dist = _resolver().resolve_from_address(p["address"])
+                code, _nm, dist = _resolve_city(p["address"])
                 if code:
                     p["city"] = code
                 if dist and not p.get("district"):
@@ -2755,7 +2784,7 @@ def _run_mansion_diagnose(f):
     district = (f.get("district") or "").strip()
     if not city and address:
         try:
-            code, _nm, dist = _resolver().resolve_from_address(address)
+            code, _nm, dist = _resolve_city(address)
             if code:
                 city = code
             if dist and not district:
@@ -3102,7 +3131,7 @@ def _run_pro_diagnose(f):
     city = district = ""
     if address:
         try:
-            code, _nm, dist = _resolver().resolve_from_address(address)
+            code, _nm, dist = _resolve_city(address)
             city, district = code or "", dist or ""
         except Exception:
             pass
@@ -3432,7 +3461,7 @@ def _run_mansion_pro(f):
     city = district = ""
     if address:
         try:
-            code, _nm, dist = _resolver().resolve_from_address(address)
+            code, _nm, dist = _resolve_city(address)
             city, district = code or "", dist or ""
         except Exception:
             pass

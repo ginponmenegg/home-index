@@ -219,7 +219,9 @@ def run_mansion_pipeline(subject: MansionSubject,
                                             radius_m=None,
                                             max_year_gap=max_year_gap)
         result.warnings.append(
-            "近接の類似成約が少ないため、市内全域のマンション事例で参考価格を算出")
+            "近接の類似成約が少ないため、市内全域のマンション事例で参考価格を算出"
+            if comps else
+            "市内の類似成約が見つからず、価格を評価できませんでした")
 
     # 4) ㎡単価による価格分析
     result.price = analyze_mansion_price(subject, comps, current_year,
@@ -303,7 +305,8 @@ def run_pipeline(subject: SubjectProperty,
     else:
         if not subject.municipality_code:
             result.warnings.append(
-                "municipality_code 未指定のため取引取得をスキップ（--city で指定）")
+                "住所から市区町村を特定できなかったため、成約データを取得できませんでした"
+                "（都道府県から入力すると改善します）")
         elif not reinfolib_key:
             result.warnings.append("REINFOLIB_KEY 未設定のため取引取得をスキップ")
         else:
@@ -340,7 +343,12 @@ def run_pipeline(subject: SubjectProperty,
             "新築の近接成約が少ないため、中古を含む事例で参考価格を算出（新築プレミアムは別途考慮）")
     elif len(comps) < 3:
         comps = _ext(None, newbuild_only, w)
-        result.warnings.append("近接の類似成約が少ないため、市内全域の事例で参考価格を算出")
+        # 広げても0件なら「算出した」と言ってはいけない。
+        # 市区町村コードが取れなかったときに取引が1件も無く、
+        # それでも算出したかのように出ていた。
+        if comps:
+            result.warnings.append(
+                "近接の類似成約が少ないため、市内全域の事例で参考価格を算出")
 
     # 4) 価格分析
     result.price = analyze_price(subject, comps, current_year, annual_rate,

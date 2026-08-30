@@ -646,6 +646,7 @@ def enrich(lat: Optional[float], lon: Optional[float],
                 e.notes.append("人口：統計表から総人口を取得できず（統計表IDの確認要）")
         except Exception as ex_:
             e.notes.append(f"人口取得失敗: {ex_}")
-    else:
-        e.notes.append("人口：ESTAT_APPID未設定のため未取得")
+    # e-Stat は使っていない（ESTAT_APPID を設定していない）。人口の動向は
+     # 国交省の250mメッシュ将来推計から出しているので、ここで「未取得」と
+     # 出す必要はない。内部の環境変数名を利用者に見せる意味もない。
     return e

@@ -25,7 +25,15 @@ import urllib.parse
 
 import requests
 
-OVERPASS = "https://overpass-api.de/api/interpreter"
+# Overpass は有志が運営する公開サーバで、落ちることも混むこともある。
+# 本番から overpass-api.de に繋がらず「買い物施設の取得に失敗」と
+# 出ていたので、順に試すようにした。1つ目が駄目なら次へ。
+OVERPASS_ENDPOINTS = (
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.osm.ch/api/interpreter",
+)
+OVERPASS = OVERPASS_ENDPOINTS[0]
 UA = "HOME-INDEX/1.0 (housing diagnosis; contact via service site)"
 
 # 大型（複合商業施設・百貨店）と、日常の買い物（スーパー）を分けて数える。
@@ -101,14 +109,20 @@ def fetch_shops_around(lat: Optional[float], lon: Optional[float],
     if cached is not None:
         return cached
 
-    url = OVERPASS + "?data=" + urllib.parse.quote(_build_query(lat, lon, radius_m),
-                                                   safe="")
-    try:
-        r = requests.get(url, headers={"User-Agent": UA}, timeout=timeout)
-        r.raise_for_status()
-        body = r.json()
-    except Exception as e:
-        res.notes.append(f"買い物施設の取得に失敗: {e}")
+    q = urllib.parse.quote(_build_query(lat, lon, radius_m), safe="")
+    body, last = None, None
+    for base in OVERPASS_ENDPOINTS:
+        try:
+            r = requests.get(base + "?data=" + q,
+                             headers={"User-Agent": UA}, timeout=timeout)
+            r.raise_for_status()
+            body = r.json()
+            break
+        except Exception as e:
+            last = e            # 次の候補を試す
+    if body is None:
+        # 施設が取れなくても診断は続ける。取れなかったことだけ伝える。
+        res.notes.append(f"買い物施設の取得に失敗: {last}")
         return res
 
     for el in body.get("elements", []) or []:

@@ -81,10 +81,15 @@ class CityCodeResolver:
         return cities
 
     # ---- 住所から解決 ----
-    def resolve_from_address(self, address: str
+    def resolve_from_address(self, address: str, pref_hint: Optional[str] = None
                              ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        """住所 → (市区町村コード, 市区町村名, 町名)。"""
-        pref = detect_prefecture(address or "")
+        """住所 → (市区町村コード, 市区町村名, 町名)。
+
+        pref_hint は都道府県コード(2桁)。住所に都道府県が書かれていないとき、
+        呼び出し側が別の手段で調べた値を渡す。市区町村名と町名は住所から
+        取るので、ここで補うのは都道府県だけでよい。
+        """
+        pref = detect_prefecture(address or "") or pref_hint
         if not pref:
             return None, None, None
         cities = self._cities(pref)
