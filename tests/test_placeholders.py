@@ -12,9 +12,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import app as webapp
 
-# かつて入力例に入っていた、実在の物件に由来する値
-REAL = ["147.07", "90.47", "城山4-20-18", "鵠沼", "96.77",
-        "20,100", "37,550", "7,480", "3,880"]
+# かつて入力例に入っていた、実在の物件に由来する値。
+#
+# 地名そのもの（城山・鵠沼）は対象にしない。市区町村コードの解決や
+# 町名の抽出を検証するのに、実在する地名でないとテストが意味をなさない。
+# 物件が特定できるのは地名と番地・金額・面積の組み合わせなので、
+# 番地から先と、実測値のほうを禁じる。
+REAL = ["147.07", "90.47", "44.48",
+        "城山4-20-18", "鵠沼桜が岡3丁目", "ブリリア",
+        "96.77", "20,100", "37,550", "7,480", "3,880"]
 
 PAGES = ["/", "/buy", "/mansion", "/pro/diagnose", "/pro/mansion",
          "/pro/finance", "/copy-guide"]
@@ -48,3 +54,35 @@ def test_the_landing_sample_is_marked_as_one():
     h = webapp.app.test_client().get("/").get_data(as_text=True)
     assert "見本です" in h
     assert "神奈川県小田原市・築19年" not in h
+
+
+def test_no_real_property_data_anywhere_in_the_repository():
+    """コードとドキュメントのどこにも残さない。
+
+    リポジトリは公開されているので、画面から外しただけでは足りない。
+    テストのフィクスチャやCLIの初期値にも入っていた。
+
+    このファイル自身は、禁止する値そのものを並べているので対象外。
+    """
+    import glob
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    me = os.path.abspath(__file__)
+    targets = (glob.glob(os.path.join(root, "*.py"))
+               + glob.glob(os.path.join(root, "src", "*.py"))
+               + glob.glob(os.path.join(root, "tests", "*.py"))
+               + glob.glob(os.path.join(root, "tools", "*.py"))
+               + [os.path.join(root, "README.md")])
+    found = []
+    for path in targets:
+        if os.path.abspath(path) == me or not os.path.exists(path):
+            continue
+        text = io_read(path)
+        for v in REAL:
+            if v in text:
+                found.append(f"{os.path.relpath(path, root)}: {v}")
+    assert not found, "実在の物件に由来する値が残っている: " + ", ".join(found)
+
+
+def io_read(path):
+    import io
+    return io.open(path, encoding="utf-8", errors="ignore").read()

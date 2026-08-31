@@ -140,7 +140,7 @@ def test_comparable_matching_bridges_the_two_notations():
 def test_structure_is_read_from_pasted_text():
     def s(t):
         return parse_listing_text(t)["structure"]
-    assert s("中古一戸建て 構造：木造 価格3,880万円") == "wood"
+    assert s("中古一戸建て 構造：木造 価格3,500万円") == "wood"
     assert s("構造・階建 軽量鉄骨造2階建") == "light_steel"
     assert s("鉄骨鉄筋コンクリート造 5階建") == "rc"
     assert s("価格3000万円 土地120㎡") is None, "書いていなければ不明のまま"

@@ -16,7 +16,7 @@ YEAR = datetime.date.today().year
 
 def _subject(build_year=2005, **kw):
     return SubjectProperty(property_type="chuko_kodate", price=38_800_000,
-                           address="神奈川県小田原市城山4-20-18",
+                           address="神奈川県小田原市城山1-2-3",
                            land_area_m2=147.0, building_area_m2=90.0,
                            build_year=build_year, station_walk_min=12, **kw)
 
@@ -156,7 +156,7 @@ def _client():
     return app.app.test_client()
 
 
-FREE_INPUT = {"address": "神奈川県小田原市城山4-20-18", "price": "3880",
+FREE_INPUT = {"address": "神奈川県小田原市城山1-2-3", "price": "3880",
               "land": "147", "building": "90", "byear": "2005",
               "station": "12", "ptype": "chuko_kodate", "income": "600",
               "down": "300", "loan_years": "35"}
@@ -226,8 +226,8 @@ def test_each_free_result_offers_its_own_pro():
     assert "購入診断(戸建)(PRO)" in house
 
     flat = c.post("/mansion_diagnose", data={
-        "address": "神奈川県藤沢市鵠沼桜が岡3丁目", "price": "7480",
-        "area": "96.77", "byear": "2006", "station": "5",
+        "address": "神奈川県藤沢市鵠沼桜が岡1-2-3", "price": "3480",
+        "area": "70.00", "byear": "2006", "station": "5",
         "mfee": "20100", "rfund": "37550"}).data.decode("utf-8")
     assert 'action="/pro/mansion_start"' in flat
     assert "購入診断(マンション)(PRO)" in flat
@@ -356,8 +356,8 @@ def test_house_questions_do_not_mention_flat_paperwork():
 
 def test_flat_questions_keep_their_own_wording():
     html = _client().post("/pro/mansion", data={
-        "address": "神奈川県藤沢市鵠沼桜が岡3丁目", "price": "7480",
-        "area": "96.77", "byear": "2006"}).data.decode("utf-8")
+        "address": "神奈川県藤沢市鵠沼桜が岡1-2-3", "price": "3480",
+        "area": "70.00", "byear": "2006"}).data.decode("utf-8")
     assert "重要事項調査報告書と、総会議事録" in html
     assert "物件状況報告書" not in html
 

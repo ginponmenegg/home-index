@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """都道府県を省いた住所でも市区町村を特定できること。ネットワーク不要。
 
-「小田原市城山4-20-18」のように都道府県を書かずに入力されると、
+「小田原市城山1-2-3」のように都道府県を書かずに入力されると、
 市区町村コードが決まらず取引データを1件も取れなかった。
 結果として価格評価が丸ごと落ち、「類似成約が不足」と出ていた。
 """
@@ -21,8 +21,8 @@ def _resolver():
 
 def test_prefecture_is_required_without_a_hint():
     """都道府県が無いと解決できない、という前提そのものを固定する。"""
-    assert detect_prefecture("小田原市城山4-20-18") is None
-    assert detect_prefecture("神奈川県小田原市城山4-20-18") == "14"
+    assert detect_prefecture("小田原市城山1-2-3") is None
+    assert detect_prefecture("神奈川県小田原市城山1-2-3") == "14"
 
 
 def test_hint_recovers_the_city_and_the_district():
@@ -32,11 +32,11 @@ def test_hint_recovers_the_city_and_the_district():
     丁目付きになり、成約データ側の「城山」と一致しなくなるため。
     """
     r = _resolver()
-    full = r.resolve_from_address("神奈川県小田原市城山4-20-18")
+    full = r.resolve_from_address("神奈川県小田原市城山1-2-3")
     if full[0] is None:
         import pytest
         pytest.skip("市区町村一覧のキャッシュもキーも無い環境")
-    hinted = r.resolve_from_address("小田原市城山4-20-18", pref_hint="14")
+    hinted = r.resolve_from_address("小田原市城山1-2-3", pref_hint="14")
     assert hinted == full, (hinted, full)
     assert hinted[2] == "城山", "町名に丁目が付いてはいけない"
 
@@ -44,11 +44,11 @@ def test_hint_recovers_the_city_and_the_district():
 def test_bad_hint_does_not_invent_a_city():
     """見当違いのヒントで、無関係な市区町村に当ててしまわないこと。"""
     r = _resolver()
-    if r.resolve_from_address("神奈川県小田原市城山4-20-18")[0] is None:
+    if r.resolve_from_address("神奈川県小田原市城山1-2-3")[0] is None:
         import pytest
         pytest.skip("市区町村一覧のキャッシュもキーも無い環境")
     # 北海道(01)には小田原市が無いので、解決できないのが正しい
-    assert r.resolve_from_address("小田原市城山4-20-18", pref_hint="01")[0] is None
+    assert r.resolve_from_address("小田原市城山1-2-3", pref_hint="01")[0] is None
 
 
 def test_the_message_tells_the_user_what_to_do():

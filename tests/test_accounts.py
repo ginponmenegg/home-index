@@ -425,7 +425,7 @@ def test_privacy_declares_storage_when_accounts_on(env):
 def test_short_label_drops_prefecture_and_city(env):
     """狭い列に出す名前は、都道府県と市区町村を落として町名以降を使う。"""
     f = env.app.short_label
-    assert f({"address": "神奈川県小田原市城山4-20-18"}) == "城山4-20-18"
+    assert f({"address": "神奈川県小田原市城山1-2-3"}) == "城山1-2-3"
     assert f({"address": "東京都世田谷区北沢1-1"}) == "北沢1-1"
     # 住所が無ければ表題で代替する
     assert f({"address": "", "title": "中古戸建"}) == "中古戸建"

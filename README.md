@@ -80,8 +80,8 @@ python run.py --price 34800000 --land 110 --building 96 --build-year 2006 --addr
 
 フル指定の実行例：
 ```
-python run.py --price 38800000 --land 147.07 --building 90.47 --build-year 2005 \
-  --address "神奈川県小田原市城山4-20-18" --city 14206 --district 城山 \
+python run.py --price 35000000 --land 120 --building 95 --build-year 2010 \
+  --address "神奈川県小田原市城山1-2-3" --city 14206 --district 城山 \
   --station-walk 12 --income 8000000 --down 8000000
 ```
 

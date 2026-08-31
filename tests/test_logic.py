@@ -169,14 +169,14 @@ def test_hazard_scoring_with_risk():
 def test_listing_parser():
     from src.extract import parse_listing_text
     p = parse_listing_text(
-        "中古一戸建て 神奈川県小田原市城山4-20-18 価格 3,880万円 "
-        "土地面積147.07㎡(44.48坪) 建物面積90.47㎡ 間取り4LDK 築2005年3月 "
+        "中古一戸建て 神奈川県小田原市城山1-2-3 価格 3,500万円 "
+        "土地面積120.00㎡(36.30坪) 建物面積95.00㎡ 間取り4LDK 築2010年3月 "
         "小田原駅 徒歩20分")
-    assert p["price_man"] == 3880
+    assert p["price_man"] == 3500
     assert p["city"] == "14206"
     assert p["district"] == "城山"
-    assert p["land"] == 147.07 and p["building"] == 90.47
-    assert p["layout"] == "4LDK" and p["byear"] == 2005
+    assert p["land"] == 120.00 and p["building"] == 95.00
+    assert p["layout"] == "4LDK" and p["byear"] == 2010
     assert p["station"] == 20 and p["ptype"] == "chuko_kodate"
     # 坪→㎡換算 と 億 と 和暦
     p2 = parse_listing_text("土地 100坪 平成10年築 1億2000万円")

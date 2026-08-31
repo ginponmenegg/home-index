@@ -309,28 +309,28 @@ def test_same_building_is_empty_without_a_build_year():
     assert same_building_candidates(subj, comps) == []
 
 LISTING = "\n".join([
-    "中古マンション ブリリア鵠沼桜が岡",
-    "神奈川県藤沢市鵠沼桜が岡3丁目",
-    "価格 7,480万円",
-    "専有面積 96.77m2（壁芯）／バルコニー面積 12.30m2",
+    "中古マンション サンプルレジデンス",
+    "神奈川県藤沢市鵠沼桜が岡1-2-3",
+    "価格 3,480万円",
+    "専有面積 70.00m2（壁芯）／バルコニー面積 12.30m2",
     "間取り 3LDK",
     "所在階/構造・階建 2階/5階建",
-    "築年月 2006年3月",
+    "築年月 2010年3月",
     "南東向き",
-    "管理費 20,100円/月",
-    "修繕積立金 37,550円/月",
+    "管理費 12,000円/月",
+    "修繕積立金 13,000円/月",
     "修繕積立基金 250,000円（引渡時一括）",
     "駐車場 月額15,000円（管理費別）",
-    "小田急江ノ島線 鵠沼海岸駅 徒歩5分",
+    "小田急江ノ島線 鵠沼海岸駅 徒歩8分",
 ])
 
 
 def test_parse_mansion_listing():
     p = parse_mansion_text(LISTING)
-    assert p["price_man"] == 7480
-    assert p["area"] == 96.77          # バルコニー面積を拾わない
-    assert p["byear"] == 2006
-    assert p["station"] == 5
+    assert p["price_man"] == 3480
+    assert p["area"] == 70.00          # バルコニー面積を拾わない
+    assert p["byear"] == 2010
+    assert p["station"] == 8
     assert (p["floor"], p["total_floors"]) == (2, 5)
     assert p["direction"] == "南東"
     assert p["layout"] == "3LDK"
@@ -340,8 +340,8 @@ def test_parse_mansion_listing():
 def test_lump_sum_fund_is_not_the_monthly_one():
     """修繕積立基金は購入時の一括金。月額の修繕積立金と混ぜない。"""
     p = parse_mansion_text(LISTING)
-    assert p["rfund"] == 37_550
-    assert p["mfee"] == 20_100
+    assert p["rfund"] == 13_000
+    assert p["mfee"] == 12_000
     # 基金が先に書かれていても取り違えない
     q = parse_mansion_text("修繕積立基金 300,000円\n修繕積立金 12,500円")
     assert q["rfund"] == 12_500
@@ -360,7 +360,7 @@ def test_label_and_amount_split_across_lines():
 
 def test_house_listing_is_detected():
     """戸建のページを貼ってしまったら気づけるようにする。"""
-    p = parse_mansion_text("中古一戸建 土地面積 147.07m2 建ぺい率60%")
+    p = parse_mansion_text("中古一戸建 土地面積 120.00m2 建ぺい率60%")
     assert p["is_mansion"] is False
     assert parse_mansion_text(LISTING)["is_mansion"] is True
 

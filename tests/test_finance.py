@@ -88,7 +88,7 @@ def test_loan_guarantee_and_flat_items():
 def test_new_build_only_registration_items():
     """表題登記・保存登記は新築のときだけ計上する。"""
     kw = dict(land_price=20_000_000, building_price=14_800_000,
-              loan_amount=30_000_000, floor_area_m2=90.47, build_year=2005,
+              loan_amount=30_000_000, floor_area_m2=95.00, build_year=2005,
               quake_conforming=True)
     used = purchase_costs(34_800_000, **kw)
     names = [i.name for i in used.items]
@@ -104,7 +104,7 @@ def test_new_build_only_registration_items():
 def test_option_cost_is_opt_in():
     """オプション費用は任意。選択したときだけ計上する。"""
     kw = dict(land_price=20_000_000, building_price=14_800_000,
-              loan_amount=30_000_000, floor_area_m2=90.47, build_year=2005,
+              loan_amount=30_000_000, floor_area_m2=95.00, build_year=2005,
               quake_conforming=True)
     off = purchase_costs(34_800_000, **kw)
     on = purchase_costs(34_800_000, option_cost=True, **kw)
@@ -114,7 +114,7 @@ def test_option_cost_is_opt_in():
 
 def test_earthquake_insurance_changes_total():
     kw = dict(land_price=20_000_000, building_price=14_800_000,
-              loan_amount=30_000_000, floor_area_m2=90.47, build_year=2005,
+              loan_amount=30_000_000, floor_area_m2=95.00, build_year=2005,
               quake_conforming=True)
     no_eq = purchase_costs(34_800_000, **kw)
     eq = purchase_costs(34_800_000, earthquake_insurance=True, **kw)
@@ -240,7 +240,7 @@ def test_acquisition_tax_nonconforming_reduces_from_tax():
 def test_acquisition_tax_land_reduction():
     """土地は1/2特例のうえ、45,000円と床面積基準の大きい方を減額する。"""
     items = acquisition_tax(building_assessed=8_000_000, land_assessed=14_000_000,
-                            land_area_m2=147.07, floor_area_m2=90.47,
+                            land_area_m2=120.00, floor_area_m2=95.00,
                             build_year=2005, quake_conforming=True)
     land = [i for i in items if i.name == "不動産取得税（土地）"][0]
     # 軽減が本税を上回るためゼロ
@@ -304,7 +304,7 @@ def test_registration_cost_subtotal():
     from src.finance import registration_cost_total
     pc = purchase_costs(34_800_000, land_price=20_000_000,
                         building_price=14_800_000, loan_amount=30_000_000,
-                        build_year=2005, floor_area_m2=90.47,
+                        build_year=2005, floor_area_m2=95.00,
                         quake_conforming=True)
     sub = registration_cost_total(pc)
     # 登録免許税3件（100円未満切捨後）＋司法書士報酬
@@ -381,7 +381,7 @@ def test_pdf_report_renders_japanese():
     c = webapp.app.test_client()
     data = dict(price="3480", newbuild="0", land_price="2088",
                 building_price="1392", land_assessed="", building_assessed="",
-                land_ratio="60", land_area="147.07", floor_area="90.47",
+                land_ratio="60", land_area="120.00", floor_area="95.00",
                 byear="2005", bmonth="", bday="", quake="yes", down="500",
                 income="800", loan_years="35", rate="1.25", quake_ins="0",
                 option_cost="0", deduction_cat="その他", resale="0",
