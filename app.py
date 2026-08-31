@@ -522,7 +522,7 @@ BRAND_BAR
 
  <form class="card" method="post" action="/parse">
   <label>① 物件説明を貼り付け（SUUMO等の物件ページの<b>説明文</b>をコピペ）</label>
-  <textarea name="listing" placeholder="例）中古一戸建て 神奈川県小田原市城山4-20-18 価格3,880万円 土地面積147.07㎡ 建物面積90.47㎡ 4LDK 築2005年 小田原駅 徒歩20分">{{listing or ''}}</textarea>
+  <textarea name="listing" placeholder="例）中古一戸建て 〇〇県〇〇市〇〇町1-2-3 価格3,500万円 土地面積120.00㎡ 建物面積95.00㎡ 4LDK 築2010年 〇〇駅 徒歩12分">{{listing or ''}}</textarea>
   <button class="sub" type="submit">貼り付けから自動入力する</button>
   <div class="hint">※ <b>URLではなく、物件ページの文章</b>（価格・所在地・面積・築年・駅など）を選択してコピーしてください。ご自身がコピーした情報を解析します（私的利用）。抽出後、下で確認・修正できます。<br>
    <b><a href="/copy-guide">スマホアプリで文字がコピーできない場合はこちら</a></b></div></form>
@@ -539,19 +539,19 @@ BRAND_BAR
   <label>物件の所在地</label>
   <input name="address" value="{{v.address}}" required>
   <div class="row">
-   <div><label>売出価格（万円）</label><input name="price" value="{{v.price}}" placeholder="例）3880" required></div>
-   <div><label>築年（西暦）</label><input name="byear" value="{{v.byear}}" placeholder="例）2005"></div>
+   <div><label>売出価格（万円）</label><input name="price" value="{{v.price}}" placeholder="例）3500" required></div>
+   <div><label>築年（西暦）</label><input name="byear" value="{{v.byear}}" placeholder="例）2010"></div>
   </div>
   <div class="row">
-   <div><label>土地面積（㎡）</label><input name="land" value="{{v.land}}" placeholder="例）147.07"></div>
-   <div><label>建物面積（㎡）</label><input name="building" value="{{v.building}}" placeholder="例）90.47"></div>
+   <div><label>土地面積（㎡）</label><input name="land" value="{{v.land}}" placeholder="例）120"></div>
+   <div><label>建物面積（㎡）</label><input name="building" value="{{v.building}}" placeholder="例）95"></div>
   </div>
   <div class="row">
    <div><label>市区町村コード</label><input name="city" value="{{v.city}}" placeholder="住所から自動判定"></div>
    <div><label>町名</label><input name="district" value="{{v.district}}" placeholder="住所から自動判定"></div>
   </div>
   <div class="row">
-   <div><label>駅/バス停まで徒歩（分）</label><input name="station" value="{{v.station}}" placeholder="例）20"></div>
+   <div><label>駅/バス停まで徒歩（分）</label><input name="station" value="{{v.station}}" placeholder="例）12"></div>
    <div><label>駅までバス（分・バス便のみ）</label><input name="bus" value="{{v.bus}}">
      <div class="hint">バス便のときだけ入力</div></div>
   </div>
@@ -1447,7 +1447,7 @@ LP_MENU_PLACEHOLDER
 
       <div class="sample">
         <div class="sample-head">
-          <span class="t">中古戸建／神奈川県小田原市・築19年・3,880万円</span>
+          <span class="t">中古戸建／築19年・3,500万円　※表示は見本です</span>
           <span class="stamp">SAMPLE</span>
         </div>
         <div class="sample-body">
@@ -1458,18 +1458,18 @@ LP_MENU_PLACEHOLDER
           <p class="verdict">総合判定：条件を詰めれば買ってよい水準</p>
 
           <div class="rangefig">
-            <svg viewBox="0 0 620 92" role="img" aria-label="推定価格レンジ3,520万円から3,980万円に対し、提示価格3,880万円はレンジ内の上寄り。中央値は3,760万円。">
+            <svg viewBox="0 0 620 92" role="img" aria-label="推定価格レンジ3,140万円から3,600万円に対し、提示価格3,500万円はレンジ内の上寄り。中央値は3,380万円。">
               <rect class="r-band" x="120" y="44" width="380" height="14" rx="7"/>
               <line class="r-axis" x1="30" y1="51" x2="590" y2="51" stroke-width="1"/>
               <line class="r-cap" x1="120" y1="38" x2="120" y2="64" stroke-width="1"/>
               <line class="r-cap" x1="500" y1="38" x2="500" y2="64" stroke-width="1"/>
               <line class="r-med" x1="322" y1="40" x2="322" y2="62" stroke-width="2" stroke-dasharray="3 3"/>
-              <text class="r-lbl" x="322" y="80" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11">中央値 3,760</text>
-              <text class="r-lbl" x="120" y="30" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11">3,520</text>
-              <text class="r-lbl" x="500" y="30" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11">3,980</text>
+              <text class="r-lbl" x="322" y="80" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11">中央値 3,380</text>
+              <text class="r-lbl" x="120" y="30" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11">3,140</text>
+              <text class="r-lbl" x="500" y="30" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11">3,600</text>
               <circle class="r-dot" cx="440" cy="51" r="9"/>
               <circle class="r-ring" cx="440" cy="51" r="15" stroke-width="1" opacity=".45"/>
-              <text class="r-dotlbl" x="440" y="22" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12">提示 3,880万円</text>
+              <text class="r-dotlbl" x="440" y="22" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12">提示 3,500万円</text>
             </svg>
           </div>
 
@@ -1485,7 +1485,7 @@ LP_MENU_PLACEHOLDER
           <div class="facts">
             <div class="fact">
               <div class="k">推定価格レンジ</div>
-              <div class="v good">3,520–3,980<span class="u">万円</span></div>
+              <div class="v good">3,140–3,600<span class="u">万円</span></div>
               <div class="n">近隣の成約6件から復元</div>
             </div>
             <div class="fact">
@@ -2585,7 +2585,7 @@ BRAND_BAR
 
  <form class="card" method="post" action="/mansion_parse">
   <label>① 物件説明を貼り付け（SUUMO等の物件ページの<b>説明文</b>をコピペ）</label>
-  <textarea name="listing" placeholder="例）中古マンション 神奈川県藤沢市鵠沼桜が岡3丁目 価格7,480万円 専有面積96.77㎡ 3LDK 2階/5階建 築2006年 南東向き 管理費20,100円 修繕積立金37,550円 鵠沼海岸駅 徒歩5分">{{listing or ''}}</textarea>
+  <textarea name="listing" placeholder="例）中古マンション 〇〇県〇〇市〇〇町2-3-4 〇〇マンション 価格3,480万円 専有面積70.00㎡ 3LDK 5階/10階建 築2010年 南向き 管理費12,000円 修繕積立金13,000円 〇〇駅 徒歩8分">{{listing or ''}}</textarea>
   <button class="sub" type="submit">貼り付けから自動入力する</button>
   <div class="hint">※ <b>URLではなく、物件ページの文章</b>をコピーしてください。ご自身がコピーした情報を解析します（私的利用）。
    <b><a href="/copy-guide">スマホアプリで文字がコピーできない場合はこちら</a></b>。
@@ -2607,7 +2607,7 @@ BRAND_BAR
 
  <form class="card" method="post" action="/mansion_diagnose">
   <label>所在地（必須）</label>
-  <input name="address" value="{{v.address}}" placeholder="例）神奈川県小田原市栄町1-1-1" required>
+  <input name="address" value="{{v.address}}" placeholder="例）〇〇県〇〇市〇〇町2-3-4" required>
   <div class="hint">住所を入れると市区町村コードを自動で判定します</div>
 
   <label>マンション名</label>
@@ -2618,13 +2618,13 @@ BRAND_BAR
    <div><label>売出価格（万円・必須）</label>
     <input name="price" value="{{v.price}}" placeholder="例）3480" required></div>
    <div><label>専有面積（㎡・必須）</label>
-    <input name="area" value="{{v.area}}" placeholder="例）70.2" required>
+    <input name="area" value="{{v.area}}" placeholder="例）70" required>
     <div class="hint">バルコニーは含めません</div></div>
   </div>
 
   <div class="row">
    <div><label>築年（西暦）</label>
-    <input name="byear" value="{{v.byear}}" placeholder="例）2005"></div>
+    <input name="byear" value="{{v.byear}}" placeholder="例）2010"></div>
    <div><label>駅まで徒歩（分）</label>
     <input name="station" value="{{v.station}}" placeholder="例）8"></div>
   </div>
@@ -3087,7 +3087,7 @@ BRAND_BAR
   <div class="card">
    <h2 style="font-size:15px;margin:0 0 6px">物件の基本情報</h2>
    <label>所在地（必須）</label>
-   <input name="address" value="{{v.address}}" placeholder="例）神奈川県小田原市城山4-20-18" required>
+   <input name="address" value="{{v.address}}" placeholder="例）〇〇県〇〇市〇〇町1-2-3" required>
    <div class="row">
     <div><label>売出価格（万円・必須）</label>
      <input name="price" value="{{v.price}}" required></div>
@@ -3433,7 +3433,7 @@ BRAND_BAR
   <div class="card">
    <h2 style="font-size:15px;margin:0 0 6px">物件の基本情報</h2>
    <label>所在地（必須）</label>
-   <input name="address" value="{{v.address}}" placeholder="例）神奈川県藤沢市鵠沼桜が岡3丁目" required>
+   <input name="address" value="{{v.address}}" placeholder="例）〇〇県〇〇市〇〇町2-3-4" required>
    <label>マンション名</label>
    <input name="name" value="{{v.name}}" placeholder="例）〇〇マンション">
    <div class="row">
@@ -4982,9 +4982,9 @@ BRAND_BAR
    <div class="hint">課税明細書があれば入力してください。未入力なら上の内訳から推定し、その旨を根拠に明記します。</div>
    <div class="row">
     <div><label>土地面積（㎡）</label>
-     <input name="land_area" value="{{v.land_area}}" placeholder="例）147.07"></div>
+     <input name="land_area" value="{{v.land_area}}" placeholder="例）120"></div>
     <div><label>建物の床面積（㎡）</label>
-     <input name="floor_area" value="{{v.floor_area}}" placeholder="例）90.47"></div>
+     <input name="floor_area" value="{{v.floor_area}}" placeholder="例）95"></div>
    </div>
   </div>
 
@@ -4992,7 +4992,7 @@ BRAND_BAR
    <h2>建物の新築時期</h2>
    <p class="h2sub">不動産取得税の控除額が新築時期で変わります</p>
    <div class="row">
-    <div><label>新築年（西暦）</label><input name="byear" value="{{v.byear}}" placeholder="例）2005"></div>
+    <div><label>新築年（西暦）</label><input name="byear" value="{{v.byear}}" placeholder="例）2010"></div>
     <div><label>月（任意）</label><input name="bmonth" value="{{v.bmonth}}" placeholder="不明なら空欄"></div>
     <div><label>日（任意）</label><input name="bday" value="{{v.bday}}" placeholder="不明なら空欄"></div>
    </div>
