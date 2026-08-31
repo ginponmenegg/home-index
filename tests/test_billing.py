@@ -153,6 +153,23 @@ def test_tokushoho_page_shows_the_three_items_that_cannot_be_omitted(billing):
     assert "日割りでの返金も行っておりません" in h
 
 
+def test_the_trade_name_is_composed_on_the_page_not_in_the_variable(billing):
+    """屋号は画面側で組み立てる。環境変数には氏名だけを入れる。
+
+    「HOME INDEX 運営責任者 氏名」をまるごと変数に入れると、
+    運営責任者の欄で二重になり、構造化データの Person.name も
+    肩書き込みになって、誰が書いたかの信号として働かなくなる。
+    """
+    c = billing.app.app.test_client()
+    h = c.get("/tokushoho").get_data(as_text=True)
+    assert "HOME INDEX（山田 太郎）" in h, "販売事業者は屋号と氏名を併記"
+    i = h.index("運営責任者")
+    assert "HOME INDEX" not in h[i:i + 120], "運営責任者の欄で屋号を繰り返さない"
+    # 構造化データの名前は、人の名前だけ
+    a = c.get("/about").get_data(as_text=True)
+    assert '"name":"山田 太郎"' in a
+
+
 def test_terms_gain_the_billing_clauses(billing):
     h = billing.app.app.test_client().get("/terms").get_data(as_text=True)
     for k in ["有料プラン", "自動で更新", "第10条（解約）", "第11条（返金）",
