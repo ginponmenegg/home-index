@@ -502,7 +502,7 @@ def test_neutrality_is_stated_before_the_last_call_to_action():
     assert sample < howto < stance < shikumi < last_cta
     # 匿名で「売りません」と言うより、誰が言っているかを示すほうが強い。
     # YMYLでは書き手が分からないと内容が評価されないという事情もある。
-    assert "物件の仲介をしません" in body
+    assert "物件の仲介は行いません" in body
     assert "宅地建物取引士" in body, "誰が作っているかを名乗る"
     assert 'href="/about"' in body, "運営者ページへ導線がある"
 

@@ -54,12 +54,15 @@ def test_the_page_says_who_and_discloses_the_conflict():
         h = webapp.app.test_client().get("/about").get_data(as_text=True)
         assert "山田 太郎" in h
         assert "宅地建物取引士" in h
-        assert "6年" in h
+        # 年数は書かない。読む人によって十分にも浅くも受け取られるため、
+        # 資格と、いま現場にいることを示すにとどめる。
+        assert "従事しています" in h
         # 勤務先との関係を隠さない。あとから分かるほうが damage が大きい
-        assert "勤務先とは無関係" in h
+        assert "勤務先とは関係のない" in h
         # 中立性の中身
-        for k in ["物件を売りません", "仲介手数料も紹介料も受け取りません",
-                  "業者間の情報は使いません"]:
+        for k in ["不動産の仲介・媒介は行いません",
+                  "仲介手数料・紹介料は一切受け取りません",
+                  "事業者間の情報は使用しません"]:
             assert k in h, k
     finally:
         _restore(keep)
@@ -86,7 +89,8 @@ def test_the_landing_page_names_the_author():
     try:
         h = webapp.app.test_client().get("/").get_data(as_text=True)
         assert "宅地建物取引士" in h
-        assert "物件の仲介をしません" in h
+        assert "物件の仲介は行いません" in h
+        assert "6年" not in h, "年数は出さない"
         assert 'href="/about"' in h
     finally:
         _restore(keep)
