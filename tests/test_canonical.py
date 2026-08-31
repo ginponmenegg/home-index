@@ -82,3 +82,23 @@ def test_no_redirect_when_unset():
         if prev is not None:
             os.environ["CANONICAL_HOST"] = prev
         importlib.reload(webapp)
+
+
+def test_acme_challenges_are_not_redirected():
+    """証明書の更新に使う経路は転送しない。
+
+    Let's Encrypt は検証したいホスト名で /.well-known/acme-challenge/ を
+    読みに来る。別のホストへ飛ばすと www 側の更新が通らず、
+    90日後に証明書が切れる。切れて初めて気づく類の不具合になる。
+    """
+    webapp, prev = _app_with("home-index.example")
+    try:
+        c = webapp.app.test_client()
+        r = c.get("/.well-known/acme-challenge/tokentokentoken",
+                  headers={"Host": "www.home-index.example"})
+        assert r.status_code != 301, "ACMEの検証経路を転送してはいけない"
+        # 通常のページは従来どおり転送する
+        assert c.get("/buy", headers={"Host": "www.home-index.example"}
+                     ).status_code == 301
+    finally:
+        _restore(webapp, prev)

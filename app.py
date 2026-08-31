@@ -137,7 +137,15 @@ def _force_canonical_host():
     if not CANONICAL_HOST or request.method not in ("GET", "HEAD"):
         return None
     host = (request.host or "").split(":")[0].lower()
-    if not host or host == CANONICAL_HOST or request.path == "/healthz":
+    if not host or host == CANONICAL_HOST:
+        return None
+    # /healthz は転送しない。UptimeRobot は onrender.com を叩いて
+    # サービスを起こしているので、転送すると監視の意味が薄れる。
+    #
+    # /.well-known/ も転送しない。証明書の更新（ACMEのHTTP-01）は、
+    # 検証したいホスト名でこのパスを読みに来る。別のホストへ飛ばすと
+    # www 側の更新が通らず、90日後に証明書が切れる。
+    if request.path == "/healthz" or request.path.startswith("/.well-known/"):
         return None
     url = f"https://{CANONICAL_HOST}{request.path}"
     if request.query_string:
