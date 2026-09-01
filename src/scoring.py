@@ -26,6 +26,11 @@ class CategoryScore:
     sufficiency: float       # 0..1（情報充足度）
     reason: str
     sources: List[str] = field(default_factory=list)
+    # 強み・弱みに出す事実。reason はカテゴリの内訳をひとつなぎにした説明文で、
+    # 有利な事実と不利な事実が混ざる。そのまま弱みに流すと「新耐震」「最上階」が
+    # 弱みとして並ぶので、点に効いた事実だけを符号つきでここに入れる。
+    plus: List[str] = field(default_factory=list)
+    minus: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -57,9 +62,36 @@ def _clamp(x, lo=0.0, hi=1.0):
     return max(lo, min(hi, x))
 
 
+# 画面に並べる上限。全部出すと目が滑るので、配点の重いカテゴリから拾う。
+HIGHLIGHT_MAX = 6
+
+
+def highlights(cats):
+    """カテゴリが持つ符号つきの事実から、強み・弱みを組み立てる。
+
+    カテゴリ単位で reason を丸ごと出す方式はやめた。reason には有利・不利が
+    混ざるため、点数の伸びなかったカテゴリの説明文を弱みとして出すと、
+    その中の有利な事実まで弱みとして読まれてしまう。
+    """
+    def pick(attr):
+        out, seen = [], set()
+        for c in sorted(cats, key=lambda c: -c.weight):
+            for t in getattr(c, attr, []):
+                # 駅距離のように複数のカテゴリが同じ事実を見ることがある。
+                # 読む側には同じ一文なので、配点の重いほうで一度だけ出す。
+                if t in seen:
+                    continue
+                seen.add(t)
+                out.append(f"{c.name}: {t}")
+        return out[:HIGHLIGHT_MAX]
+
+    return pick("plus"), pick("minus")
+
+
 # ---- 各カテゴリのルール ----
 def score_building(subj: SubjectProperty, current_year: int) -> CategoryScore:
     src = []
+    plus, minus = [], []
     # 新築戸建：築年数では満点にしない。建物性能・設備・施工は未確認として評価。
     is_new = (subj.property_type == "shinchiku_kodate") or \
         (subj.build_year is not None and current_year - subj.build_year <= 0)
@@ -78,7 +110,8 @@ def score_building(subj: SubjectProperty, current_year: int) -> CategoryScore:
                      "建物性能評価・設備仕様・施工会社は未確認"
         return CategoryScore("物件", WEIGHTS["物件"], round(raw, 3),
                              round(WEIGHTS["物件"] * raw, 1),
-                             0.5 if skey else 0.4, reason, ["user/URL"])
+                             0.5 if skey else 0.4, reason, ["user/URL"],
+                             plus=["新築（築浅）"])
     if subj.build_year:
         age = current_year - subj.build_year
         # 構造ごとの耐用年数の違いを、木造なら何年ぶんかに換算してから
@@ -105,6 +138,12 @@ def score_building(subj: SubjectProperty, current_year: int) -> CategoryScore:
         else:
             reason = f"築{age}年（構造未確認・木造として計算）"
         src.append("user/URL")
+        # 築年はこのカテゴリの点のほとんどを決める。伸びた／落ちた理由が
+        # 築年そのものなので、その一文をそのまま強み・弱みに出す。
+        if raw >= 0.85:
+            plus.append(reason)
+        elif raw <= 0.5:
+            minus.append(reason)
     else:
         raw = 0.5
         reason = f"築年不明{'・' + structure.label(skey) if skey else ''}"
@@ -112,13 +151,15 @@ def score_building(subj: SubjectProperty, current_year: int) -> CategoryScore:
     if getattr(subj, "renovated", False):
         raw = _clamp(raw + 0.12)
         reason += "・リフォーム済み(内容未評価)"
+        plus.append("リフォーム済み（内容は未評価）")
     # 建物状態(雨漏り/シロアリ等)は未取得のため充足度を抑える
     suff = 0.6 if subj.build_year else 0.3
     if skey:
         suff = min(1.0, suff + 0.1)
     reason += "（建物内部の状態は未確認）"
     return CategoryScore("物件", WEIGHTS["物件"], round(raw, 3),
-                         round(WEIGHTS["物件"] * raw, 1), suff, reason, src)
+                         round(WEIGHTS["物件"] * raw, 1), suff, reason, src,
+                         plus=plus, minus=minus)
 
 
 def score_price(price_a: Optional[PriceAnalysis]) -> CategoryScore:
@@ -136,8 +177,11 @@ def score_price(price_a: Optional[PriceAnalysis]) -> CategoryScore:
         raw = _clamp(0.85 - (d / 100.0) * 1.5, 0.2, 0.85)
     reason = f"{v}（中央値比 {d:+}%・類似{price_a.comparable_count}件）"
     suff = {"high": 1.0, "mid": 0.7, "low": 0.4}.get(price_a.confidence, 0.5)
+    bit = f"{v}（推定中央値比 {d:+}%）"
+    plus = [bit] if v in ("割安の可能性", "概ね適正") else []
+    minus = [bit] if v == "割高の可能性" else []
     return CategoryScore("価格", w, round(raw, 3), round(w * raw, 1), suff,
-                         reason, ["reinfolib:XIT001"])
+                         reason, ["reinfolib:XIT001"], plus=plus, minus=minus)
 
 
 def _walk_score(m):
@@ -289,6 +333,7 @@ def score_location(subj: SubjectProperty, use_district: Optional[str],
     """立地＝いま暮らしやすいか。生活利便を主軸に、駅アクセスを従属要素にする。"""
     w = WEIGHTS["立地"]
     src = []
+    plus, minus = [], []
     walk = subj.station_walk_min
     bus = getattr(subj, "bus_min", None)
     # 徒歩分が未入力なら、周辺施設APIの最寄駅距離から推定
@@ -318,6 +363,14 @@ def score_location(subj: SubjectProperty, use_district: Optional[str],
     else:
         raw, reason, suff = 0.5, "駅距離不明", 0.3
 
+    if bus:
+        minus.append(f"バス便（駅までバス{bus}分）")
+    elif walk is not None:
+        if walk <= 10:
+            plus.append(f"駅徒歩{walk}分")
+        elif walk >= 21:
+            minus.append(f"駅徒歩{walk}分")
+
     if use_district:
         reason += f"・用途:{use_district}"
         src.append("reinfolib:XKT002")
@@ -333,11 +386,16 @@ def score_location(subj: SubjectProperty, use_district: Optional[str],
             src.append("OpenStreetMap")
         suff = max(suff, 0.5 + 0.45 * coverage)
         reason += "／" + "・".join(life_bits)
+        # 施設ごとに並べると数が多くなるので、生活利便はまとめて1件にする。
+        if life_raw >= 0.8:
+            plus.append("周辺の生活利便施設が充実")
+        elif life_raw <= 0.45:
+            minus.append("周辺の生活利便施設が少ない")
     else:
         reason += "（周辺施設は未評価）"
 
     return CategoryScore("立地", w, round(raw, 3), round(w * raw, 1),
-                         round(suff, 2), reason, src)
+                         round(suff, 2), reason, src, plus=plus, minus=minus)
 
 
 def score_risk(use_district: Optional[str], urbanization: Optional[str],
@@ -353,6 +411,7 @@ def score_risk(use_district: Optional[str], urbanization: Optional[str],
         notes.append("市街化調整区域の可能性")
         src.append("reinfolib")
 
+    hit = []
     checked = bool(hazard and getattr(hazard, "checked", False))
     if not checked:
         raw = min(raw, 0.7)   # 安全と断定できない
@@ -360,7 +419,6 @@ def score_risk(use_district: Optional[str], urbanization: Optional[str],
     else:
         src.append("reinfolib:XKT(hazard)")
         suff = 0.85
-        hit = []
         fr = getattr(hazard, "flood_rank", None)
         if fr:
             if fr >= 4:
@@ -405,8 +463,17 @@ def score_risk(use_district: Optional[str], urbanization: Optional[str],
         notes.append("・".join(hit) if hit else "指定ハザード区域に該当なし")
 
     reason = "・".join(notes) if notes else "重大リスクの検出なし"
+    plus, minus = [], []
+    if urbanization and "調整区域" in urbanization:
+        minus.append("市街化調整区域の可能性")
+    if checked:
+        # 未確認のときは何も言わない。該当なしと言えるのは、調べた場合だけ。
+        if hit:
+            minus.extend(hit)
+        else:
+            plus.append("指定のハザード区域に該当なし")
     return CategoryScore("リスク", w, round(raw, 3), round(w * raw, 1), suff,
-                         reason, src)
+                         reason, src, plus=plus, minus=minus)
 
 
 def score_finance(loan: Optional[LoanResult]) -> CategoryScore:
@@ -428,8 +495,10 @@ def score_finance(loan: Optional[LoanResult]) -> CategoryScore:
     else:
         raw = 0.3
     reason = f"返済負担率 {rb}%（基準{limit}%・月々{loan.monthly_payment:,}円）"
+    plus = [f"返済負担率 {rb}%（基準{limit}%に対して余裕がある）"] if rb <= 25 else []
+    minus = [f"返済負担率 {rb}%（基準{limit}%を超えています）"] if rb > limit else []
     return CategoryScore("資金", w, round(raw, 3), round(w * raw, 1), 0.9,
-                         reason, ["計算"])
+                         reason, ["計算"], plus=plus, minus=minus)
 
 
 def score_asset(subj: SubjectProperty, use_district: Optional[str],
@@ -443,11 +512,13 @@ def score_asset(subj: SubjectProperty, use_district: Optional[str],
     w = WEIGHTS["資産性"]
     src = []
     bits = []
+    plus, minus = [], []
     walk = subj.station_walk_min
     bus = getattr(subj, "bus_min", None)
     if bus:  # バス便は資産性で不利
         raw = 0.45
         bits.append("バス便")
+        minus.append(f"バス便（駅までバス{bus}分）")
     elif walk is not None:
         if walk <= 10:
             raw = 0.85
@@ -460,6 +531,10 @@ def score_asset(subj: SubjectProperty, use_district: Optional[str],
         else:
             raw = 0.45
         bits.append(f"駅徒歩{walk}分")
+        if walk <= 10:
+            plus.append(f"駅徒歩{walk}分")
+        elif walk >= 21:
+            minus.append(f"駅徒歩{walk}分")
     else:
         raw = 0.55
         bits.append("駅距離不明")
@@ -469,6 +544,7 @@ def score_asset(subj: SubjectProperty, use_district: Optional[str],
        (subj.building_area_m2 and subj.building_area_m2 >= 100):
         raw += 0.08
         bits.append("ゆとりある広さ")
+        plus.append("ゆとりある広さ")
 
     suff = 0.4
     # 250mメッシュの将来推計人口があればそちらを優先する。市区町村全体の
@@ -479,20 +555,26 @@ def score_asset(subj: SubjectProperty, use_district: Optional[str],
         bits.append(pop_bit)
         raw += adj
         suff = 0.75
+        if adj > 0:
+            plus.append(pop_bit)
+        elif adj < 0:
+            minus.append(pop_bit)
     elif population_trend:
         src.append("e-Stat")
         bits.append(f"人口{population_trend}")
         suff = 0.6
         if population_trend in ("増加", "微増"):
             raw += 0.05
+            plus.append(f"人口{population_trend}")
         elif population_trend == "減少":
             raw -= 0.08
+            minus.append(f"人口{population_trend}")
     else:
         bits.append("人口動向は未取得")
 
     raw = max(0.0, min(1.0, raw))
     return CategoryScore("資産性", w, round(raw, 3), round(w * raw, 1), suff,
-                         "・".join(bits), src)
+                         "・".join(bits), src, plus=plus, minus=minus)
 
 
 def grade_of(total: int) -> str:
@@ -536,8 +618,7 @@ def build_diagnosis(subj: SubjectProperty, price_a: Optional[PriceAnalysis],
     suff = int(round(sum(c.sufficiency * c.weight for c in cats)
                      / sum(c.weight for c in cats) * 100))
 
-    strengths = [f"{c.name}: {c.reason}" for c in cats if c.raw >= 0.8]
-    weaknesses = [f"{c.name}: {c.reason}" for c in cats if c.raw <= 0.5]
+    strengths, weaknesses = highlights(cats)
     to_confirm = [f"{c.name}: {c.reason}" for c in cats if c.sufficiency < 0.5]
 
     # Critical Risk

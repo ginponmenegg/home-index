@@ -20,7 +20,7 @@ from .loan import LoanResult
 from .config import CONFIG
 from .scoring import (CategoryScore, CriticalRisk, Diagnosis, grade_of, _clamp,
                       score_price, score_location, score_risk, score_finance,
-                      _future_population_adj)
+                      _future_population_adj, highlights)
 
 WEIGHTS = CONFIG["mansion_category_weights"]
 REPAIR_GUIDE = CONFIG["mansion_repair_fund_guideline"]
@@ -68,18 +68,34 @@ def score_mansion_asset(subj: MansionSubject,
         current_year = datetime.date.today().year
     w = WEIGHTS["資産性"]
     bits: List[str] = []
+    plus: List[str] = []
+    minus: List[str] = []
     known = 0
     total_checks = 5
 
-    # 駅徒歩（マンションは戸建より駅距離が効く）
+    # 駅徒歩（マンションは戸建より駅距離が効く）。
+    # バス便は、バス停まで何分かにかかわらず駅徒歩圏とは別の水準で見る。
+    # マンションは駅からの距離がそのまま出口（売れるか）に響くため。
+    bus = getattr(subj, "bus_min", None)
     walk_raw = _walk_raw(subj.station_walk_min)
-    if walk_raw is None:
+    if bus:
+        base = 0.40
+        known += 1
+        stop = (f"・バス停まで徒歩{subj.station_walk_min}分"
+                if subj.station_walk_min is not None else "")
+        bits.append(f"バス便（駅までバス{bus}分{stop}）")
+        minus.append(f"バス便（駅までバス{bus}分）")
+    elif walk_raw is None:
         base = 0.6
         bits.append("駅徒歩は未入力")
     else:
         base = walk_raw
         known += 1
         bits.append(f"駅徒歩{subj.station_walk_min}分")
+        if subj.station_walk_min <= 10:
+            plus.append(f"駅徒歩{subj.station_walk_min}分")
+        elif subj.station_walk_min >= 21:
+            minus.append(f"駅徒歩{subj.station_walk_min}分")
 
     # 築年・新耐震
     newq = is_new_quake_standard(subj.build_year)
@@ -91,6 +107,7 @@ def score_mansion_asset(subj: MansionSubject,
         if not newq:
             base = base * 0.6
             bits.append(f"旧耐震（{subj.build_year}年築・築{age}年）")
+            minus.append(f"旧耐震（{subj.build_year}年築・築{age}年）")
         else:
             if age <= 10:
                 base = min(1.0, base + 0.08)
@@ -101,6 +118,12 @@ def score_mansion_asset(subj: MansionSubject,
             else:
                 base = base - 0.10
             bits.append(f"新耐震（{subj.build_year}年築・築{age}年）")
+            # 新耐震であること自体は最低条件なので、それだけでは強みにしない。
+            # 点を押し上げているのは築浅であることのほう。
+            if age <= 20:
+                plus.append(f"新耐震・築{age}年")
+            elif age >= 36:
+                minus.append(f"築{age}年")
             if subj.build_year <= NEW_QUAKE_STANDARD_YEAR:
                 bits.append("※建築確認の時期により旧耐震の可能性あり・要確認")
 
@@ -109,6 +132,7 @@ def score_mansion_asset(subj: MansionSubject,
     if getattr(subj, "renovated", False):
         base += 0.06
         bits.append("リフォーム済み(内容未評価)")
+        plus.append("リフォーム済み（内容は未評価）")
 
     # 所在階／総階数（軽め）
     if subj.floor is not None:
@@ -116,9 +140,11 @@ def score_mansion_asset(subj: MansionSubject,
         if subj.floor <= 1:
             base -= 0.05
             bits.append("1階")
+            minus.append("1階")
         elif subj.total_floors and subj.floor >= subj.total_floors:
             base += 0.03
             bits.append(f"最上階（{subj.floor}/{subj.total_floors}階）")
+            plus.append(f"最上階（{subj.floor}/{subj.total_floors}階）")
         else:
             tf = f"/{subj.total_floors}階" if subj.total_floors else "階"
             bits.append(f"{subj.floor}{tf}")
@@ -131,6 +157,10 @@ def score_mansion_asset(subj: MansionSubject,
         if adj is not None:
             base += adj
             bits.append(f"{d}向き")
+            if adj > 0:
+                plus.append(f"{d}向き")
+            elif adj < 0:
+                minus.append(f"{d}向き")
 
     # 将来推計人口（250mメッシュ）。その地点で人が減るかどうかは、
     # マンションの出口（売れるか）に直結する。
@@ -139,12 +169,17 @@ def score_mansion_asset(subj: MansionSubject,
         known += 1
         base += adj
         bits.append(pop_bit)
+        if adj > 0:
+            plus.append(pop_bit)
+        elif adj < 0:
+            minus.append(pop_bit)
 
     raw = _clamp(base)
     suff = known / total_checks
     reason = "・".join(bits) if bits else "情報が不足しています"
     return CategoryScore("資産性", w, round(raw, 3), round(w * raw, 1),
-                         round(suff, 2), reason, ["user"])
+                         round(suff, 2), reason, ["user"],
+                         plus=plus, minus=minus)
 
 
 def repair_fund_band(total_floors: Optional[int],
@@ -204,12 +239,15 @@ def score_mansion_management(subj: MansionSubject) -> CategoryScore:
     # ないか」が問われる線として使われている。ただし資料自身が「幅に収まって
     # いないからといって直ちに不適切とは限らない」と断っているので、下回った
     # ことだけを理由に大きくは減点せず、確認を促す扱いにする。
+    plus, minus = [], []
     if unit < band["low"]:
         raw = 0.5
         judge = f"{span}の下限を下回る"
+        minus.append(f"修繕積立金が国土交通省の目安（{span}）の下限を下回る")
     elif unit <= band["high"]:
         raw = 0.85
         judge = f"{span}の範囲"
+        plus.append(f"修繕積立金は国土交通省の目安（{span}）の範囲")
     else:
         raw = 0.75
         judge = f"{span}を上回る"
@@ -220,7 +258,7 @@ def score_mansion_management(subj: MansionSubject) -> CategoryScore:
     # 残高も履歴も見ていない以上、満点の充足度は名乗れない
     suff = 0.6 if fee else 0.45
     return CategoryScore("管理", w, round(raw, 3), round(w * raw, 1),
-                         suff, "・".join(bits), src)
+                         suff, "・".join(bits), src, plus=plus, minus=minus)
 
 
 def _reweight(cat: CategoryScore, weight: int) -> CategoryScore:
@@ -255,8 +293,7 @@ def build_mansion_diagnosis(subj: MansionSubject,
     suff = int(round(sum(c.sufficiency * c.weight for c in cats)
                      / sum(c.weight for c in cats) * 100))
 
-    strengths = [f"{c.name}: {c.reason}" for c in cats if c.raw >= 0.8]
-    weaknesses = [f"{c.name}: {c.reason}" for c in cats if c.raw <= 0.5]
+    strengths, weaknesses = highlights(cats)
     to_confirm = [f"{c.name}: {c.reason}" for c in cats if c.sufficiency < 0.5]
 
     risks: List[CriticalRisk] = []

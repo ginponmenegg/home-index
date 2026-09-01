@@ -27,7 +27,8 @@ from typing import List, Optional
 import datetime
 
 from .models import MansionSubject, MansionProDetail, BuyerProfile
-from .scoring import CategoryScore, CriticalRisk, Diagnosis, grade_of, _clamp
+from .scoring import (CategoryScore, CriticalRisk, Diagnosis, grade_of,
+                      _clamp, highlights)
 from .pro_scoring import _rebuild
 
 # ---- 管理。加点・減点と、画面に出す言い方をまとめて持つ ----
@@ -76,14 +77,22 @@ ASSET_FIELDS = (tuple(UNIT_CONDITION) + EQUIPMENT_FIELDS
                 + ("performance_cert", "defect_insurance"))
 
 
-def _apply(table, value, raw, bits):
-    """表を引いて加減点し、説明を足す。未確認なら何もしない。"""
+def _apply(table, value, raw, bits, plus=None, minus=None):
+    """表を引いて加減点し、説明を足す。未確認なら何もしない。
+
+    強み・弱みの向きは加減点の符号がそのまま使える。0点の項目
+    （「管理員は巡回」など）は、どちらでもないので出さない。
+    """
     hit = table.get(value)
     if not hit:
         return raw
     adj, label = hit
     if label:
         bits.append(label)
+        if adj > 0 and plus is not None:
+            plus.append(label)
+        elif adj < 0 and minus is not None:
+            minus.append(label)
     return raw + adj
 
 
@@ -92,6 +101,8 @@ def score_management_detail(base: CategoryScore, detail: MansionProDetail
     """管理：無料版は管理費と積立金の額しか見ていない。中身を足す。"""
     raw = base.raw
     bits: List[str] = []
+    plus: List[str] = []
+    minus: List[str] = []
 
     for table, value in ((MAJOR_REPAIR, detail.major_repair),
                          (LONG_TERM_PLAN, detail.long_term_plan),
@@ -101,12 +112,12 @@ def score_management_detail(base: CategoryScore, detail: MansionProDetail
                          (RESERVE_INCREASE, detail.reserve_increase),
                          (MANAGEMENT_CERT, detail.management_cert),
                          (COMMON_AREA, detail.common_area)):
-        raw = _apply(table, value, raw, bits)
+        raw = _apply(table, value, raw, bits, plus, minus)
 
     answered = detail.known_ratio(MANAGEMENT_FIELDS)
     suff = base.sufficiency + (1.0 - base.sufficiency) * answered
     reason = "・".join([base.reason] + bits) if bits else base.reason
-    return _rebuild(base, raw, suff, reason, "PRO入力")
+    return _rebuild(base, raw, suff, reason, "PRO入力", plus, minus)
 
 
 def score_mansion_asset_detail(base: CategoryScore, detail: MansionProDetail
@@ -114,6 +125,8 @@ def score_mansion_asset_detail(base: CategoryScore, detail: MansionProDetail
     """資産性：専有部の状態・設備・リフォーム・認定を足す。"""
     raw = base.raw
     bits: List[str] = []
+    plus: List[str] = []
+    minus: List[str] = []
 
     concerns = [label for f, (label, pen) in UNIT_CONDITION.items()
                 if getattr(detail, f) == "concern"]
@@ -124,8 +137,10 @@ def score_mansion_asset_detail(base: CategoryScore, detail: MansionProDetail
     if clears:
         raw += 0.02 * len(clears)
         bits.append(f"専有部{len(clears)}項目は問題なし")
+        plus.append(f"専有部の{len(clears)}項目は問題なし")
     if concerns:
         bits.append("要注意：" + "・".join(concerns))
+        minus.extend(concerns)
 
     old = []
     for f in EQUIPMENT_FIELDS:
@@ -135,26 +150,30 @@ def score_mansion_asset_detail(base: CategoryScore, detail: MansionProDetail
             old.append(EQUIPMENT_LABEL[f])
     if old:
         bits.append("更新10年超：" + "・".join(old))
+        minus.append("更新から10年超：" + "・".join(old))
 
     done = [(label, w) for f, label, w in RENO_FIELDS if getattr(detail, f)]
     for _label, w in done:
         raw += w
     if done:
         bits.append("リフォーム：" + "・".join(l for l, _ in done))
+        plus.append("リフォーム：" + "・".join(l for l, _ in done))
 
     perf = PERFORMANCE_ADJ.get(detail.performance_cert)
     if perf:
         raw += perf[0]
         if perf[1]:
             bits.append(perf[1])
+            plus.append(perf[1])
     if detail.defect_insurance == "yes":
         raw += 0.04
         bits.append("既存住宅売買瑕疵保険の付保あり")
+        plus.append("既存住宅売買瑕疵保険の付保あり")
 
     answered = detail.known_ratio(ASSET_FIELDS)
     suff = base.sufficiency + (1.0 - base.sufficiency) * answered
     reason = "・".join([base.reason] + bits) if bits else base.reason
-    return _rebuild(base, raw, suff, reason, "PRO入力")
+    return _rebuild(base, raw, suff, reason, "PRO入力", plus, minus)
 
 
 def score_mansion_risk_detail(base: CategoryScore, detail: MansionProDetail
@@ -162,27 +181,34 @@ def score_mansion_risk_detail(base: CategoryScore, detail: MansionProDetail
     """リスク：敷地の権利と耐震診断を足す。"""
     raw = base.raw
     bits: List[str] = []
+    plus: List[str] = []
+    minus: List[str] = []
 
     if detail.land_right == "leasehold":
         raw -= 0.15
         bits.append("借地権")
+        minus.append("敷地は借地権")
     elif detail.land_right == "ownership":
         bits.append("所有権")
+        plus.append("敷地は所有権")
 
     if detail.quake_diagnosis == "need":
         raw = min(raw, 0.35)
         bits.append("耐震診断で要補強とされている")
+        minus.append("耐震診断で要補強とされている")
     elif detail.quake_diagnosis in ("ok", "done"):
         raw += 0.08
-        bits.append("耐震診断済み（問題なし・補強済み）"
-                    if detail.quake_diagnosis == "ok" else "耐震補強済み")
+        label = ("耐震診断済み（問題なし・補強済み）"
+                 if detail.quake_diagnosis == "ok" else "耐震補強済み")
+        bits.append(label)
+        plus.append(label)
     elif detail.quake_diagnosis == "never":
         bits.append("耐震診断は未実施")
 
     answered = detail.known_ratio(("land_right", "quake_diagnosis"))
     suff = base.sufficiency + (1.0 - base.sufficiency) * answered
     reason = "・".join([base.reason] + bits) if bits else base.reason
-    return _rebuild(base, raw, suff, reason, "PRO入力")
+    return _rebuild(base, raw, suff, reason, "PRO入力", plus, minus)
 
 
 def mansion_pro_risks(detail: MansionProDetail,
@@ -295,8 +321,7 @@ def apply_pro_mansion(diagnosis: Diagnosis, detail: MansionProDetail,
              if not (answered_all and r.type == "積立金残高と修繕履歴が未確認")]
     risks += mansion_pro_risks(detail, subj)
 
-    strengths = [f"{c.name}: {c.reason}" for c in cats if c.raw >= 0.8]
-    weaknesses = [f"{c.name}: {c.reason}" for c in cats if c.raw <= 0.5]
+    strengths, weaknesses = highlights(cats)
     to_confirm = [f"{c.name}: {c.reason}" for c in cats if c.sufficiency < 0.5]
 
     comment = (f"総合 {total}点 / {grade_of(total)}。情報充足度 {suff}%"

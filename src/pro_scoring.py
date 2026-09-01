@@ -18,7 +18,8 @@ from typing import List, Optional
 import datetime
 
 from .models import SubjectProperty, ProDetail, BuyerProfile
-from .scoring import CategoryScore, CriticalRisk, Diagnosis, grade_of, _clamp
+from .scoring import (CategoryScore, CriticalRisk, Diagnosis, grade_of,
+                      _clamp, highlights)
 
 # 建物内部の5項目。1つでも「気になる点あり」があれば重く見る。
 CONDITION_FIELDS = ("leak", "termite", "tilt", "plumbing", "foundation")
@@ -73,15 +74,24 @@ def score_certifications(detail: ProDetail):
 
 
 def _rebuild(cat: CategoryScore, raw: float, sufficiency: float,
-             reason: str, extra_source: Optional[str] = None) -> CategoryScore:
-    """配点はそのままに、点数・充足度・理由だけ差し替える。"""
+             reason: str, extra_source: Optional[str] = None,
+             plus: Optional[List[str]] = None,
+             minus: Optional[List[str]] = None) -> CategoryScore:
+    """配点はそのままに、点数・充足度・理由だけ差し替える。
+
+    強み・弱みは無料診断で付いたものを土台にして、PROの回答から分かった
+    ことを足す。置き換えないのは、築年や駅距離のように、PROの入力では
+    変わらない事実まで消してしまうのを避けるため。
+    """
     raw = _clamp(raw)
     sources = list(cat.sources)
     if extra_source and extra_source not in sources:
         sources.append(extra_source)
     return replace(cat, raw=round(raw, 3), points=round(cat.weight * raw, 1),
                    sufficiency=round(_clamp(sufficiency), 2), reason=reason,
-                   sources=sources)
+                   sources=sources,
+                   plus=list(cat.plus) + list(plus or []),
+                   minus=list(cat.minus) + list(minus or []))
 
 
 def score_property_detail(base: CategoryScore, detail: ProDetail,
@@ -89,6 +99,8 @@ def score_property_detail(base: CategoryScore, detail: ProDetail,
     """物件：FREEの築年ベースの点に、建物の中身の答えを足し引きする。"""
     raw = base.raw
     bits: List[str] = []
+    plus: List[str] = []
+    minus: List[str] = []
 
     # 建物内部。問題が見つかった項目は重く引き、見ていない項目は動かさない。
     concerns = [CONDITION_LABEL[f] for f in CONDITION_FIELDS
@@ -102,8 +114,10 @@ def score_property_detail(base: CategoryScore, detail: ProDetail,
         raw += 0.03 * len(clears)
     if concerns:
         bits.append("要注意：" + "・".join(concerns))
+        minus.extend(concerns)
     if clears:
         bits.append(f"内部{len(clears)}項目は問題なし")
+        plus.append(f"建物内部の{len(clears)}項目は問題なし")
 
     # 設備の更新時期
     old_equipment = []
@@ -114,6 +128,7 @@ def score_property_detail(base: CategoryScore, detail: ProDetail,
             old_equipment.append(EQUIPMENT_LABEL[f])
     if old_equipment:
         bits.append("更新10年超：" + "・".join(old_equipment))
+        minus.append("更新から10年超：" + "・".join(old_equipment))
 
     # リフォームの箇所。無料版は有無だけだが、ここでは箇所ごとに見る。
     done = [(label, w) for f, label, w in RENO_FIELDS if getattr(detail, f)]
@@ -121,20 +136,27 @@ def score_property_detail(base: CategoryScore, detail: ProDetail,
         raw += w
     if done:
         bits.append("リフォーム：" + "・".join(l for l, _ in done))
+        plus.append("リフォーム：" + "・".join(l for l, _ in done))
 
     cert_adj, cert_bits = score_certifications(detail)
     raw += cert_adj
     bits.extend(cert_bits)
+    # 認定・評価は第三者の検査に裏付けられた事実なので、そのまま強みに出す。
+    # ただし耐震等級1は建築基準法と同等というだけなので、強みにはしない。
+    plus.extend(b for b in cert_bits if not b.startswith("耐震等級1"))
 
     if detail.quake_retrofit == "done":
         raw += 0.06
         bits.append("耐震補強済み")
+        plus.append("耐震補強済み")
     if detail.insulation == "high":
         raw += 0.04
         bits.append("断熱性能が高い")
+        plus.append("断熱性能が高い")
     elif detail.insulation == "low":
         raw -= 0.03
         bits.append("断熱性能が低い")
+        minus.append("断熱性能が低い")
     if detail.inspection == "done":
         bits.append("住宅診断あり")
 
@@ -147,46 +169,57 @@ def score_property_detail(base: CategoryScore, detail: ProDetail,
     reason = "・".join([base.reason.split("（")[0]] + bits) if bits else base.reason
     if answered < 1.0:
         reason += "（未回答の項目は評価に入れていません）"
-    return _rebuild(base, raw, suff, reason, "PRO入力")
+    return _rebuild(base, raw, suff, reason, "PRO入力", plus, minus)
 
 
 def score_risk_detail(base: CategoryScore, detail: ProDetail) -> CategoryScore:
     """リスク：接道・再建築可否・境界・越境を足す（§4-C）。"""
     raw = base.raw
     bits: List[str] = []
+    plus: List[str] = []
+    minus: List[str] = []
 
     if detail.rebuildable == "no":
         raw = min(raw, 0.15)
         bits.append("再建築不可")
+        minus.append("再建築不可")
     elif detail.rebuildable == "yes":
         bits.append("再建築可")
+        plus.append("再建築可")
 
     if detail.road_width == "none":
         raw = min(raw, 0.2)
         bits.append("未接道")
+        minus.append("未接道")
     elif detail.road_width == "lt4":
         raw -= 0.15
         bits.append("接道の幅員4m未満（セットバックの可能性）")
+        minus.append("接道の幅員4m未満（セットバックの可能性）")
     elif detail.road_width == "ge4":
         bits.append("接道4m以上")
+        plus.append("接道4m以上")
 
     if detail.boundary == "unfixed":
         raw -= 0.08
         bits.append("境界未確定")
+        minus.append("境界未確定")
     elif detail.boundary == "fixed":
         bits.append("境界確定済み")
+        plus.append("境界確定済み")
 
     if detail.encroachment == "exists":
         raw -= 0.08
         bits.append("越境あり")
+        minus.append("越境あり")
     elif detail.encroachment == "none":
         bits.append("越境なし")
+        plus.append("越境なし")
 
     answered = detail.known_ratio(("road_width", "rebuildable", "boundary",
                                    "encroachment"))
     suff = base.sufficiency + (1.0 - base.sufficiency) * answered
     reason = "・".join([base.reason] + bits) if bits else base.reason
-    return _rebuild(base, raw, suff, reason, "PRO入力")
+    return _rebuild(base, raw, suff, reason, "PRO入力", plus, minus)
 
 
 def pro_critical_risks(detail: ProDetail, subj: SubjectProperty,
@@ -316,8 +349,7 @@ def apply_pro(diagnosis: Diagnosis, detail: ProDetail,
 
     risks = list(diagnosis.critical_risks) + pro_critical_risks(detail, subj,
                                                                 current_year)
-    strengths = [f"{c.name}: {c.reason}" for c in cats if c.raw >= 0.8]
-    weaknesses = [f"{c.name}: {c.reason}" for c in cats if c.raw <= 0.5]
+    strengths, weaknesses = highlights(cats)
     to_confirm = [f"{c.name}: {c.reason}" for c in cats if c.sufficiency < 0.5]
 
     comment = (f"総合 {total}点 / {grade_of(total)}。情報充足度 {suff}%"
