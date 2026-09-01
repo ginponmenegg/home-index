@@ -379,7 +379,7 @@ OPERATOR_TEL = os.environ.get("OPERATOR_TEL", "")
 # BILLING_ENABLED が立つまでプランの申込・解約の画面は出さない。
 # 立てるのは、特定商取引法に基づく表記が実名・実住所で出せるようになり、
 # 規約の課金条項も整えてから。
-PRICE_YEN = 1980                     # 税込。総額表示義務があるため税別で持たない
+PRICE_YEN = 2980                     # 税込。総額表示義務があるため税別で持たない
 PRICE_LABEL = f"月額 {PRICE_YEN:,}円（税込）"
 
 

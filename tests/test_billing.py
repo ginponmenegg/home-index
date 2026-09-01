@@ -124,7 +124,7 @@ def test_final_confirmation_screen_has_all_required_items(billing):
     h = c.get("/plan/confirm").get_data(as_text=True)
     required = {
         "①分量": "診断の回数に制限はありません",
-        "②販売価格": "1,980円（税込）",
+        "②販売価格": "2,980円（税込）",
         "②2回目以降": "2回目以降も同額",
         "②総額": "解約されるまで、毎月",
         "③支払方法": "クレジットカード",
