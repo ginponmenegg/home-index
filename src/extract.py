@@ -155,14 +155,18 @@ def _parse_price_man(t: str) -> Optional[int]:
         v = _price_in(line)
         if v:
             return v
-    # ③ 価格だけ大きく組まれ、「販売価格」「4,390」「万円」が別々の行に
-    #    割れることがある。桁区切りの数字だけの行は、図面では価格しかない。
+    # ③ 価格だけ大きく組まれ、「販売」「価格」「万円」が縦に並び、数字だけが
+    #    離れて置かれる図面がある。数字が説明文の行に紛れることもあるので、
+    #    行そのものではなく、桁区切りの数字を1つずつ見る。
+    #    面積・距離・金額（円）に付く数字は除く。残るのはほぼ価格しかない。
     if "価格" in t or "万円" in t:
-        for line in lines:
-            if re.fullmatch(r"[0-9]{1,3}(?:,[0-9]{3})+", line.strip()):
-                v = int(line.strip().replace(",", ""))
-                if 100 <= v <= 99_999:      # 万円として現実的な範囲
-                    return v
+        for m in re.finditer(r"(?<![\d,])([0-9]{1,3}(?:,[0-9]{3})+)(?![\d,])", t):
+            after = t[m.end():m.end() + 4]
+            if re.match(r"\s*(?:円|[mｍ]|平米|㎡|坪|年|月|%|人|戸|番|号)", after):
+                continue
+            v = int(m.group(1).replace(",", ""))
+            if 100 <= v <= 99_999:          # 万円として現実的な範囲
+                return v
     # ④ どの行も資金計画に見える場合の最後の手段
     return _price_in(t)
 
@@ -184,6 +188,31 @@ _NUM_UNIT = r"([0-9]{1,4}(?:\.[0-9]+)?)\s*" + _UNIT
 _AREA_LABELS = r"(?:土地面積|敷地面積|建物面積|延床面積|延べ床面積|専有面積)"
 
 
+def _label_re(lab: str):
+    """ラベルの途中で行が変わっていても拾う正規表現。
+
+    図面は項目を●で連ねて折り返すので、「●建」で行が終わり次の行が
+    「物面積／103.68㎡」から始まることがある。縦組みの見出しが
+    「⼟／地」と割れるのも同じ形。文字と文字の間に、改行を1つまで許す。
+    """
+    gap = r"[^\S\n]*\n?[^\S\n]*"
+    return re.compile(gap.join(map(re.escape, lab)))
+
+
+def _label_re_across(lab: str):
+    """折り返した見出しの間に、隣の段の1行が挟まっていても拾う。
+
+    2段組の図面をテキストにすると、左段の折り返しの間に右段の1行が
+    入り込む。「●建」で行が終わり、次の行は右段の説明文、その次の行が
+    「物面積／103.68㎡」から始まる、という並びになる。
+
+    見出しの途中に何でも1行はさめる形なので当たりやすい。3文字以上の
+    見出しに限り、他の読み方が全部外れたときの最後の手段として使う。
+    """
+    gap = r"[^\S\n]*(?:\n[^\n]*)?\n?[^\S\n]*"
+    return re.compile(gap.join(map(re.escape, lab)))
+
+
 def _parse_area(t: str, labels) -> Optional[float]:
     """面積を㎡で返す。ラベルと同じ行を先に見る。
 
@@ -197,24 +226,50 @@ def _parse_area(t: str, labels) -> Optional[float]:
     「敷地面積／538.69㎡」がある。丸めたほうを採ると面積がずれる。
     """
     lines = t.split("\n")
-    hits = []                       # [(㎡か, 値)] ラベルの優先順に積む
-    for lab in labels:
-        for i, line in enumerate(lines):
-            j = line.find(lab)
-            if j < 0:
-                continue
-            m = re.search(_NUM_UNIT, line[j + len(lab):])
-            if m:
-                hits.append((m.group(2) != "坪", _area_of(m)))
-                continue
-            v = _from_next_line(lines, i, line, j)
-            if v is not None:
-                hits.append(v)
+    starts = _line_starts(t)
+    hits = _collect(t, lines, starts, labels, _label_re)
+    if not hits:
+        hits = _collect(t, lines, starts, [l for l in labels if len(l) >= 3],
+                        _label_re_across)
     for want_m2 in (True, False):
         for is_m2, val in hits:
             if is_m2 == want_m2:
                 return val
     return None
+
+
+def _collect(t, lines, starts, labels, make_re):
+    """ラベルごとに面積の候補を集める。[(㎡か, 値)] をラベルの優先順に。"""
+    hits = []
+    for lab in labels:
+        for lm in make_re(lab).finditer(t):
+            eol = t.find("\n", lm.end())
+            rest = t[lm.end():eol if eol >= 0 else len(t)]
+            m = re.search(_NUM_UNIT, rest)
+            if m:
+                hits.append((m.group(2) != "坪", _area_of(m)))
+                continue
+            # ラベルの終わりがどの行にあるかで、次の行を決める
+            i = _line_of(starts, lm.end())
+            j = max(0, lm.start() - starts[i])
+            v = _from_next_line(lines, i, lines[i], j)
+            if v is not None:
+                hits.append(v)
+    return hits
+
+
+def _line_starts(t: str):
+    """各行の先頭が、文字列全体の何文字目かを並べたもの。"""
+    out, pos = [0], t.find("\n")
+    while pos >= 0:
+        out.append(pos + 1)
+        pos = t.find("\n", pos + 1)
+    return out
+
+
+def _line_of(starts, pos: int) -> int:
+    import bisect
+    return bisect.bisect_right(starts, pos) - 1
 
 
 def _from_next_line(lines, i, line, j) -> Optional[tuple]:
@@ -230,8 +285,14 @@ def _from_next_line(lines, i, line, j) -> Optional[tuple]:
     nxt = lines[i + 1]
     if not re.search(r"\d", line):
         # 見出しだけの行。値は次の行に、同じ順で並んでいる
-        col = len(re.findall(_AREA_LABELS, line[:j]))
+        heads = len(re.findall(_AREA_LABELS, line))
         found = list(re.finditer(_NUM_UNIT, nxt))
+        # 見出しの数と値の数が合わないなら、その行は値の行ではない。
+        # 「建 建物面積」の次が「1階 48.84㎡ 2階 48.51㎡」という内訳の
+        # ことがあり、そこから採ると1階の面積を建物面積にしてしまう。
+        if heads != len(found):
+            return None
+        col = len(re.findall(_AREA_LABELS, line[:j]))
         if col < len(found):
             m = found[col]
             return (m.group(2) != "坪", _area_of(m))
@@ -246,7 +307,8 @@ def _from_next_line(lines, i, line, j) -> Optional[tuple]:
 # リフォームは「済み」と「可・要」で意味が逆になる。取り違えると価格の
 # 上乗せまで狂うので、済みを表す言い方を先に見て、無ければ否定形を見る。
 _RENO_DONE = ("リフォーム済", "リノベーション済", "リノベ済", "フルリフォーム",
-              "フルリノベ", "改装済", "内装リフォーム")
+              "フルリノベ", "改装済", "内装リフォーム",
+              "リフォーム完了", "リノベーション完了", "改装完了")
 _RENO_NOT = ("リフォーム可", "要リフォーム", "リフォーム前", "リフォーム相談",
              "リフォーム不可", "リノベーション可")
 
@@ -287,24 +349,61 @@ def _parse_layout(t: str) -> Optional[str]:
     return None
 
 
+# 元号の元年に対応する西暦から1引いた数。令和1年=2019、平成1年=1989、
+# 昭和1年=1926。
+_ERA_BASE = {"令和": 2018, "平成": 1988, "昭和": 1925}
+_ERA = "(令和|平成|昭和)"
+_BUILD_LABEL = r"(?:築年月|建築年月|完成年月|完成時期|竣工年月|築年|建築年|入居)"
+
+
 def _parse_build_year(t: str) -> Optional[int]:
+    """築年を西暦で返す。
+
+    販売図面の築年は和暦で書かれることのほうが多い。以前は和暦を最後の
+    手段にしていたので、本文のどこかにある別の和暦を先に拾っていた。
+    リフォームの完了月や写真の撮影月が令和で書かれていると、そちらを
+    築年として読んでしまう。現在に近い年になるので、間違いだと気づき
+    にくいうえ、築浅として採点されてしまう。
+
+    順番は、築年月の欄（西暦→和暦）、築に隣り合う年（和暦→西暦）、
+    築N年、最後に本文のどこかの和暦。
+    """
     import datetime
     cy = datetime.date.today().year
-    for pat in (r"(?:築年月|建築年月|完成年月|完成時期|竣工年月|建築年|入居)"
-                r"[^\d]{0,10}?((?:19|20)\d{2})\s*年",
-                r"((?:19|20)\d{2})\s*年\s*\d{0,2}\s*月?\s*(?:築|新築|建築|完成|竣工|引渡)",
+
+    def era(m, i=1):
+        return _ERA_BASE[m.group(i)] + int(m.group(i + 1))
+
+    # ① 築年月の欄。西暦でも和暦でも、まずここを見る
+    m = re.search(_BUILD_LABEL + r"[^\d]{0,10}?((?:19|20)\d{2})\s*年", t)
+    if m:
+        return int(m.group(1))
+    m = re.search(_BUILD_LABEL + r"[^\d]{0,10}?" + _ERA + r"\s*([0-9]{1,2})\s*年", t)
+    if m:
+        return era(m)
+
+    # ② 「平成27年12月築」「2015年築」のように、築に隣り合うもの
+    m = re.search(_ERA + r"\s*([0-9]{1,2})\s*年\s*[0-9]{0,2}\s*月?\s*"
+                  r"(?:築|新築|建築|完成|竣工)", t)
+    if m:
+        return era(m)
+    for pat in (r"((?:19|20)\d{2})\s*年\s*\d{0,2}\s*月?\s*"
+                r"(?:築|新築|建築|完成|竣工|引渡)",
                 r"(?:築|新築|建築)\s*((?:19|20)\d{2})\s*年",
                 r"((?:19|20)\d{2})\s*年\s*築"):
         m = re.search(pat, t)
         if m:
             return int(m.group(1))
-    m = re.search(r"築\s*([0-9]{1,2})\s*年", t)  # 築N年
+
+    # ③ 築N年
+    m = re.search(r"築\s*([0-9]{1,2})\s*年", t)
     if m:
         return cy - int(m.group(1))
-    for era, base in (("令和", 2018), ("平成", 1988), ("昭和", 1925)):
-        m = re.search(era + r"\s*([0-9]{1,2})\s*年", t)
-        if m:
-            return base + int(m.group(1))
+
+    # ④ 最後の手段。本文のどこかの和暦なので、築年とは限らない
+    m = re.search(_ERA + r"\s*([0-9]{1,2})\s*年", t)
+    if m:
+        return era(m)
     return None
 
 
@@ -343,7 +442,7 @@ def _parse_station_walk(t: str):
 
 def _parse_bus(t: str) -> Optional[int]:
     """バス便：駅までのバス乗車分。バス表記が無ければ None。"""
-    m = re.search(r"バス\s*(?:約)?\s*([0-9]{1,2})\s*分", t)
+    m = re.search(r"バス\s*(?:乗車|利用)?\s*(?:約)?\s*([0-9]{1,2})\s*分", t)
     if m:
         return int(m.group(1))
     return None
@@ -369,11 +468,41 @@ def _parse_ptype(t: str, byear: Optional[int]) -> Optional[str]:
 _ADDR_STOP = r"\s　\n,、。／/｜|■●◆○◎▲△▼※【】「」『』（）()＜＞<>〒＝=＋+"
 
 
+def _city_hit(scope: str):
+    """本文に出てくる市区町村のうち、いちばん先に現れるもの。
+
+    表の登録順で探すと、後ろに出てくる仲介業者の市区町村が先に当たる。
+    """
+    best = None
+    for name, code in KANAGAWA_CITY_CODES.items():
+        k = scope.find(name)
+        if k >= 0 and (best is None or k < best[0]):
+            best = (k, name, code)
+    return best
+
+
 def _parse_address(t: str):
     addr = None
-    m = re.search(r"(" + _PREF_RE + r"[^" + _ADDR_STOP + r"]+)", t)
-    if m:
+    # ① 「所在地／〇〇」の欄。都道府県から書かれていないことがあるので、
+    #    ここで拾えた文字列は市区町村名でも受ける。
+    m = re.search(r"所在地[^\S\n]*[／/：:]?[^\S\n]*([^" + _ADDR_STOP + r"]+)", t)
+    if m and (re.match(_PREF_RE, m.group(1)) or _city_hit(m.group(1))):
         addr = m.group(1)
+    # ② 都道府県から始まる住所
+    if addr is None:
+        m = re.search(r"(" + _PREF_RE + r"[^" + _ADDR_STOP + r"]+)", t)
+        if m:
+            addr = m.group(1)
+    # ③ 都道府県が無い図面。市区町村名から始まる部分を住所として拾う。
+    #    市区町村の表は神奈川県のものだけなので、県名を補ってよい。
+    if addr is None:
+        hit = _city_hit(t)
+        if hit:
+            m = re.search(re.escape(hit[1]) + r"[^" + _ADDR_STOP + r"]*", t)
+            if m:
+                addr = "神奈川県" + m.group(0)
+    if addr and not re.match(_PREF_RE, addr):
+        addr = "神奈川県" + addr
     # 市区町村は、住所として読み取った範囲の中から探す。図面の隅には
     # 仲介業者の住所が入っており、本文全体から探すと、そちらの市区町村を
     # 物件の所在地として拾ってしまう。空欄になるより悪い。
@@ -381,13 +510,12 @@ def _parse_address(t: str):
     scope = addr or t
     city_code = None
     district = None
-    for name, code in KANAGAWA_CITY_CODES.items():
-        if name in scope:
-            city_code = code
-            mm = re.search(re.escape(name) + r"([一-龥ぁ-んァ-ヶー]+)", scope)
-            if mm:
-                district = mm.group(1)[:8]
-            break
+    hit = _city_hit(scope)
+    if hit:
+        _k, name, city_code = hit
+        mm = re.search(re.escape(name) + r"([一-龥ぁ-んァ-ヶー]+)", scope)
+        if mm:
+            district = mm.group(1)[:8]
     return addr, city_code, district
 
 
@@ -407,7 +535,10 @@ def parse_listing_text(text: str) -> Dict[str, object]:
         # 図面では見出しが縦組みで割れ、値の側に「公簿 182.99㎡」とだけ
         # 残ることがある。土地の面積にしか使われない語なので後ろに置く。
         "land": _parse_area(t, ["土地面積", "敷地面積", "土地", "公簿", "実測"]),
-        "building": _parse_area(t, ["建物面積", "延床面積", "延べ床面積", "建物"]),
+        # 「延 97.35㎡」と、延床の値だけが見出しの手前に置かれる図面がある。
+        # 建物にしか使わない語だが、範囲が広いので最後に置く。
+        "building": _parse_area(t, ["建物面積", "延床面積", "延べ床面積",
+                                    "建物", "延"]),
         "layout": _parse_layout(t),
         "byear": byear,
         "station": walk,

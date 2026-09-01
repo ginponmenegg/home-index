@@ -299,3 +299,89 @@ def test_a_price_split_across_three_lines():
 def test_a_bare_number_is_not_taken_as_a_price_without_a_price_context():
     """桁区切りの数字だけの行を価格とみなすのは、価格の記載がある図面に限る。"""
     assert parse_listing_text("物件番号 1,234")["price_man"] is None
+
+
+# ---- さらに2枚（自社作成の図面）------------------------------------------
+#
+# 販売図面の築年は和暦で書かれることのほうが多い。以前は和暦を最後の手段に
+# していたので、本文のどこかにある別の和暦を先に拾っていた。
+
+def test_the_era_year_next_to_the_build_label_wins():
+    """リフォームの完了月や撮影月が令和で書かれていても、築年は築年月の欄。"""
+    p = parse_listing_text("\n".join([
+        "平成27年築の築浅一戸建て。",
+        "陽当たりの良い南庭には令和2年頃に設置されたウッドデッキ付きです。",
+        "●建物構造／木造2階建●築年月／平成27年12月●設備／公営水道",
+    ]))
+    assert p["byear"] == 2015, "令和2年（ウッドデッキ）を拾っていない"
+
+
+def test_a_reform_date_is_not_the_build_year():
+    """令和8年は現在に近く、築浅として通ってしまうので気づきにくい。"""
+    p = parse_listing_text("\n".join([
+        "間取り 3LDK+WIC 築年月 平成26年 9月 築",
+        "リフォーム内容（令和8年7月末完了）",
+        "・全掲載写真:令和8年5月撮影",
+    ]))
+    assert p["byear"] == 2014
+
+
+def test_era_years_convert_at_the_right_offset():
+    f = lambda s: parse_listing_text("築年月 " + s)["byear"]
+    assert f("令和1年") == 2019 and f("令和8年") == 2026
+    assert f("平成1年") == 1989 and f("平成26年") == 2014
+    assert f("昭和1年") == 1926 and f("昭和55年") == 1980
+
+
+def test_an_address_without_a_prefecture_is_still_an_address():
+    """図面の所在地は市区町村から書かれていることが多い。"""
+    p = parse_listing_text(
+        "【物件概要】●所在地／伊勢原市田中1-2-3●交通／小田急小田原線")
+    assert p["address"] == "神奈川県伊勢原市田中1-2-3", "県名を補って渡す"
+    assert p["city"] == "14214"
+    assert p["district"] == "田中"
+
+
+def test_a_price_beside_a_vertical_label_is_found():
+    """縦組みの「販売価格」の脇に数字だけが置かれ、説明文の行に紛れる。"""
+    p = parse_listing_text("\n".join([
+        "平成27年築の築浅一戸建て。前面道路は通 敷地の南側は現況駐車場に",
+        "2,780 り抜けができないので、小さなお子様がいる たり・風通しとも",
+        "販売 ご家庭も安心です。",
+        "価格 万円",
+    ]))
+    assert p["price_man"] == 2780
+
+
+def test_measurements_and_distances_are_not_read_as_prices():
+    """桁区切りの数字でも、単位が付いていれば価格ではない。"""
+    assert parse_listing_text("価格 中学校 約 1,100 ｍ")["price_man"] is None
+    assert parse_listing_text("万円 自治会費（2,500円/年）")["price_man"] is None
+
+
+def test_a_label_broken_across_a_neighbouring_column():
+    """2段組では、折り返した見出しの間に隣の段の1行が入り込む。"""
+    p = parse_listing_text("\n".join([
+        "60%●容積率／200%●土地面積／130.00㎡（39.32坪）●建",
+        "陽当たりの良い南庭にはウッドデッキ付きです。",
+        "物面積／100.00㎡（30.25坪）※1階：50.00㎡、2階：50.00㎡●",
+    ]))
+    assert p["land"] == 130.00
+    assert p["building"] == 100.00, "「●建」と「物面積」に割れた見出し"
+
+
+def test_a_floor_by_floor_breakdown_is_not_the_building_area():
+    """見出しの次の行が内訳なら、そこから採ると1階の面積になる。"""
+    p = parse_listing_text("\n".join([
+        "延 100.00 ㎡ （約 30.25 坪）",
+        "建 建物面積",
+        "☆内外装リフォーム完了済 1階 50.00 ㎡ 2階 50.00 ㎡",
+    ]))
+    assert p["building"] == 100.00, "延床。1階の50.00㎡ではない"
+    assert p["renovated"] is True, "「リフォーム完了済」も済みとして読む"
+
+
+def test_a_bus_ride_written_as_joushia():
+    p = parse_listing_text("通 バス乗車10分「〇〇」停 徒歩3分")
+    assert p["bus"] == 10
+    assert p["station"] == 3, "バス停までの徒歩"
