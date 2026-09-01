@@ -1,16 +1,20 @@
 # -*- coding: utf-8 -*-
-"""販売図面PDFの取り込み。ネットワーク不要。
+"""販売図面から貼り付けたテキストの読み取り。ネットワーク不要。
 
-PDFの文字は、図面の見た目どおりには並ばない。左に間取り図・右に物件概要
-という作りをテキストにすると、図の寸法が表の途中に入り込み、ラベルは
-均等割付で字間が開き、周辺環境の「徒歩○分」や資金計画の「○○万円」が
-交通欄・価格欄より先に現れる。
+PDFビューアで図面を開いて文字をコピーすると、見た目どおりには並ばない。
+左に間取り図・右に物件概要という作りでは、図の寸法が表の途中に入り込み、
+ラベルは均等割付で字間が開き、周辺環境の「徒歩○分」や資金計画の
+「○○万円」が交通欄・価格欄より先に現れる。フォントによっては、漢字が
+部首の符号位置で入ってくることもある。
 
-ここで固定しているのは、実際に pdfplumber が返した並びそのもの
-（scratchpad で図面に近いPDFを作って取り出した結果）。空欄になるより、
-もっともらしい誤った値が入るほうが危ないので、そこを重点的に見る。
+ここで固定しているのは、実際の販売図面から取り出した並びそのもの。
+金額・面積・番地は伏せてあり（tests/test_placeholders.py を参照）、
+写しているのは崩れ方の形だけ。地名は、市区町村コードの解決を検証するのに
+必要なので残している。
+
+空欄になるより、もっともらしい誤った値が入るほうが危ない。そこを重点的に
+見る。
 """
-import io
 import os
 import sys
 
@@ -19,7 +23,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.extract import (_despace, _normalize, parse_listing_text,
-                         parse_mansion_text, extract_from_pdf)
+                         parse_mansion_text)
 
 
 # ---- 均等割付（字間）------------------------------------------------------
@@ -38,7 +42,7 @@ def test_despace_leaves_real_word_breaks_alone():
     assert _despace("南 東 向き") == "南 東 向き"
 
 
-# ---- 図面をテキストにしたときの並び ---------------------------------------
+# ---- 図面を貼り付けたときの並び ---------------------------------------
 
 SPACED = "\n".join([                       # 均等割付された概要表
     "中古一戸建 価格 3,500万円",
@@ -132,61 +136,6 @@ def test_mansion_pdf_layout_is_handled_too():
     assert p["area"] == 70.00
     assert p["station"] == 8
     assert (p["floor"], p["total_floors"]) == (2, 5)
-
-
-# ---- PDFから取り出すところまで通す ----------------------------------------
-
-def _spaced_pdf() -> bytes:
-    """均等割付のラベルを持つ1枚ものを組む。実物の図面はこの形が多い。"""
-    reportlab = pytest.importorskip("reportlab")
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import mm
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-    from reportlab.pdfgen import canvas
-
-    pdfmetrics.registerFont(UnicodeCIDFont("HeiseiKakuGo-W5"))
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=A4)
-
-    def txt(x, y, s, size=8, space=0.0):
-        to = c.beginText(x * mm, (297 - y) * mm)
-        to.setFont("HeiseiKakuGo-W5", size)
-        if space:
-            to.setCharSpace(space)      # 均等割付
-        to.textOut(s)
-        c.drawText(to)
-
-    txt(15, 20, "中古一戸建", 14)
-    txt(120, 20, "価格 3,500万円", 14)
-    y = 40
-    for lab, val in (("所在地", "神奈川県小田原市城山一丁目2番3号"),
-                     ("交通", "JR東海道本線 小田原駅 徒歩20分"),
-                     ("土地面積", "120.00m2(36.30坪)"),
-                     ("建物面積", "95.00m2(28.73坪)"),
-                     ("築年月", "平成17年3月"),
-                     ("構造", "木造2階建")):
-        txt(108, y, lab, 8, space=5.0)
-        txt(140, y, val, 8)
-        y += 6
-    c.showPage()
-    c.save()
-    return buf.getvalue()
-
-
-def test_reading_a_letter_spaced_pdf_end_to_end(tmp_path):
-    pytest.importorskip("pdfplumber")
-    path = tmp_path / "zumen.pdf"
-    path.write_bytes(_spaced_pdf())
-    text = extract_from_pdf(str(path))
-    # 画面の確認欄にもこの文字列が出るので、読める形で返っていること
-    assert "土地面積" in text, f"字間がほどけていない：{text!r}"
-    p = parse_listing_text(text)
-    assert p["price_man"] == 3500
-    assert (p["land"], p["building"]) == (120.00, 95.00)
-    assert p["byear"] == 2005
-    assert p["station"] == 20
-    assert p["structure"] == "wood"
 
 
 # ---- 実物の販売図面2枚で分かったこと ---------------------------------------

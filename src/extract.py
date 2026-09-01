@@ -683,18 +683,3 @@ def extract_from_url(url: str) -> Dict[str, object]:
     text = re.sub(r"<[^>]+>", " ", html)
     text = re.sub(r"\s+", " ", text)
     return parse_listing_text(" ".join([extra, metas, text]))
-
-def extract_from_pdf(file_or_path) -> str:
-    """販売図面などのPDFからテキストを抽出して返す（parse前の生テキスト）。
-    テキストで作られたPDFのみ対応（スキャン画像PDFは空文字を返す）。
-    file_or_path: ファイルパス(str) か 開いたファイルオブジェクト。"""
-    import pdfplumber
-    parts = []
-    with pdfplumber.open(file_or_path) as pdf:
-        for page in pdf.pages:
-            txt = page.extract_text() or ""
-            if txt:
-                parts.append(txt)
-    # 均等割付をほどいてから返す。この文字列は画面の確認欄にも出るので、
-    # 「土 地 面 積」のままだと人が読みにくい。
-    return _despace("\n".join(parts))

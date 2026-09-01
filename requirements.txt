@@ -1,6 +1,7 @@
 requests>=2.28
 flask>=3.0
 gunicorn>=21.2
-pdfplumber
 reportlab>=4.0
 psycopg[binary]>=3.1
+# テスト専用。生成した資金計画のPDFを読み返して中身を確かめるのに使う
+pdfplumber

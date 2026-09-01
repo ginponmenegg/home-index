@@ -537,14 +537,8 @@ BRAND_BAR
   <textarea name="listing" placeholder="例）中古一戸建て 〇〇県〇〇市〇〇町1-2-3 価格3,500万円 土地面積120.00㎡ 建物面積95.00㎡ 4LDK 築2010年 〇〇駅 徒歩12分">{{listing or ''}}</textarea>
   <button class="sub" type="submit">貼り付けから自動入力する</button>
   <div class="hint">※ <b>URLではなく、物件ページの文章</b>（価格・所在地・面積・築年・駅など）を選択してコピーしてください。ご自身がコピーした情報を解析します（私的利用）。抽出後、下で確認・修正できます。<br>
+   <b>販売図面のPDFをお持ちの場合も、PDFを開いて文字を選択・コピーし、この欄に貼り付けてください。</b>文字が選択できないPDF（スキャン画像）からは読み取れません。<br>
    <b><a href="/copy-guide">スマホアプリで文字がコピーできない場合はこちら</a></b></div></form>
-
-  <form class="card" method="post" action="/upload_pdf" enctype="multipart/form-data">
-    <label>① 販売図面PDFから読み取る（文字が選択できるPDF）</label>
-    <input type="file" name="pdf" accept="application/pdf">
-    <button class="sub" type="submit">PDFから自動入力する</button>
-    <div class="hint">※ スキャン（画像）のPDFは読み取れません。文字がコピーできるPDFをお使いください。</div>
- </form>
 
  <form class="card" method="post" action="/diagnose">
   <label>② 内容を確認・修正して診断</label>
@@ -1009,7 +1003,7 @@ LP = """<!doctype html><html lang="ja"><head>
 {"@type":"FAQPage","mainEntity":[
 {"@type":"Question","name":"本当に無料ですか。あとから請求されませんか。","acceptedAnswer":{"@type":"Answer","text":"無料です。会員登録も不要で、料金が発生する画面はありません。物件の仲介やローンの紹介も行わないため、診断後に営業の連絡が来ることもありません。"}},
 {"@type":"Question","name":"入力した年収や住所は保存されますか。","acceptedAnswer":{"@type":"Answer","text":"診断の計算に使うだけで、営業目的では利用しません。詳細はプライバシーポリシーに記載しています。気になる場合は、年収や頭金を概算で入力しても価格・リスクの診断は機能します。"}},
-{"@type":"Question","name":"物件のURLを貼れば診断できますか。","acceptedAnswer":{"@type":"Answer","text":"URLではなく、物件ページに書かれている説明文（価格・所在地・面積・築年・駅徒歩など）をコピーして貼り付けてください。ご自身がコピーした情報を解析する形をとっています。物件チラシのPDFのアップロードにも対応しています。"}},
+{"@type":"Question","name":"物件のURLを貼れば診断できますか。","acceptedAnswer":{"@type":"Answer","text":"URLではなく、物件ページに書かれている説明文（価格・所在地・面積・築年・駅徒歩など）をコピーして貼り付けてください。ご自身がコピーした情報を解析する形をとっています。販売図面のPDFも、開いて文字をコピーすれば同じように読み取れます。"}},
 {"@type":"Question","name":"新築でも診断できますか。","acceptedAnswer":{"@type":"Answer","text":"できます。新築は近隣の新築成約事例を優先し、土地相当分と建物相当分を分けて価格を推定します。中古とは類似度の重み付けを変えています。"}},
 {"@type":"Question","name":"マンションには対応していますか。","acceptedAnswer":{"@type":"Answer","text":"対応しています。所在階・向き・専有面積あたりの単価など戸建とは評価軸が違うため、別の診断として用意しています。管理費と修繕積立金も、国土交通省のガイドラインの目安と照らして評価に含めています。"}},
 {"@type":"Question","name":"点数が低い物件は、買ってはいけないということですか。","acceptedAnswer":{"@type":"Answer","text":"違います。点数は「その価格と条件が、公的データから見てどのあたりに位置するか」を示すものです。低い点数は、値引き交渉の材料や、事前に確認すべき項目のリストとして使ってください。最終的な判断は、現地の確認と専門家への相談のうえで行ってください。"}}
@@ -1400,7 +1394,7 @@ LP_MENU_PLACEHOLDER
           <a href="/copy-guide" style="color:var(--pin)">アプリでコピーできないときは</a></li>
         <li><b>貼り付けて診断</b>。約3分で100点の採点が出ます</li>
       </ol>
-      <p>販売図面のPDFからも読み取れます。入力し直しは不要です。</p>
+      <p>販売図面のPDFも、開いて文字をコピーすれば同じように読み取れます。</p>
     </div>
   </div>
 
@@ -1541,7 +1535,7 @@ LP_MENU_PLACEHOLDER
             <h3>物件ページの説明文を貼り付ける</h3>
             <p>SUUMOやアットホームのページ本文をコピーして貼るだけで、
              <b>価格・所在地・土地／建物面積・築年・駅徒歩・構造</b>を読み取ります。
-             販売図面のPDFをアップロードしても同じことができます。</p>
+             販売図面のPDFも、開いて文字をコピーすれば同じことができます。</p>
             <p class="fine">スマホアプリは文字を選択できません。
              <a href="/copy-guide">コピーの仕方はこちら</a></p>
           </div>
@@ -1710,7 +1704,7 @@ LP_MENU_PLACEHOLDER
     </details>
     <details>
       <summary>物件のURLを貼れば診断できますか。</summary>
-      <p>URLではなく、物件ページに書かれている説明文（価格・所在地・面積・築年・駅徒歩など）をコピーして貼り付けてください。ご自身がコピーした情報を解析する形をとっています。物件チラシのPDFのアップロードにも対応しています。</p>
+      <p>URLではなく、物件ページに書かれている説明文（価格・所在地・面積・築年・駅徒歩など）をコピーして貼り付けてください。ご自身がコピーした情報を解析する形をとっています。販売図面のPDFも、開いて文字をコピーすれば同じように読み取れます。</p>
     </details>
     <details>
       <summary>新築でも診断できますか。</summary>
@@ -2240,34 +2234,6 @@ def fetch():
         return render_template_string(FORM, v=_example_v(), listing="",
                                       banner=f"URL取得に失敗しました：{e}")
 
-@app.route("/upload_pdf", methods=["POST"])
-def upload_pdf():
-    from src.extract import extract_from_pdf, parse_listing_text
-    f = request.files.get("pdf")
-    if not f or not f.filename:
-        return render_template_string(FORM, v=_example_v(), listing="",
-                                      banner="PDFファイルが選ばれていません。")
-    try:
-        text = extract_from_pdf(f.stream)
-        if not text.strip():
-            return render_template_string(FORM, v=_example_v(), listing="",
-                                          banner="このPDFは文字を抽出できませんでした（スキャン画像の可能性）。文字が選択できるPDFをお試しください。")
-        p = parse_listing_text(text)
-        if p.get("address"):
-            try:
-                code, cityname, dist = _resolve_city(p["address"])
-                if code:
-                    p["city"] = code
-                if dist and not p.get("district"):
-                    p["district"] = dist
-            except Exception:
-                pass
-        return render_template_string(FORM, v=_v_from_parsed(p), listing=text,
-                                      banner="PDFから読み取りました。内容を確認・修正してください。")
-    except Exception as e:
-        return render_template_string(FORM, v=_example_v(), listing="",
-                                      banner=f"PDFの読み取りに失敗しました：{e}")
-
 @app.route("/diagnose", methods=["POST"])
 def diagnose():
     f = request.form
@@ -2603,14 +2569,8 @@ BRAND_BAR
   <button class="sub" type="submit">貼り付けから自動入力する</button>
   <div class="hint">※ <b>URLではなく、物件ページの文章</b>をコピーしてください。ご自身がコピーした情報を解析します（私的利用）。
    <b><a href="/copy-guide">スマホアプリで文字がコピーできない場合はこちら</a></b>。
-   マンション名は自動では取れないため、手で入力してください。抽出後、下で確認・修正できます。</div>
- </form>
-
- <form class="card" method="post" action="/mansion_upload_pdf" enctype="multipart/form-data">
-  <label>① 販売図面PDFから読み取る（文字が選択できるPDF）</label>
-  <input type="file" name="pdf" accept="application/pdf">
-  <button class="sub" type="submit">PDFから自動入力する</button>
-  <div class="hint">※ スキャン画像のPDFは文字を取り出せません。</div>
+   マンション名は自動では取れないため、手で入力してください。抽出後、下で確認・修正できます。<br>
+   <b>販売図面のPDFをお持ちの場合も、PDFを開いて文字を選択・コピーし、この欄に貼り付けてください。</b>文字が選択できないPDF（スキャン画像）からは読み取れません。</div>
  </form>
 
  <div class="banner">
@@ -2825,42 +2785,6 @@ def mansion_parse():
     return render_template_string(MANSION_FORM, v=_mansion_v_from_parsed(p),
                                   directions=DIRECTIONS, listing=text,
                                   banner=_mansion_parse_banner(p))
-
-
-@app.route("/mansion_upload_pdf", methods=["POST"])
-def mansion_upload_pdf():
-    """販売図面PDFの文字を取り出して項目を埋める。"""
-    from src.extract import extract_from_pdf, parse_mansion_text
-    f = request.files.get("pdf")
-    if not f or not f.filename:
-        return render_template_string(
-            MANSION_FORM, v=_mansion_example_v(), directions=DIRECTIONS,
-            listing="", banner="PDFファイルが選ばれていません。")
-    try:
-        text = extract_from_pdf(f.stream)
-        if not text.strip():
-            return render_template_string(
-                MANSION_FORM, v=_mansion_example_v(), directions=DIRECTIONS,
-                listing="",
-                banner="このPDFは文字を抽出できませんでした（スキャン画像の可能性）。"
-                       "文字が選択できるPDFをお試しください。")
-        p = parse_mansion_text(text)
-        if p.get("address") and not p.get("city"):
-            try:
-                code, _nm, dist = _resolve_city(p["address"])
-                if code:
-                    p["city"] = code
-                if dist and not p.get("district"):
-                    p["district"] = dist
-            except Exception:
-                pass
-        return render_template_string(
-            MANSION_FORM, v=_mansion_v_from_parsed(p), directions=DIRECTIONS,
-            listing=text, banner="PDFから読み取りました。" + _mansion_parse_banner(p))
-    except Exception as e:
-        return render_template_string(
-            MANSION_FORM, v=_mansion_example_v(), directions=DIRECTIONS,
-            listing="", banner=f"PDFの読み取りに失敗しました：{e}")
 
 
 @app.route("/mansion_diagnose", methods=["POST"])
@@ -4859,11 +4783,13 @@ BRAND_BAR
 
  <div class="card">
   <h2 style="font-size:16px;margin:0 0 4px">読み取りがうまくいかないときは</h2>
-  <p class="hint"><b>販売図面のPDFがあれば、そのままアップロードできます。</b>
-   文字が選択できるPDFなら、こちらのほうが確実です。診断の画面に
-   「販売図面PDFから読み取る」の欄があります。<br>
-   それも難しければ、<b>手入力でも構いません</b>。必要なのは、価格・所在地・面積・築年・
-   駅からの徒歩分の5つだけです。</p>
+  <p class="hint"><b>販売図面のPDFがあれば、開いて文字を選択・コピーし、
+   診断画面の貼り付け欄に貼ってください。</b>物件ページの文章より項目がそろって
+   いることが多く、こちらのほうが確実です。<br>
+   <b>文字が選択できないPDF</b>は、紙をスキャンした画像です。この場合、中身は
+   画像なので文字を取り出せません。<br>
+   どちらも難しければ、<b>手入力でも構いません</b>。必要なのは、価格・所在地・面積・
+   築年・駅からの徒歩分の5つだけです。</p>
  </div>
 
  <div class="card">
