@@ -60,7 +60,8 @@ class MansionSubject:
     name: Optional[str] = None                  # マンション名（表示と座標の精度向上に使う）
     price: Optional[int] = None                 # 売出価格(円)
     build_year: Optional[int] = None            # 西暦
-    station_walk_min: Optional[int] = None      # 駅まで徒歩(分)
+    station_walk_min: Optional[int] = None      # 駅 or バス停まで徒歩(分)
+    bus_min: Optional[int] = None               # バス便：駅までのバス乗車分
     exclusive_area_m2: Optional[float] = None   # 専有面積(㎡)。㎡単価の土台
     floor: Optional[int] = None                 # 所在階
     total_floors: Optional[int] = None          # 総階数

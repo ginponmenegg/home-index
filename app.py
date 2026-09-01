@@ -2639,8 +2639,11 @@ BRAND_BAR
   <div class="row">
    <div><label>築年（西暦）</label>
     <input name="byear" value="{{v.byear}}" placeholder="例）2010"></div>
-   <div><label>駅まで徒歩（分）</label>
+   <div><label>駅/バス停まで徒歩（分）</label>
     <input name="station" value="{{v.station}}" placeholder="例）8"></div>
+   <div><label>駅までバス（分・バス便のみ）</label>
+    <input name="bus" value="{{v.bus}}">
+    <div class="hint">バス便のときだけ入力</div></div>
   </div>
 
   <div class="row">
@@ -2742,7 +2745,7 @@ MANSION_FORM = (MANSION_FORM
 
 def _mansion_example_v():
     return dict(address="", name="", price="", area="", byear="", station="",
-                floor="", total_floors="", direction="不明", city="",
+                bus="", floor="", total_floors="", direction="不明", city="",
                 district="", reno=False, mfee="", rfund="", income="", down="",
                 loan_years="35")
 
@@ -2755,6 +2758,7 @@ def _mansion_v_from_parsed(p):
     if p.get("area") is not None:
         v["area"] = str(p["area"])
     for src_key, dst in (("byear", "byear"), ("station", "station"),
+                         ("bus", "bus"),
                          ("floor", "floor"), ("total_floors", "total_floors"),
                          ("mfee", "mfee"), ("rfund", "rfund")):
         if p.get(src_key) is not None:
@@ -2918,6 +2922,7 @@ def _run_mansion_diagnose(f):
         price=to_yen(f.get("price")) or 0,
         build_year=to_int(f.get("byear")),
         station_walk_min=to_int(f.get("station")),
+        bus_min=to_int(f.get("bus")),
         exclusive_area_m2=area,
         floor=to_int(f.get("floor")),
         total_floors=to_int(f.get("total_floors")),
@@ -2949,8 +2954,13 @@ def _run_mansion_diagnose(f):
     if direction and direction != "不明":
         bits.append(f"{direction}向き")
     bits.append(f"築{age}年" if age is not None else "築年不明")
-    bits.append(f"駅徒歩{subject.station_walk_min}分"
-                if subject.station_walk_min is not None else "駅徒歩不明")
+    if subject.bus_min:
+        stop = (f"＋バス停徒歩{subject.station_walk_min}分"
+                if subject.station_walk_min is not None else "")
+        bits.append(f"駅までバス{subject.bus_min}分{stop}")
+    else:
+        bits.append(f"駅徒歩{subject.station_walk_min}分"
+                    if subject.station_walk_min is not None else "駅徒歩不明")
     if subject.renovated:
         bits.append("リフォーム済み")
     if subject.management_fee or subject.repair_fund:
@@ -2967,6 +2977,7 @@ def _run_mansion_diagnose(f):
             "address": subject.address, "name": subject.name or "",
             "price": f.get("price") or "", "area": f.get("area") or "",
             "byear": f.get("byear") or "", "station": f.get("station") or "",
+            "bus": f.get("bus") or "",
             "floor": f.get("floor") or "",
             "total_floors": f.get("total_floors") or "",
             "direction": subject.direction or "不明",
@@ -2976,7 +2987,8 @@ def _run_mansion_diagnose(f):
     redo = {"kind": "mansion", "address": subject.address,
             "name": subject.name or "", "price": f.get("price") or "",
             "area": f.get("area") or "", "byear": f.get("byear") or "",
-            "station": f.get("station") or "", "floor": f.get("floor") or "",
+            "station": f.get("station") or "", "bus": f.get("bus") or "",
+            "floor": f.get("floor") or "",
             "total_floors": f.get("total_floors") or "",
             "direction": subject.direction or "不明",
             "layout": f.get("layout") or "",
@@ -3111,7 +3123,10 @@ BRAND_BAR
    <div class="row">
     <div><label>土地面積（㎡）</label><input name="land" value="{{v.land}}"></div>
     <div><label>建物面積（㎡）</label><input name="building" value="{{v.building}}"></div>
-    <div><label>駅まで徒歩（分）</label><input name="station" value="{{v.station}}"></div>
+    <div><label>駅/バス停まで徒歩（分）</label>
+     <input name="station" value="{{v.station}}"></div>
+    <div><label>駅までバス（分）</label><input name="bus" value="{{v.bus}}">
+     <div class="hint">バス便のときだけ入力</div></div>
    </div>
    <div class="row">
     <div><label>構造</label>
@@ -3163,7 +3178,8 @@ PRO_DETAIL_PLACEHOLDER
 
 def _pro_defaults_full():
     v = {"address": "", "price": "", "byear": "", "land": "", "building": "",
-         "station": "", "age": "", "household_size": "", "children": "",
+         "station": "", "bus": "", "age": "", "household_size": "",
+         "children": "",
          "employment": "unknown", "tenure_years": "", "hold_years": "",
          "income": "", "down": "", "reserve": "", "other_debt": "",
          "structure": "", "loan_years": "35"}
@@ -3254,6 +3270,7 @@ def _run_pro_diagnose(f):
         building_area_m2=to_float(f.get("building")),
         build_year=to_int(f.get("byear")),
         station_walk_min=to_int(f.get("station")),
+        bus_min=to_int(f.get("bus")),
         municipality_code=city or None, district_name=district or None,
         structure=(f.get("structure") or "").strip() or None,
         renovated=any(f.get(n) == "1" for n, _l in _PRO_RENO))
@@ -3458,7 +3475,10 @@ BRAND_BAR
    </div>
    <div class="row">
     <div><label>築年（西暦）</label><input name="byear" value="{{v.byear}}"></div>
-    <div><label>駅まで徒歩（分）</label><input name="station" value="{{v.station}}"></div>
+    <div><label>駅/バス停まで徒歩（分）</label>
+     <input name="station" value="{{v.station}}"></div>
+    <div><label>駅までバス（分）</label><input name="bus" value="{{v.bus}}">
+     <div class="hint">バス便のときだけ入力</div></div>
    </div>
    <div class="row">
     <div><label>所在階</label><input name="floor" value="{{v.floor}}"></div>
@@ -3501,7 +3521,8 @@ MPRO_DETAIL_PLACEHOLDER
 
 def _mpro_defaults():
     v = {"address": "", "name": "", "price": "", "area": "", "byear": "",
-         "station": "", "floor": "", "total_floors": "", "direction": "不明",
+         "station": "", "bus": "", "floor": "", "total_floors": "",
+         "direction": "不明",
          "mfee": "", "rfund": "",
          "income": "", "down": "", "loan_years": "35", "other_debt": "",
          "hold_years": ""}
@@ -3587,7 +3608,8 @@ def _run_mansion_pro(f):
     subject = MansionSubject(
         address=address, name=(f.get("name") or "").strip() or None,
         price=to_yen(f.get("price")) or 0, build_year=to_int(f.get("byear")),
-        station_walk_min=to_int(f.get("station")), exclusive_area_m2=area,
+        station_walk_min=to_int(f.get("station")), bus_min=to_int(f.get("bus")),
+        exclusive_area_m2=area,
         floor=to_int(f.get("floor")), total_floors=to_int(f.get("total_floors")),
         direction=(f.get("direction") or "不明").strip(),
         municipality_code=city or None, district_name=district or None,
@@ -4114,7 +4136,7 @@ def saved_redo(sid):
     if redo.get("kind") == "mansion":
         v = _mansion_example_v()
         for k in ("address", "name", "price", "area", "byear", "station",
-                  "floor", "total_floors", "direction", "layout",
+                  "bus", "floor", "total_floors", "direction", "layout",
                   "mfee", "rfund", "loan_years"):
             if redo.get(k):
                 v[k] = redo[k]
