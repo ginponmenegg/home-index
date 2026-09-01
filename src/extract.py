@@ -10,6 +10,7 @@ SUUMO等の物件説明を「貼り付け」→ 価格・面積・築年・間�
 """
 from __future__ import annotations
 import re
+import unicodedata
 from typing import Optional, Dict
 
 TSUBO = 3.305785  # 1坪=㎡
@@ -42,22 +43,25 @@ KANAGAWA_CITY_CODES = {
 }
 
 
-def _z2h(s: str) -> str:
-    """全角英数記号を半角へ。"""
-    if not s:
-        return ""
-    out = []
-    for ch in s:
-        o = ord(ch)
-        if 0xFF10 <= o <= 0xFF19 or 0xFF21 <= o <= 0xFF3A or 0xFF41 <= o <= 0xFF5A:
-            out.append(chr(o - 0xFEE0))
-        elif ch == "，":
-            out.append(",")
-        elif ch == "．":
-            out.append(".")
-        else:
-            out.append(ch)
-    return "".join(out)
+# 部首を漢字に戻したあと、なお日本語の字体に直したいもの。
+#
+# NFKC は康熙部首（U+2F00〜）をふつうの漢字に開いてくれるが、開いた先が
+# 旧字体になることがある。「⼾」は 戸 ではなく 戶 になる。「売⼾建住宅」が
+# 「売戶建住宅」のままだと、種別の判定が戸建に当たらない。
+#
+# CJK部首補助（U+2E80〜）のうち、1字として通用する形は NFKC が何もしない
+# ので、こちらで対応させる。実物の図面に「温⽔⻄」（⻄ は U+2EC4）が
+# 入っていた。
+_KANJI_FIX = {
+    # NFKCが旧字体に開くもの
+    "戶": "戸", "靑": "青", "黃": "黄", "麥": "麦",
+    "齊": "斉", "齒": "歯", "龜": "亀", "黑": "黒",
+    # NFKCが手を付けないCJK部首補助（1字として通用する形だけ）
+    "⺠": "民", "⻄": "西", "⻑": "長", "⻒": "長", "⻗": "雨", "⻘": "青",
+    "⻝": "食", "⻞": "食", "⻟": "食", "⻡": "首", "⻣": "骨", "⻤": "鬼",
+    "⻨": "麦", "⻩": "黄", "⻫": "斉", "⻭": "歯", "⻯": "竜", "⻲": "亀",
+}
+_KANJI_FIX_RE = re.compile("|".join(map(re.escape, _KANJI_FIX)))
 
 
 def _despace(s: str) -> str:
@@ -93,8 +97,16 @@ def _despace(s: str) -> str:
 
 
 def _normalize(text: str) -> str:
-    """解析にかける前の下ごしらえ。全角を半角にし、字間をほどく。"""
-    return _despace(_z2h(text or ""))
+    """解析にかける前の下ごしらえ。
+
+    NFKC で、全角英数を半角に、㎡ を m2 に、そして康熙部首をふつうの漢字に
+    開く。PDFのフォントによっては漢字が部首の符号位置で入ってくることが
+    あり、そのままではどのラベルにも一致しない。開ききらない字と旧字体は
+    _KANJI_FIX で直し、最後に均等割付の字間をほどく。
+    """
+    t = unicodedata.normalize("NFKC", text or "")
+    t = _KANJI_FIX_RE.sub(lambda m: _KANJI_FIX[m.group(0)], t)
+    return _despace(t)
 
 
 # 価格の欄を指す言い方。図面は「価　格」と割り付けることもあるが、
@@ -143,7 +155,15 @@ def _parse_price_man(t: str) -> Optional[int]:
         v = _price_in(line)
         if v:
             return v
-    # ③ どの行も資金計画に見える場合の最後の手段
+    # ③ 価格だけ大きく組まれ、「販売価格」「4,390」「万円」が別々の行に
+    #    割れることがある。桁区切りの数字だけの行は、図面では価格しかない。
+    if "価格" in t or "万円" in t:
+        for line in lines:
+            if re.fullmatch(r"[0-9]{1,3}(?:,[0-9]{3})+", line.strip()):
+                v = int(line.strip().replace(",", ""))
+                if 100 <= v <= 99_999:      # 万円として現実的な範囲
+                    return v
+    # ④ どの行も資金計画に見える場合の最後の手段
     return _price_in(t)
 
 
@@ -160,6 +180,10 @@ def _area_of(m) -> float:
 _NUM_UNIT = r"([0-9]{1,4}(?:\.[0-9]+)?)\s*" + _UNIT
 
 
+# 面積の見出しに使われる語。一覧表で「何列目か」を数えるのに使う。
+_AREA_LABELS = r"(?:土地面積|敷地面積|建物面積|延床面積|延べ床面積|専有面積)"
+
+
 def _parse_area(t: str, labels) -> Optional[float]:
     """面積を㎡で返す。ラベルと同じ行を先に見る。
 
@@ -168,11 +192,12 @@ def _parse_area(t: str, labels) -> Optional[float]:
     「ラベルから数字までは12字以内」といった距離では読めなくなる。
     単位（㎡・坪）が付いた数字だけを、その行の中から拾う。
 
-    セル幅が狭いとラベルと値が改行で切れるので、続く2行の頭も見る。
-    ただし行をまたいで数字を探し回ることはしない。別の欄の数字を
-    掴んでしまうため。
+    候補が複数あるときは㎡を優先する。図面の見出しは「土地面積162坪超」の
+    ように坪で丸めて書かれることがあり、同じ図面の中に正確な
+    「敷地面積／538.69㎡」がある。丸めたほうを採ると面積がずれる。
     """
     lines = t.split("\n")
+    hits = []                       # [(㎡か, 値)] ラベルの優先順に積む
     for lab in labels:
         for i, line in enumerate(lines):
             j = line.find(lab)
@@ -180,11 +205,41 @@ def _parse_area(t: str, labels) -> Optional[float]:
                 continue
             m = re.search(_NUM_UNIT, line[j + len(lab):])
             if m:
-                return _area_of(m)
-            for nxt in lines[i + 1:i + 3]:
-                m = re.match(r"[^\d]{0,8}?" + _NUM_UNIT, nxt)
-                if m:
-                    return _area_of(m)
+                hits.append((m.group(2) != "坪", _area_of(m)))
+                continue
+            v = _from_next_line(lines, i, line, j)
+            if v is not None:
+                hits.append(v)
+    for want_m2 in (True, False):
+        for is_m2, val in hits:
+            if is_m2 == want_m2:
+                return val
+    return None
+
+
+def _from_next_line(lines, i, line, j) -> Optional[tuple]:
+    """ラベルの行に値が無いとき、次の行から拾う。
+
+    表のセルが狭いとラベルと値が改行で切れる。図面の下段には
+    「間取り 建物面積 築年月 備考」という見出しの行と、その値を並べた行が
+    続く形もある。後者では、見出しの行に自分より前にある面積の見出しを
+    数えて、値の行でも同じ番号の数字を採る。列がずれない。
+    """
+    if i + 1 >= len(lines):
+        return None
+    nxt = lines[i + 1]
+    if not re.search(r"\d", line):
+        # 見出しだけの行。値は次の行に、同じ順で並んでいる
+        col = len(re.findall(_AREA_LABELS, line[:j]))
+        found = list(re.finditer(_NUM_UNIT, nxt))
+        if col < len(found):
+            m = found[col]
+            return (m.group(2) != "坪", _area_of(m))
+        return None
+    for cand in lines[i + 1:i + 3]:
+        m = re.match(r"[^\d]{0,8}?" + _NUM_UNIT, cand)
+        if m:
+            return (m.group(2) != "坪", _area_of(m))
     return None
 
 
@@ -276,7 +331,7 @@ def _parse_station_walk(t: str):
         m = re.search(_WALK, t)
         if m:
             walk = int(m.group(1))
-    m2 = re.search(r"([^\s　\n/／｜|、,。]{1,14}駅)", t)
+    m2 = re.search(r"([^" + _ADDR_STOP + r"]{1,14}駅)", t)
     if m2:
         name = m2.group(1)
     if walk is None:  # 距離(m)表記からの推定
@@ -309,17 +364,27 @@ def _parse_ptype(t: str, byear: Optional[int]) -> Optional[str]:
     return None if byear else "shinchiku_kodate"
 
 
+# 住所の切れ目になる記号。図面は項目を■や◆で並べるので、そこで止めないと
+# 「神奈川県秦野市南矢名■交通/小田急線…」が丸ごと住所になる。
+_ADDR_STOP = r"\s　\n,、。／/｜|■●◆○◎▲△▼※【】「」『』（）()＜＞<>〒＝=＋+"
+
+
 def _parse_address(t: str):
     addr = None
-    m = re.search(r"(" + _PREF_RE + r"[^\s　\n,、／/｜|]+)", t)
+    m = re.search(r"(" + _PREF_RE + r"[^" + _ADDR_STOP + r"]+)", t)
     if m:
         addr = m.group(1)
+    # 市区町村は、住所として読み取った範囲の中から探す。図面の隅には
+    # 仲介業者の住所が入っており、本文全体から探すと、そちらの市区町村を
+    # 物件の所在地として拾ってしまう。空欄になるより悪い。
+    # 住所が取れなかったときだけ、本文全体を見る（貼り付けテキスト向け）。
+    scope = addr or t
     city_code = None
     district = None
     for name, code in KANAGAWA_CITY_CODES.items():
-        if name in t:
+        if name in scope:
             city_code = code
-            mm = re.search(re.escape(name) + r"([一-龥ぁ-んァ-ヶー]+)", t)
+            mm = re.search(re.escape(name) + r"([一-龥ぁ-んァ-ヶー]+)", scope)
             if mm:
                 district = mm.group(1)[:8]
             break
@@ -339,7 +404,9 @@ def parse_listing_text(text: str) -> Dict[str, object]:
         byear = datetime.date.today().year
     return {
         "price_man": _parse_price_man(t),
-        "land": _parse_area(t, ["土地面積", "敷地面積", "土地"]),
+        # 図面では見出しが縦組みで割れ、値の側に「公簿 182.99㎡」とだけ
+        # 残ることがある。土地の面積にしか使われない語なので後ろに置く。
+        "land": _parse_area(t, ["土地面積", "敷地面積", "土地", "公簿", "実測"]),
         "building": _parse_area(t, ["建物面積", "延床面積", "延べ床面積", "建物"]),
         "layout": _parse_layout(t),
         "byear": byear,

@@ -18,8 +18,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.extract import (_despace, parse_listing_text, parse_mansion_text,
-                         extract_from_pdf)
+from src.extract import (_despace, _normalize, parse_listing_text,
+                         parse_mansion_text, extract_from_pdf)
 
 
 # ---- 均等割付（字間）------------------------------------------------------
@@ -187,3 +187,115 @@ def test_reading_a_letter_spaced_pdf_end_to_end(tmp_path):
     assert p["byear"] == 2005
     assert p["station"] == 20
     assert p["structure"] == "wood"
+
+
+# ---- 実物の販売図面2枚で分かったこと ---------------------------------------
+#
+# 値と番地は伏せてある（tests/test_placeholders.py を参照）。写しているのは
+# 崩れ方の形だけで、地名は市区町村コードの解決を検証するために残している。
+
+def test_kangxi_radicals_are_read_as_kanji():
+    """PDFのフォントによっては、漢字が部首の符号位置で入ってくる。
+
+    「⽊」は木ではなく KANGXI RADICAL TREE（U+2F4A）。見た目は同じでも
+    別の文字なので、そのままではどのラベルにも一致しない。
+    """
+    assert _normalize("⼟地⾯積") == "土地面積"
+    assert _normalize("築年⽉") == "築年月"
+    # NFKCは旧字体に開くことがある。「売⼾建住宅」が戶のままだと戸建に当たらない
+    assert _normalize("売⼾建住宅") == "売戸建住宅"
+    # CJK部首補助にはNFKCが手を付けない字がある（⻄ は U+2EC4）
+    assert _normalize("温⽔⻄") == "温水西"
+
+
+RADICAL_SHEET = "\n".join([                # レインズ形式のinfo sheet
+    "売⼾建住宅 所",
+    "在",
+    "地",
+    "3,480万円",
+    "価",
+    "格",
+    "物",
+    "件 所 神奈川県厚⽊市温⽔⻄2丁⽬",
+    "⼩⽥急⼩⽥原線 本厚⽊",
+    "交",
+    "通 バス14分 バス停 ⽑利台⼀丁⽬ 停歩6分",
+    "⼟",
+    "地 公簿 180.00㎡ 私道⾯積",
+    "⾯ (共有持分)",
+    "積",
+    "構造・規模 ＲＣ 2階建 地下1階",
+    "築年⽉ 2004年11⽉ 駐⾞場有 無料",
+    "間取り 建物⾯積 築年⽉ 備 考",
+    "4SLDK 190.00㎡ 2004年11⽉",
+])
+
+
+def test_a_sheet_written_in_radicals_still_parses():
+    p = parse_listing_text(RADICAL_SHEET)
+    assert p["price_man"] == 3480
+    assert p["land"] == 180.00, "縦組みの見出しの脇に残る「公簿」から読む"
+    assert p["building"] == 190.00, "下段の一覧表は、見出しの行の次の行に値が並ぶ"
+    assert p["byear"] == 2004
+    assert p["structure"] == "rc"
+    assert p["ptype"] == "chuko_kodate", "「売戸建住宅」＋築年 → 中古戸建"
+    assert p["city"] == "14212"
+    assert p["district"] == "温水西"
+    assert (p["bus"], p["station"]) == (14, 6), "バス14分＋バス停まで徒歩6分"
+
+
+def test_a_header_row_hands_its_value_to_the_right_column():
+    """見出しだけの行の次に値が並ぶ表。列の番号で対応させる。"""
+    p = parse_listing_text("間取り 土地面積 建物面積 築年月\n"
+                           "4SLDK 120.00m2 95.00m2 2010年3月")
+    assert (p["land"], p["building"]) == (120.00, 95.00)
+
+
+def test_koubo_is_read_as_the_land_area():
+    assert parse_listing_text("地 公簿 180.00m2 私道面積")["land"] == 180.00
+
+
+# ---- 自社作成の図面 -------------------------------------------------------
+
+def test_the_address_stops_at_a_bullet():
+    """図面は項目を■で並べる。止めないと後ろが全部住所になる。"""
+    p = parse_listing_text(
+        "■所在地／神奈川県秦野市南矢名■交通/小田急線「東海大学前駅」徒歩20分")
+    assert p["address"] == "神奈川県秦野市南矢名"
+    assert p["station"] == 20
+
+
+def test_the_agents_address_is_not_the_property_address():
+    """図面の隅には仲介業者の住所がある。物件の所在地と取り違えない。
+
+    空欄になるのとは違い、別の市区町村の成約データで採点してしまう。
+    """
+    p = parse_listing_text("\n".join([
+        "■所在地／神奈川県秦野市南矢名",
+        "〒254-0824 平塚市花水台1-2-3 担当：〇〇",
+    ]))
+    assert p["city"] == "14211", "秦野市。平塚市を拾っていない"
+    assert p["district"] == "南矢名", "花水台は業者の所在地"
+
+
+def test_square_metres_beat_a_rounded_tsubo_headline():
+    """見出しの坪表記は丸めてある。同じ図面の正確な㎡を採る。"""
+    p = parse_listing_text("土地面積151坪超\n■敷地面積／500.00㎡（151.25坪）")
+    assert p["land"] == 500.00
+    # 坪しか無ければ従来どおり換算する
+    assert abs(parse_listing_text("土地 100坪")["land"] - 330.58) < 0.1
+
+
+def test_a_price_split_across_three_lines():
+    """価格だけ大きく組まれ、数字と「万円」が別の行に落ちる図面がある。"""
+    p = parse_listing_text("\n".join([
+        "販売価格 ■所在地／神奈川県秦野市南矢名",
+        "3,980",
+        "万円 ■建ぺい率／50% ■容積率／100%",
+    ]))
+    assert p["price_man"] == 3980
+
+
+def test_a_bare_number_is_not_taken_as_a_price_without_a_price_context():
+    """桁区切りの数字だけの行を価格とみなすのは、価格の記載がある図面に限る。"""
+    assert parse_listing_text("物件番号 1,234")["price_man"] is None
