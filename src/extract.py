@@ -60,8 +60,55 @@ def _z2h(s: str) -> str:
     return "".join(out)
 
 
-def _parse_price_man(t: str) -> Optional[int]:
-    """価格を『万円』単位で返す。億対応。"""
+def _despace(s: str) -> str:
+    """均等割付で開いた字間を詰める。
+
+    販売図面はセル幅に合わせてラベルを引き伸ばすことが多く、PDFから
+    取り出すと「土 地 面 積 1 4 7 . 0 7 m 2」のように1文字ずつ空く。
+    このままでは、どのラベルにも一致しない。
+
+    1文字のかたまりが3つ以上続いたときだけ字間とみなしてつなげる。
+    「洋室 6.0帖」のように単語として分かれているものには触らない。
+    """
+    out = []
+    for line in s.replace("\u3000", " ").split("\n"):
+        buf, run = [], []
+
+        def flush():
+            # 3つ以上続いた1文字は字間。それ未満は元の区切りを保つ。
+            buf.extend(["".join(run)] if len(run) >= 3 else run)
+            run.clear()
+
+        for tok in line.split(" "):
+            if tok == "":
+                continue
+            if len(tok) == 1:
+                run.append(tok)
+                continue
+            flush()
+            buf.append(tok)
+        flush()
+        out.append(" ".join(buf))
+    return "\n".join(out)
+
+
+def _normalize(text: str) -> str:
+    """解析にかける前の下ごしらえ。全角を半角にし、字間をほどく。"""
+    return _despace(_z2h(text or ""))
+
+
+# 価格の欄を指す言い方。図面は「価　格」と割り付けることもあるが、
+# _despace が字間をほどいたあとに見るので、ここでは詰めた形だけを持つ。
+_PRICE_LABELS = r"(?:販売価格|物件価格|売出価格|売買価格|価格|価額)"
+
+# 資金計画・諸費用の欄。ここに出てくる「○○万円」は売出価格ではない。
+_MONEY_NOISE = ("自己資金", "頭金", "借入", "融資", "返済", "月々", "月額",
+                "諸費用", "ローン", "手数料", "年収", "予算", "お支払",
+                "支払例", "管理費", "修繕", "礼金", "敷金", "税", "値引")
+
+
+def _price_in(t: str) -> Optional[int]:
+    """文字列から『万円』単位の金額をひとつ読む。億対応。"""
     m = re.search(r"([0-9]+)\s*億\s*([0-9,]+)?\s*万?円", t)
     if m:
         oku = int(m.group(1))
@@ -73,19 +120,71 @@ def _parse_price_man(t: str) -> Optional[int]:
     return None
 
 
+def _parse_price_man(t: str) -> Optional[int]:
+    """売出価格を『万円』単位で返す。億対応。
+
+    図面には資金計画（自己資金・借入・月々返済）や諸費用が併記される。
+    単純に最初の「○○万円」を取ると、そちらを価格として読んでしまう。
+    空欄になるより、もっともらしい誤った価格が入るほうが危ないので、
+    価格の欄に紐づくものを最優先で読む。
+    """
+    lines = t.split("\n")
+    # ① 「価格」欄に紐づく金額
+    for line in lines:
+        m = re.search(_PRICE_LABELS + r"[^\d]{0,10}[\d,億万円\s.]{2,20}", line)
+        if m:
+            v = _price_in(m.group(0))
+            if v:
+                return v
+    # ② ラベルが無い図面・貼り付け向け。資金計画の行は見ない
+    for line in lines:
+        if any(w in line for w in _MONEY_NOISE):
+            continue
+        v = _price_in(line)
+        if v:
+            return v
+    # ③ どの行も資金計画に見える場合の最後の手段
+    return _price_in(t)
+
+
 _UNIT = r"(㎡|m²|m2|ｍ2|平米|平方メートル|坪)"
 
 
+def _area_of(m) -> float:
+    val = float(m.group(1))
+    if m.group(2) == "坪":
+        val = round(val * TSUBO, 2)
+    return val
+
+
+_NUM_UNIT = r"([0-9]{1,4}(?:\.[0-9]+)?)\s*" + _UNIT
+
+
 def _parse_area(t: str, labels) -> Optional[float]:
-    # ラベルと数値が改行・括弧・記号で離れていても拾う（非貪欲・数値以外を最大12字許容）
+    """面積を㎡で返す。ラベルと同じ行を先に見る。
+
+    販売図面は左に間取り図、右に物件概要という作りが多い。テキストに
+    すると図面の寸法（3.640 など）がラベルと値の間に入り込むので、
+    「ラベルから数字までは12字以内」といった距離では読めなくなる。
+    単位（㎡・坪）が付いた数字だけを、その行の中から拾う。
+
+    セル幅が狭いとラベルと値が改行で切れるので、続く2行の頭も見る。
+    ただし行をまたいで数字を探し回ることはしない。別の欄の数字を
+    掴んでしまうため。
+    """
+    lines = t.split("\n")
     for lab in labels:
-        m = re.search(re.escape(lab) + r"[^\d]{0,12}?([0-9]{1,4}(?:\.[0-9]+)?)\s*"
-                      + _UNIT, t)
-        if m:
-            val = float(m.group(1))
-            if m.group(2) == "坪":
-                val = round(val * TSUBO, 2)
-            return val
+        for i, line in enumerate(lines):
+            j = line.find(lab)
+            if j < 0:
+                continue
+            m = re.search(_NUM_UNIT, line[j + len(lab):])
+            if m:
+                return _area_of(m)
+            for nxt in lines[i + 1:i + 3]:
+                m = re.match(r"[^\d]{0,8}?" + _NUM_UNIT, nxt)
+                if m:
+                    return _area_of(m)
     return None
 
 
@@ -154,12 +253,29 @@ def _parse_build_year(t: str) -> Optional[int]:
     return None
 
 
+_WALK = r"(?:徒歩|歩)\s*(?:約)?\s*([0-9]{1,3})\s*分"
+
+
 def _parse_station_walk(t: str):
+    """駅（またはバス停）までの徒歩分と、駅名。
+
+    図面には周辺環境として「○○小学校 徒歩8分」「スーパー 徒歩4分」が
+    並ぶ。単純に最初の「徒歩○分」を取ると、駅徒歩としてそちらを読んで
+    しまい、実際より駅に近い物件として採点される。まず「駅」または
+    「バス停」に続く徒歩分を探し、無ければ従来どおり全体から拾う。
+    """
     walk = None
     name = None
-    m = re.search(r"(?:徒歩|歩)\s*(?:約)?\s*([0-9]{1,3})\s*分", t)
-    if m:
-        walk = int(m.group(1))
+    for line in t.split("\n"):
+        m = re.search(r"(?:駅|バス停)[^\n]{0,16}?" + _WALK, line)
+        if m:
+            walk = int(m.group(1))
+            break
+    if walk is None:
+        # 交通の行が「駅」を含まない書き方（貼り付けテキストに多い）
+        m = re.search(_WALK, t)
+        if m:
+            walk = int(m.group(1))
     m2 = re.search(r"([^\s　\n/／｜|、,。]{1,14}駅)", t)
     if m2:
         name = m2.group(1)
@@ -213,7 +329,7 @@ def _parse_address(t: str):
 def parse_listing_text(text: str) -> Dict[str, object]:
     """貼り付けテキストから物件項目を抽出。値が無いものは None。"""
     import datetime
-    t = _z2h(text or "")
+    t = _normalize(text)
     walk, station_name = _parse_station_walk(t)
     addr, city, district = _parse_address(t)
     byear = _parse_build_year(t)
@@ -314,7 +430,7 @@ def looks_like_mansion(t: str) -> Optional[bool]:
 
     戸建のページを貼ってしまったときに気づけるようにするためのもの。
     """
-    t = _z2h(t or "")
+    t = _normalize(t)
     if re.search(r"マンション|区分所有|専有面積", t):
         return True
     if re.search(r"一戸建|戸建|土地面積|建ぺい率", t):
@@ -324,7 +440,7 @@ def looks_like_mansion(t: str) -> Optional[bool]:
 
 def parse_mansion_text(text: str) -> Dict[str, object]:
     """貼り付けテキストからマンションの項目を抽出。値が無いものは None。"""
-    t = _z2h(text or "")
+    t = _normalize(text)
     walk, station_name = _parse_station_walk(t)
     addr, city, district = _parse_address(t)
     floor, total_floors = _parse_floors(t)
@@ -336,6 +452,7 @@ def parse_mansion_text(text: str) -> Dict[str, object]:
         "byear": _parse_build_year(t),
         "station": walk,
         "station_name": station_name,
+        "bus": _parse_bus(t),
         "floor": floor,
         "total_floors": total_floors,
         "direction": _parse_direction(t),
@@ -380,4 +497,6 @@ def extract_from_pdf(file_or_path) -> str:
             txt = page.extract_text() or ""
             if txt:
                 parts.append(txt)
-    return "\n".join(parts)
+    # 均等割付をほどいてから返す。この文字列は画面の確認欄にも出るので、
+    # 「土 地 面 積」のままだと人が読みにくい。
+    return _despace("\n".join(parts))
