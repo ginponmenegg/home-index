@@ -9,6 +9,7 @@ import os
 import sys
 import time
 import json
+import html
 import secrets
 import threading
 import urllib.parse
@@ -23,6 +24,7 @@ from src.pipeline import run_pipeline, run_mansion_pipeline  # noqa: E402
 from src.extract import parse_listing_text, extract_from_url  # noqa: E402
 from src.citycode import CityCodeResolver  # noqa: E402
 from src import structure as structure_mod  # noqa: E402
+from src import guides  # noqa: E402
 
 _RESOLVER = None
 
@@ -408,6 +410,7 @@ PRO_LINKS = ('PRO（試験公開中）：'
              '<a href="/pro/finance" style="color:#111">詳細な資金計画</a>')
 
 FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#6b7280;line-height:1.9">'
+          '<a href="/guide" style="color:#111">解説</a><br>'
           + PRO_LINKS + '<br>'
           + LEGAL_LINKS + '<br>'
           '出典：国土交通省 不動産情報ライブラリ／国土地理院<br>'
@@ -2158,13 +2161,155 @@ def buy():
     return render_template_string(FORM, v=_example_v(), listing="", banner=None)
 
 
-# サイトマップに載せるのはGETで開ける5ページだけ。
+# ---- 解説記事 --------------------------------------------------------
+# 記事の中身は src/guides.py。ここは器だけを持つ。
+#
+# 法的なページ（_legal_page）と分けているのは、検索結果に出す前提の
+# 作りが要るため。meta description、canonical、OGP、Article の構造化
+# データ、パンくず。とくに author を /about の運営者に紐づけることが
+# 効く。YMYL（金銭にかかわる話題）では、誰が書いたか分からない内容は
+# 評価されない。
+
+_GUIDE_CSS = (
+    'body{margin:0;background:#f5f7fa;color:#1f2937;'
+    'font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}'
+    '.wrap{max-width:720px;margin:0 auto;padding:24px 16px}'
+    '.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:22px}'
+    'h1{font-size:21px;margin:0 0 8px;line-height:1.55}'
+    'h2{font-size:16px;margin:28px 0 8px;color:#111;'
+    'border-left:3px solid #14395C;padding-left:9px;line-height:1.5}'
+    'p,li{font-size:15px;line-height:1.9}'
+    'li{margin-bottom:4px}'
+    'a{color:#111}'
+    '.sub{color:#6b7280;font-size:12px;line-height:1.8}'
+    '.meta{color:#6b7280;font-size:12px;margin:0 0 16px}'
+    '.lead{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:10px;'
+    'padding:14px 16px;margin:0 0 6px}'
+    '.formula{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:8px;'
+    'padding:11px 14px;text-align:center}'
+    'table{border-collapse:collapse;width:100%;margin:12px 0}'
+    'th,td{border:1px solid #e5e7eb;padding:7px 10px;text-align:left;font-size:13px}'
+    'th{background:#f6f8fa;font-weight:600}'
+    '.cta{margin-top:26px;background:#14395C;border-radius:12px;padding:18px 20px}'
+    '.cta p{color:#f0eee9;margin:0 0 10px;font-size:14px}'
+    '.cta a{display:inline-block;background:#fff;color:#14395C;font-weight:700;'
+    'text-decoration:none;border-radius:8px;padding:10px 18px;font-size:14px}'
+    '.cards{list-style:none;padding:0;margin:0}'
+    '.cards li{border-top:1px solid #e5e7eb;padding:16px 0;margin:0}'
+    '.cards li:first-child{border-top:none;padding-top:4px}'
+    '.cards a{font-weight:700;font-size:16px;text-decoration:none;line-height:1.5}'
+    '.logo-img{height:64px;width:auto;max-width:100%;display:block}'
+    + BRAND_CSS)
+
+
+def _guide_base() -> str:
+    return request.url_root.rstrip("/")
+
+
+def _jsonld(obj) -> str:
+    """構造化データを埋め込む。閉じタグに化ける文字だけ逃がす。"""
+    body = json.dumps(obj, ensure_ascii=False).replace("<", "\\u003c")
+    return f'<script type="application/ld+json">{body}</script>'
+
+
+def _guide_shell(title, description, path, head_extra, body) -> str:
+    """記事と一覧に共通の外側。検索結果に出す前提の head を持つ。"""
+    base = _guide_base()
+    url = base + path
+    t = html.escape(title)
+    d = html.escape(description)
+    return ('<!doctype html><html lang="ja"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'<title>{t}｜HOME INDEX</title>'
+            f'<meta name="description" content="{d}">'
+            f'<link rel="canonical" href="{url}">'
+            '<meta property="og:type" content="article">'
+            '<meta property="og:site_name" content="HOME INDEX">'
+            f'<meta property="og:title" content="{t}">'
+            f'<meta property="og:description" content="{d}">'
+            f'<meta property="og:url" content="{url}">'
+            f'<meta property="og:image" content="{base}/static/ogp.png?v=1">'
+            '<meta name="twitter:card" content="summary_large_image">'
+            + FONT_LINK + ICON_LINKS + head_extra
+            + f'<style>{_GUIDE_CSS}</style></head><body>'
+            + brand_bar("解説")
+            + '<div class="wrap">'
+            + f'<div class="card">{brand_lockup("gd")}{body}</div>'
+            + FOOTER + '</div></body></html>')
+
+
+def _breadcrumbs(base, extra=None):
+    items = [{"@type": "ListItem", "position": 1, "name": "ホーム",
+              "item": base + "/"},
+             {"@type": "ListItem", "position": 2, "name": "解説",
+              "item": base + "/guide"}]
+    if extra:
+        items.append({"@type": "ListItem", "position": 3, "name": extra})
+    return {"@type": "BreadcrumbList", "itemListElement": items}
+
+
+@app.route("/guide")
+def guide_index():
+    base = _guide_base()
+    items = "".join(
+        f'<li><a href="/guide/{g.slug}">{html.escape(g.title)}</a>'
+        f'<p class="sub" style="margin:6px 0 0">{html.escape(g.description)}</p>'
+        f'<p class="meta" style="margin:6px 0 0">{g.published}</p></li>'
+        for g in guides.all_guides())
+    body = ('<h1>解説</h1>'
+            '<p class="sub">診断で使っている数字の根拠を開いて書いています。'
+            '出典は本文に明記します。</p>'
+            f'<ul class="cards">{items}</ul>')
+    return _guide_shell(
+        "解説", "住宅の購入判断に必要な公的データの読み方を、"
+                "出典を示して解説します。HOME INDEX の診断で使っている数字の根拠です。",
+        "/guide", _jsonld({"@context": "https://schema.org",
+                           "@graph": [_breadcrumbs(base)]}), body)
+
+
+@app.route("/guide/<slug>")
+def guide_page(slug):
+    g = guides.by_slug(slug)
+    if g is None:
+        from flask import abort
+        abort(404)
+    base = _guide_base()
+    article = {"@type": "Article", "headline": g.title,
+               "description": g.description, "inLanguage": "ja",
+               "datePublished": g.published, "dateModified": g.updated,
+               "mainEntityOfPage": f"{base}/guide/{g.slug}",
+               "publisher": {"@type": "Organization", "name": "HOME INDEX",
+                             "url": base + "/"}}
+    if operator_named():
+        # 書き手を /about の運営者ページに紐づける。名前が仮のままなら
+        # 出さない。誰でもない著者を名乗るくらいなら、著者を書かない。
+        article["author"] = {"@type": "Person", "name": OPERATOR,
+                             "url": base + "/about"}
+    head = _jsonld({"@context": "https://schema.org",
+                    "@graph": [article, _breadcrumbs(base, g.title)]})
+    updated = (f"　更新 {g.updated}" if g.updated != g.published else "")
+    body = ('<p class="meta"><a href="/guide">← 解説の一覧</a></p>'
+            f'<h1>{html.escape(g.title)}</h1>'
+            f'<p class="meta">{g.published}{updated}'
+            + (f'　/　{html.escape(OPERATOR)}（宅地建物取引士）'
+               '　<a href="/about">運営者について</a>' if operator_named() else '')
+            + '</p>'
+            f'<div class="lead"><p style="margin:0">{g.lead}</p></div>'
+            + g.body
+            + '<div class="cta"><p>この記事の内容は、診断の採点にそのまま'
+              '使っています。構造を選んで、築年数の評価を確かめてください。</p>'
+              '<a href="/buy">無料で診断する</a></div>')
+    return _guide_shell(g.title, g.description, f"/guide/{g.slug}", head, body)
+
+
+# サイトマップに載せるのはGETで開けるページだけ。
 # 診断結果はPOSTでしか生成されず、固有のURLを持たないのでクロール対象にならない。
 SITEMAP_PATHS = ["/", "/buy", "/mansion", "/copy-guide", "/pro/diagnose",
                  "/pro/mansion", "/pro/finance", "/terms", "/privacy"]
 if operator_named():
     # 誰が作ったかは検索エンジンにも見せる（YMYLではここが効く）
     SITEMAP_PATHS.insert(3, "/about")
+SITEMAP_PATHS += guides.paths()
 
 
 @app.route("/robots.txt")
