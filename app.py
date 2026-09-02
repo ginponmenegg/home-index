@@ -405,7 +405,7 @@ LEGAL_LINKS = (_about_link()
                + ('　・　<a href="/tokushoho" style="color:#111">'
                   '特定商取引法に基づく表記</a>' if billing_on() else ''))
 
-PRO_LINKS = ('PRO（試験公開中）：'
+PRO_LINKS = ('<a href="/pro" style="color:#111">PRO（試験公開中）</a>：'
              '<a href="/pro/diagnose" style="color:#111">購入診断（戸建）</a>　・　'
              '<a href="/pro/mansion" style="color:#111">購入診断（マンション）</a>　・　'
              '<a href="/pro/finance" style="color:#111">詳細な資金計画</a>')
@@ -847,6 +847,24 @@ BRAND_BAR
     <input type="hidden" name="{{k}}" value="{{val}}">
     {% endfor %}
     <button type="submit">詳細診断に進む（{{handover_label}}）</button>
+   </form>
+  </div>
+  {% endif %}
+
+  {% if finance_carry %}
+  <div class="card" style="border-color:#111">
+   <h2 style="margin-top:0">諸費用まで含めて資金を見る（PRO）</h2>
+   <p class="muted" style="margin:6px 0 10px">
+    上のローン試算は月々の返済額までです。仲介手数料・印紙税・登録免許税・
+    不動産取得税・司法書士報酬・火災保険までを積み上げ、金利が上がった場合や
+    繰上返済をした場合、住宅ローン控除まで含めて試算します。<br>
+    <b>この物件の価格・面積・築年・借入条件は引き継がれます。</b>
+   </p>
+   <form method="post" action="/pro/finance_start">
+    {% for k, val in finance_carry.items() %}
+    <input type="hidden" name="{{k}}" value="{{val}}">
+    {% endfor %}
+    <button type="submit">資金計画に進む</button>
    </form>
   </div>
   {% endif %}
@@ -2376,8 +2394,9 @@ def guide_page(slug):
 
 # サイトマップに載せるのはGETで開けるページだけ。
 # 診断結果はPOSTでしか生成されず、固有のURLを持たないのでクロール対象にならない。
-SITEMAP_PATHS = ["/", "/buy", "/mansion", "/copy-guide", "/pro/diagnose",
-                 "/pro/mansion", "/pro/finance", "/terms", "/privacy"]
+SITEMAP_PATHS = ["/", "/buy", "/mansion", "/copy-guide", "/pro",
+                 "/pro/diagnose", "/pro/mansion", "/pro/finance",
+                 "/terms", "/privacy"]
 if operator_named():
     # 誰が作ったかは検索エンジンにも見せる（YMYLではここが効く）
     SITEMAP_PATHS.insert(3, "/about")
@@ -2474,9 +2493,43 @@ def diagnose():
         _SEM.release()
 
 
+def _finance_carry(subject, down_yen, loan_years, income_yen=None):
+    """診断の入力から、資金計画のフォームを埋める値を作る。
+
+    資金計画の金額欄はすべて万円。面積は㎡。単位を間違えると桁が
+    変わるので、ここで一度だけ変換する。
+    """
+    def man_(yen):
+        return str(int(round((yen or 0) / 10000))) if yen else ""
+
+    import datetime
+    byear = getattr(subject, "build_year", None)
+    newbuild = "1" if getattr(subject, "property_type", "") == "shinchiku_kodate" \
+        else "0"
+    v = {"price": man_(getattr(subject, "price", None)),
+         "newbuild": newbuild,
+         "byear": str(byear) if byear else "",
+         "down": man_(down_yen),
+         "income": man_(income_yen),
+         "loan_years": str(loan_years or ""),
+         # 1982年以降の新築なら耐震基準に適合しているものとして扱う。
+         # 記事（/guide/shin-taishin-kenchiku-kakunin）に書いたとおり、
+         # 本当の境目は建築確認の日なので、境界の年は「不明」に倒す。
+         "quake": ("yes" if byear and byear >= 1983 else
+                   ("unknown" if byear else "unknown"))}
+    land = getattr(subject, "land_area_m2", None)
+    floor = getattr(subject, "building_area_m2", None) \
+        or getattr(subject, "exclusive_area_m2", None)
+    if land:
+        v["land_area"] = str(land)
+    if floor:
+        v["floor_area"] = str(floor)
+    return v
+
+
 def _render_result(res, subject, sctx, down_yen, loan_years,
                    free_diagnosis=None, carry=None, questions=None,
-                   questions_note=None, redo=None):
+                   questions_note=None, redo=None, finance_carry=None):
     """診断結果ページを描画する。戸建とマンションで共通。
 
     res は run_pipeline / run_mansion_pipeline のどちらの戻り値でもよい。
@@ -2671,7 +2724,7 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
         pro=pro_delta, handover=handover,
         handover_action=handover_action, handover_label=handover_label,
         handover_unknowns=handover_unknowns, questions=questions,
-        questions_note=questions_note)
+        questions_note=questions_note, finance_carry=finance_carry)
 
 
 def _run_diagnose(f, datetime):
@@ -3470,7 +3523,10 @@ def _run_pro_diagnose(f):
                 specs=" ・ ".join(bits))
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           free_diagnosis=free, questions=questions,
-                          questions_note=questions_note)
+                          questions_note=questions_note,
+                          finance_carry=_finance_carry(
+                              subject, down_yen, loan_years,
+                              to_yen(f.get("income"))))
 
 
 # ---- マンションPRO 購入診断 ----------------------------------------
@@ -3804,7 +3860,10 @@ def _run_mansion_pro(f):
                 ptype="中古マンション（PRO）", specs=" ・ ".join(bits))
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           free_diagnosis=free, questions=questions,
-                          questions_note=questions_note)
+                          questions_note=questions_note,
+                          finance_carry=_finance_carry(
+                              subject, down_yen, loan_years,
+                              to_yen(f.get("income"))))
 
 
 # ---- アカウント（ログイン・保存・比較・プラン） ----------------------
@@ -5120,6 +5179,7 @@ BRAND_BAR
  <p style="background:#fafafa;border:1px solid #e5e5e5;border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.8;margin:12px 0"><b>試験公開中です。</b>現在は無料でお使いいただけますが、将来は有料（月額）になる予定です。会員登録はまだ不要です。</p>
  <p class="lead">購入にかかる諸費用、金利が上がったときの返済額、繰上返済の効果、住宅ローン控除の見込みを、
   公的な税率と料率にもとづいて試算します。<b>物件の価格を評価するものではありません。</b></p>
+ {% if banner %}<p style="background:#eef4fa;border:1px solid #cddcea;border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.8;margin:12px 0">{{banner|safe}}</p>{% endif %}
 
  <form method="post" action="/pro/finance">
   <div class="card">
@@ -5467,23 +5527,92 @@ def _pro_defaults():
                 prepay="", prepay_after="", prepay_kind="期間短縮型")
 
 
-@app.route("/pro/finance", methods=["GET", "POST"])
-def pro_finance():
-    from src.finance import FCONFIG
+# ---- PROの入口 --------------------------------------------------------
+# PROは長らく3つのフォームがフッターに並んでいるだけで、/pro は404だった。
+# 申し込んだ人が最初に着く場所が無く、何が使えるのかを説明する場所も
+# 無かった。ここがその場所になる。
 
+_PRO_HUB_BODY = ("""
+<p class="sub">PROは、無料診断が「未確認」として点数に入れていない項目を、
+ご自身の回答で埋めるためのものです。<b>試験公開中で、いまは無料で使えます。</b></p>
+
+<h2>1. 購入診断（PRO）</h2>
+<p>建物内部の状態、設備の更新時期、リフォームした箇所、接道と再建築の可否、
+マンションなら大規模修繕の履歴や管理形態。無料診断では未確認としていた項目に
+答えると、その分だけ評価に反映され、情報充足度が上がります。</p>
+<p>答えられなかった項目は消えるのではなく、
+<b>「仲介業者に確認すること」の一覧</b>になって出てきます。</p>
+<p><a href="/pro/diagnose">戸建で始める</a>　/
+ <a href="/pro/mansion">マンションで始める</a></p>
+
+<h2>2. 詳細な資金計画</h2>
+<p>仲介手数料・印紙税・登録免許税・不動産取得税・司法書士報酬・火災保険を
+積み上げ、金利が上がったときの返済額、繰上返済の効果、住宅ローン控除の
+見込みまで試算します。結果はPDFで保存できます。</p>
+<p><a href="/pro/finance">資金計画を試算する</a></p>
+<p class="sub">購入診断の結果画面から進むと、価格・面積・築年・借入の条件は
+そのまま引き継がれます。入力し直す必要はありません。</p>
+""" + ("""
+<h2>3. 保存と比較</h2>
+<p>診断の結果を保存しておくと、あとから見返せます。複数の物件を保存すれば、
+点数・カテゴリ別の評価・リスクを横並びで比べられます。物件ごとにメモを
+残すこともできます。</p>
+<p><a href="/mypage">保存した診断</a>　/　<a href="/compare">物件を比べる</a></p>
+""" if db.enabled() else "") + """
+<h2>推定価格の計算は、無料版と同じです</h2>
+<p>PROで入力していただく内容は、<b>物件の評価とリスクにだけ</b>反映します。
+推定価格レンジの計算には渡していません。PROは点数の確からしさを上げるもので、
+価格を動かすものではありません。同じ物件なら、無料でもPROでも推定価格は
+同じ数字になります。</p>
+""")
+
+
+@app.route("/pro")
+def pro_hub():
+    return _legal_page("PRO", _PRO_HUB_BODY)
+
+
+def _finance_tmpl_kw():
+    """資金計画フォームに渡す設定値。設定ファイルから毎回読み直す。"""
+    from src.finance import FCONFIG
     cats = list(FCONFIG.get("loan_deduction", {}).get("existing", {}).keys())
     cats = [c for c in cats if not c.startswith("_")]
     ps = FCONFIG.get("price_split", {})
-    tmpl_kw = dict(
+    return dict(
         categories=cats,
         nb_building=int((ps.get("new_build_building_price") or 0) / 10000),
         old_years=ps.get("old_building_hint_years", 30),
         old_ratio=int((ps.get("old_building_hint_ratio") or 0) * 100))
+
+
+@app.route("/pro/finance", methods=["GET", "POST"])
+def pro_finance():
     if request.method == "GET":
         return render_template_string(PRO_FINANCE_FORM, v=_pro_defaults(),
-                                      **tmpl_kw)
-
+                                      **_finance_tmpl_kw())
     return render_template_string(PRO_FINANCE_RESULT, **_pro_compute(request.form))
+
+
+@app.route("/pro/finance_start", methods=["POST"])
+def pro_finance_start():
+    """診断の結果から資金計画へ、入力を引き継いで開く。
+
+    年収と住所を含むので、クエリ文字列ではなくPOSTで受ける
+    （URLに残さない・アクセスログに出さない）。/pro/start と同じ理由。
+    """
+    f = request.form
+    v = _pro_defaults()
+    for k in v:
+        if k == "newbuild":
+            continue
+        if f.get(k):
+            v[k] = f.get(k)
+    v["newbuild"] = (f.get("newbuild") == "1")
+    return render_template_string(
+        PRO_FINANCE_FORM, v=v, **_finance_tmpl_kw(),
+        banner="<b>診断の入力を引き継ぎました。</b>"
+               "価格・面積・築年・借入の条件は入っています。"
+               "土地と建物の按分や、繰上返済の条件を足すと精度が上がります。")
 
 
 def _pro_compute(f):
