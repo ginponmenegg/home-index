@@ -20,7 +20,7 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
-                                TableStyle, KeepTogether)
+                                TableStyle, KeepTogether, PageBreak)
 
 FONT = "HeiseiKakuGo-W5"
 _registered = False
@@ -86,6 +86,50 @@ def _header_style(t, ncols):
     return t
 
 
+def _diagnosis_pages(story, d, st, W):
+    """診断の結果をPDFの先頭に置く。引き継ぎが無ければ何もしない。
+
+    d は結果画面が署名して持ち回した辞書（app.py の _render_result）。
+    点数をここで計算し直さないのは、外部APIを二度叩かないためと、
+    画面に出したものと1点でもずれさせないため。
+    """
+    if not d:
+        return
+    story.append(Paragraph("HOME INDEX　診断の結果", st["title"]))
+    today = datetime.date.today().strftime("%Y年%m月%d日")
+    story.append(Paragraph(
+        f"作成日 {today}　／　{d.get('title', '')}", st["sub"]))
+    story.append(Paragraph(
+        f"総合 {d.get('total')}点（{d.get('grade')}）　"
+        f"情報充足度 {d.get('suff')}％", st["h2"]))
+    story.append(Paragraph(
+        "未確認の項目は評価に入れていません。点数はルール計算であり、"
+        "物件の価値や安全性を保証するものではありません。", st["note"]))
+
+    cats = d.get("cats") or []
+    if cats:
+        story.append(Paragraph("カテゴリ別の評価", st["h2"]))
+        story.append(_kv_table([(c[0], f"{c[1]} / {c[2]}") for c in cats],
+                               st, W))
+        for c in cats:
+            story.append(Paragraph(f"{c[0]}：{c[3]}", st["note"]))
+
+    risks = d.get("risks") or []
+    if risks:
+        story.append(Paragraph("重大リスク", st["h2"]))
+        for r in risks:
+            mark = "確認済" if r[2] == "confirmed" else "未確認"
+            story.append(Paragraph(f"・{r[1]}（{mark}）　{r[3]}", st["note"]))
+
+    ask = d.get("ask") or []
+    if ask:
+        story.append(Paragraph("仲介業者に聞くこと", st["h2"]))
+        for i, q in enumerate(ask, 1):
+            story.append(Paragraph(f"{i}. {q}", st["note"]))
+
+    story.append(PageBreak())
+
+
 def build_finance_pdf(ctx: dict) -> bytes:
     """試算結果のコンテキストからPDFを組み立ててバイト列で返す。"""
     _ensure_font()
@@ -99,6 +143,11 @@ def build_finance_pdf(ctx: dict) -> bytes:
     W = doc.width
     s = ctx["s"]
     story = []
+
+    # ---- 診断（結果画面から引き継いだときだけ）----
+    # 資金計画だけを渡されても、家族や金融機関には話が半分しか伝わらない。
+    # 引き継ぎがあるときは、点数とリスクを先に載せて1枚にする。
+    _diagnosis_pages(story, ctx.get("diag"), st, W)
 
     # ---- 表題 ----
     story.append(Paragraph("HOME INDEX　詳細な資金計画", st["title"]))

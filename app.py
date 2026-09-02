@@ -2807,6 +2807,20 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
                 payload=saved.snapshot(res, subject, sctx, kind, enr,
                                        redo)))
 
+    if finance_carry is not None:
+        # 資金計画のPDFに診断を載せるため、点数とリスクを署名して持ち回す。
+        # 作り直すと外部APIを二度叩くうえ、画面と数字がずれ得る。
+        finance_carry = dict(finance_carry)
+        finance_carry["dx"] = sign_snapshot({
+            "title": f"{sctx.get('ptype', '')}　{sctx.get('address', '')}".strip(),
+            "total": d.total_score, "grade": d.grade,
+            "suff": d.data_sufficiency,
+            "cats": [[c.name, c.points, c.weight, c.reason]
+                     for c in d.categories],
+            "risks": [[r.severity, r.type, r.status, r.evidence]
+                      for r in d.critical_risks],
+            "ask": list(questions or [])[:20]})
+
     return render_template_string(
         RESULT, s=sctx, price_man=man(subject.price), age=age, save=save,
         p=price_ctx, cats=cats, d=dctx, loan=loan, warnings=res.warnings,
@@ -5273,6 +5287,7 @@ BRAND_BAR
  {% if banner %}<p style="background:#eef4fa;border:1px solid #cddcea;border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.8;margin:12px 0">{{banner|safe}}</p>{% endif %}
 
  <form method="post" action="/pro/finance">
+  <input type="hidden" name="dx" value="{{v.dx}}">
   <div class="card">
    <h2>物件と価格</h2>
    <p class="h2sub">金額はすべて万円で入力してください</p>
@@ -5492,7 +5507,8 @@ BRAND_BAR
   {% for k, val in form.items() %}<input type="hidden" name="{{k}}" value="{{val}}">{% endfor %}
   <button type="submit" style="margin-top:0">PDFレポートを保存</button>
   <p class="sub" style="margin:8px 0 0">
-   この試算結果を1つのPDFにまとめます。住宅ローンの相談や家族との共有にお使いください。</p>
+   この試算結果を1つのPDFにまとめます。住宅ローンの相談や家族との共有にお使いください。{% if form.dx %}<br>
+   <b>診断の結果から進んだので、点数・カテゴリ別の評価・重大リスク・仲介業者に聞くことも同じPDFに入ります。</b>{% endif %}</p>
  </form>
 
  <div class="card">
@@ -5613,6 +5629,7 @@ def _pro_defaults():
                 land_area="", floor_area="",
                 byear="", bmonth="", bday="", quake="yes",
                 down="", income="", loan_years="", rate="",
+                dx="",   # 診断からの引き継ぎ（署名済み）。無ければ空
                 quake_ins=False, option_cost=False,
                 deduction_cat="その他", resale=False, kosodate=False,
                 prepay="", prepay_after="", prepay_kind="期間短縮型")
@@ -5843,7 +5860,11 @@ def pro_finance_pdf():
     """試算結果をPDFレポートとして返す。計算はHTML版と同じ経路を使う。"""
     from flask import Response
     from src.report import build_finance_pdf
-    pdf = build_finance_pdf(_pro_compute(request.form))
+    ctx = _pro_compute(request.form)
+    # 署名が合わないもの・無いものは黙って落とす。診断の節が出ないだけで、
+    # 資金計画のPDFとしては成立する。
+    ctx["diag"] = _unsign_snapshot(request.form.get("dx") or "")
+    pdf = build_finance_pdf(ctx)
     quoted = urllib.parse.quote("HOME INDEX_資金計画.pdf")
     return Response(pdf, mimetype="application/pdf", headers={
         "Content-Disposition": ("attachment; filename=\"finance-plan.pdf\"; "

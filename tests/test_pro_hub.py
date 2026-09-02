@@ -114,3 +114,73 @@ def test_the_finance_form_still_opens_empty_on_its_own():
     h = _client().get("/pro/finance").get_data(as_text=True)
     assert "引き継ぎました" not in h
     assert 'name="price"' in h
+
+
+# ---- 診断と資金計画を1つのPDFに -------------------------------------------
+
+import io as _io  # noqa: E402
+
+import pytest  # noqa: E402
+
+FINANCE = {"price": "3500", "byear": "2010", "land_area": "120",
+           "floor_area": "95", "down": "500", "income": "800",
+           "loan_years": "35", "newbuild": "0", "quake": "yes",
+           "land_ratio": "60"}
+
+
+def _dx(**kw):
+    base = dict(title="中古戸建（PRO）　〇〇県〇〇市", total=81, grade="A",
+                suff=68,
+                cats=[["物件", 18.2, 25, "築16年・木造"],
+                      ["リスク", 10.5, 15, "ハザード未確認（要確認）"]],
+                risks=[["medium", "ハザード未確認", "unknown",
+                        "洪水/土砂/津波等を公的データで要確認"]],
+                ask=["建築確認済証と検査済証は残っていますか。"])
+    base.update(kw)
+    return webapp.sign_snapshot(base)
+
+
+def _pdf_text(data):
+    pdfplumber = pytest.importorskip("pdfplumber")
+    with pdfplumber.open(_io.BytesIO(data)) as pdf:
+        return "\n".join((p.extract_text() or "") for p in pdf.pages)
+
+
+def test_the_pdf_carries_the_diagnosis_when_it_came_from_one():
+    """家族や金融機関に見せたいのは、評価と費用の両方。片方では足りない。"""
+    r = _client().post("/pro/finance.pdf", data=dict(FINANCE, dx=_dx()))
+    assert r.mimetype == "application/pdf"
+    t = _pdf_text(r.data)
+    assert "診断の結果" in t
+    assert "総合 81点（A）" in t and "情報充足度 68％" in t
+    assert "築16年・木造" in t, "カテゴリの理由まで載せる"
+    assert "ハザード未確認" in t
+    assert "建築確認済証" in t, "仲介業者に聞くことも同じPDFに入る"
+    assert "詳細な資金計画" in t, "資金計画の側は従来どおり"
+
+
+def test_the_pdf_is_still_a_finance_plan_on_its_own():
+    r = _client().post("/pro/finance.pdf", data=FINANCE)
+    assert r.mimetype == "application/pdf"
+    t = _pdf_text(r.data)
+    assert "詳細な資金計画" in t
+    assert "診断の結果" not in t
+
+
+def test_a_tampered_diagnosis_is_dropped_rather_than_trusted():
+    """署名が合わないものは載せない。落ちもしない。"""
+    bad = _dx()[:-3] + "xxx"
+    r = _client().post("/pro/finance.pdf", data=dict(FINANCE, dx=bad))
+    assert r.status_code == 200 and r.mimetype == "application/pdf"
+    assert "診断の結果" not in _pdf_text(r.data)
+
+
+def test_the_form_keeps_the_diagnosis_through_the_round_trip():
+    c = _client()
+    dx = _dx()
+    h = c.post("/pro/finance_start", data=dict(FINANCE, dx=dx)).get_data(as_text=True)
+    assert f'name="dx" value="{dx}"' in h, "フォームが持ち続けること"
+    h2 = c.post("/pro/finance", data=dict(FINANCE, dx=dx)).get_data(as_text=True)
+    assert "同じPDFに入ります" in h2, "何が入るのかを画面に書く"
+    h3 = c.post("/pro/finance", data=FINANCE).get_data(as_text=True)
+    assert "同じPDFに入ります" not in h3
