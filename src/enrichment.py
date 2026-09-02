@@ -3,6 +3,7 @@
 
 実装：
   - 用途地域（reinfolib XKT002）
+  - 区域区分（reinfolib XKT001）市街化区域／市街化調整区域
   - ハザード（reinfolib XKT026洪水 / XKT027高潮 / XKT028津波 / XKT029土砂）
       いずれも座標→タイル(z=15)→GeoJSON→ポリゴン内判定。公式仕様で確認済み。
   - 人口・人口動向（e-Stat 社会・人口統計体系 市区町村データ statsCode=00200502）
@@ -192,6 +193,46 @@ def fetch_use_district(lat, lon, key, zoom=15) -> Optional[str]:
         ud = _extract_use_district(f.get("properties", {}) or {})
         if ud:
             return ud
+    return None
+
+
+# ---------- 区域区分（市街化区域／市街化調整区域） ----------
+# 都市計画決定情報（区域区分）XKT001。実データで確認したこと：
+#   - 区分は area_classification_ja に日本語で入る（kubun_id は 21/22/23）
+#   - 21「都市計画区域」の面の中に、22「市街化区域」23「市街化調整区域」が
+#     重なって入っている。ひとつの地点が 21 と 22/23 の両方に当たる
+# 欲しいのは内側の 22/23 なので、21 は読み飛ばす。
+URBANIZATION_TOKENS = ["市街化調整区域", "市街化区域"]
+
+
+def _extract_urbanization(props: dict) -> Optional[str]:
+    """区分名だけを見る。他の項目（市区町村名など）に「市街化」の字が
+    紛れ込んだものを拾わないよう、値を総なめにはしない。"""
+    v = props.get("area_classification_ja")
+    if not isinstance(v, str):
+        return None
+    for tok in URBANIZATION_TOKENS:
+        if tok in v:
+            return tok
+    return None
+
+
+def fetch_urbanization(lat, lon, key, zoom=15) -> Optional[str]:
+    """市街化区域か市街化調整区域か（XKT001）。分からなければ None。
+
+    用途地域と違い、内包判定できなかったときにタイル代表値へ落とさない。
+    ひとつのタイルには市街化区域と市街化調整区域が普通に同居していて、
+    どちらかを代表に選ぶのは当てずっぽうになる。この項目は採点で最も重い
+    減点（リスク15点満点を3点以下に抑える）に直結するので、当てずっぽうで
+    付けるくらいなら未取得のままにする。
+    """
+    x, y = latlon_to_tile(lat, lon, zoom)
+    feats = _reinfolib_tile("XKT001", key, zoom, x, y)
+    for f in feats:
+        if point_in_geometry(lon, lat, f.get("geometry") or {}):
+            u = _extract_urbanization(f.get("properties", {}) or {})
+            if u:
+                return u
     return None
 
 
@@ -582,10 +623,11 @@ def enrich(lat: Optional[float], lon: Optional[float],
         e.notes.append("座標未取得のためエンリッチメントをスキップ")
         return e
 
-    tasks = {}  # 用途地域・ハザード・周辺施設・人口を並列実行
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    tasks = {}  # 用途地域・区域区分・ハザード・周辺施設・人口を並列実行
+    with ThreadPoolExecutor(max_workers=5) as ex:
         if reinfolib_key:
             tasks["ud"] = ex.submit(fetch_use_district, lat, lon, reinfolib_key)
+            tasks["ur"] = ex.submit(fetch_urbanization, lat, lon, reinfolib_key)
             tasks["hz"] = ex.submit(fetch_hazard, lat, lon, reinfolib_key)
             tasks["fa"] = ex.submit(fetch_facilities, lat, lon, reinfolib_key)
             tasks["sd"] = ex.submit(fetch_school_districts, lat, lon, reinfolib_key)
@@ -603,6 +645,15 @@ def enrich(lat: Optional[float], lon: Optional[float],
                 e.notes.append("用途地域：該当ポリゴンを特定できず（要確認）")
         except Exception as ex_:
             e.notes.append(f"用途地域取得失敗: {ex_}")
+        try:
+            e.urbanization = tasks["ur"].result()
+            if not e.urbanization:
+                # 非線引き（区域区分が定められていない都市計画区域）なのか、
+                # データが無いだけなのかは、この応答からは区別できない。
+                # 市街化区域だと決めてしまわず、未取得として出す。
+                e.notes.append("区域区分：未取得（市街化区域か市街化調整区域かは要確認）")
+        except Exception as ex_:
+            e.notes.append(f"区域区分取得失敗: {ex_}")
         try:
             e.hazard = tasks["hz"].result()
             if e.hazard.checked and not e.hazard.any_hit():
@@ -628,7 +679,7 @@ def enrich(lat: Optional[float], lon: Optional[float],
         except Exception as ex_:
             e.notes.append(f"地盤情報取得失敗: {ex_}")
     else:
-        e.notes.append("REINFOLIB_KEY未設定のため用途地域・ハザードをスキップ")
+        e.notes.append("REINFOLIB_KEY未設定のため用途地域・区域区分・ハザードをスキップ")
 
     try:
         e.shops = tasks["shop"].result()

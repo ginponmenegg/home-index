@@ -341,6 +341,58 @@ def test_the_seismic_article_matches_the_cutoff():
     assert "1981年6月1日" in body, "基準日は建築確認の日"
 
 
+def test_the_control_area_article_matches_the_risk_scoring():
+    """記事の「3点」「12点下がる」が score_risk の実際と合っていること。"""
+    body = guides.by_slug("shigaika-chosei-kuiki").body
+    w = CONFIG["category_weights"]["リスク"]
+    assert f"リスクは{w}点満点" in body
+
+    clean = _hazard()
+    cap = w * score_risk(None, "市街化調整区域", clean).raw
+    assert f"{_pt(cap)}点以下に抑える" in body, f"{_pt(cap)}点 が記事に無い"
+    full = w * score_risk(None, None, clean).raw
+    assert f"満点{_pt(full)}点に対して" in body
+    assert f"{_pt(cap)}点、{_pt(full - cap)}点下がる" in body
+
+    # ハザード未確認と重なったときの数字も、実際に走らせて確かめる
+    unchecked = w * score_risk(None, None, None).raw
+    both = w * score_risk(None, "市街化調整区域", None).raw
+    assert f"{_pt(unchecked)}点に抑えている" in body
+    assert f"{_pt(both)}点になります" in body
+
+
+def test_the_control_area_article_does_not_penalise_the_other_cases():
+    """記事は市街化区域・未取得を「加点も減点もしない」と書いている。"""
+    body = guides.by_slug("shigaika-chosei-kuiki").body
+    assert "加点も減点もしない" in body
+    clean = _hazard()
+    base = score_risk(None, None, clean).raw
+    for u in (None, "市街化区域"):
+        assert score_risk(None, u, clean).raw == base, u
+
+
+def test_the_control_area_article_names_the_articles_of_the_law():
+    """出典は本文に。どの法律の第何条までは書く。"""
+    body = guides.by_slug("shigaika-chosei-kuiki").body
+    for cite in ("都市計画法", "第7条第3項", "第29条第1項", "第34条",
+                 "第43条第1項", "宅地建物取引業法", "第35条第1項第2号"):
+        assert cite in body, f"{cite} が記事に無い"
+    assert "laws.e-gov.go.jp" in body
+
+
+def test_the_control_area_article_uses_the_layer_the_diagnosis_reads():
+    """記事が名乗るデータ元と、未取得のときの言い回しを実装に合わせる。"""
+    from src.enrichment import URBANIZATION_TOKENS, _extract_urbanization
+    body = guides.by_slug("shigaika-chosei-kuiki").body
+    assert "不動産情報ライブラリ" in body and "区域区分" in body
+    for tok in URBANIZATION_TOKENS:
+        assert tok in body, tok
+    # 「区域区分：未取得」は enrich() が積む注記そのもの
+    assert "区域区分：未取得" in body
+    assert _extract_urbanization(
+        {"area_classification_ja": "市街化調整区域"}) == "市街化調整区域"
+
+
 def test_no_guide_talks_about_the_price_estimate():
     """鑑定評価の法的な整理が済むまで、価格の根拠は記事にしない。"""
     for g in guides.GUIDES:

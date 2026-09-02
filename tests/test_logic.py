@@ -319,6 +319,128 @@ def test_estat_population_parser():
     assert series == [("2015", 194086), ("2020", 188856)]
 
 
+# ---- 区域区分（市街化区域／市街化調整区域） -------------------------------
+#
+# 採点で一番重い減点がここに乗っている。付け方を間違えると、調整区域でも
+# ないのにリスク15点満点を3点に落とす（またはその逆をやる）。
+
+
+def _urbanization_tile():
+    """XKT001 の実データの形を写したタイル。
+
+    実際の応答では、外側の「都市計画区域」の面の中に「市街化区域」
+    「市街化調整区域」の面が重なって入っていて、ひとつの地点が両方に
+    当たる。しかも外側が先に並ぶ。最初に内包したものを採ると、いつでも
+    「都市計画区域」を拾って区域区分が取れない。
+    """
+    def sq(x0, y0, x1, y1):
+        return {"type": "Polygon", "coordinates": [[[x0, y0], [x1, y0],
+                                                    [x1, y1], [x0, y1],
+                                                    [x0, y0]]]}
+    return [
+        {"geometry": sq(139.0, 35.0, 139.9, 35.9),
+         "properties": {"kubun_id": 21, "area_classification_ja": "都市計画区域",
+                        "city_name": "市街化市"}},
+        {"geometry": sq(139.1, 35.1, 139.2, 35.2),
+         "properties": {"kubun_id": 23,
+                        "area_classification_ja": "市街化調整区域"}},
+        {"geometry": sq(139.3, 35.3, 139.4, 35.4),
+         "properties": {"kubun_id": 22, "area_classification_ja": "市街化区域"}},
+    ]
+
+
+def _with_fake_tile(fn):
+    """_reinfolib_tile を差し替えて fn を呼ぶ（ネットワークに出ない）。"""
+    from src import enrichment
+    real = enrichment._reinfolib_tile
+    enrichment._reinfolib_tile = lambda *a, **k: _urbanization_tile()
+    try:
+        return fn(enrichment)
+    finally:
+        enrichment._reinfolib_tile = real
+
+
+def test_urbanization_reads_the_inner_polygon_not_the_outer_one():
+    """外側の「都市計画区域」を飛ばして、22/23 を返すこと。"""
+    def check(en):
+        assert en.fetch_urbanization(35.15, 139.15, "key") == "市街化調整区域"
+        assert en.fetch_urbanization(35.35, 139.35, "key") == "市街化区域"
+    _with_fake_tile(check)
+
+
+def test_urbanization_is_not_guessed_from_the_tile():
+    """内包判定できなければ None。タイル代表値へは落とさない。
+
+    ひとつのタイルには市街化区域と調整区域が同居する。用途地域と同じ
+    ように代表値で埋めると、当てずっぽうで最大の減点を付けることになる。
+    """
+    def check(en):
+        # 都市計画区域の中だが 22/23 のどちらでもない（非線引きなど）
+        assert en.fetch_urbanization(35.8, 139.8, "key") is None
+        # どの面にも入らない
+        assert en.fetch_urbanization(34.0, 138.0, "key") is None
+    _with_fake_tile(check)
+
+
+def test_urbanization_only_reads_the_classification_field():
+    """市区町村名などに紛れた「市街化」の字を拾わないこと。"""
+    from src.enrichment import _extract_urbanization
+    assert _extract_urbanization({"city_name": "市街化調整市"}) is None
+    assert _extract_urbanization(
+        {"area_classification_ja": "市街化調整区域"}) == "市街化調整区域"
+    assert _extract_urbanization({"area_classification_ja": "都市計画区域"}) is None
+
+
+def test_control_area_caps_the_risk_score():
+    """市街化調整区域が渡れば、リスクは0.2上限（15点満点の3点以下）。"""
+    from src.enrichment import HazardResult
+    from src.scoring import score_risk
+    clean = HazardResult(checked=True)     # ハザードの該当は無し
+    assert score_risk("第一種住居地域", None, clean).raw >= 0.9
+    cs = score_risk("第一種住居地域", "市街化調整区域", clean)
+    assert cs.raw <= 0.2
+    assert "市街化調整区域の可能性" in cs.minus
+    assert "市街化調整区域" in cs.reason
+
+
+def test_unknown_urbanization_leaves_the_score_as_it_was():
+    """未取得なら、区域区分が無かったこれまでと同じ点数のままであること。"""
+    from src.enrichment import HazardResult
+    from src.scoring import score_risk
+    for hz in (HazardResult(checked=True), HazardResult(checked=True,
+               flood_rank=2, flood_label="0.5〜3.0m未満"), None):
+        base = score_risk("第一種住居地域", None, hz)
+        for u in (None, "", "市街化区域"):
+            cs = score_risk("第一種住居地域", u, hz)
+            assert cs.raw == base.raw, u
+            assert cs.minus == base.minus, u
+            assert "調整区域" not in cs.reason, u
+    # 減点そのものが入っていないこと（0.2上限は掛からない）
+    assert score_risk("第一種住居地域", None,
+                      HazardResult(checked=True)).raw > 0.2
+
+
+def test_unknown_urbanization_is_reported_not_filled_in():
+    """取れなかったら None のまま。埋めずに「未取得」と言う。"""
+    from src import enrichment
+    real_tile = enrichment._reinfolib_tile
+    real_shops = enrichment.fetch_shops_around
+    enrichment._reinfolib_tile = lambda *a, **k: _urbanization_tile()
+    enrichment.fetch_shops_around = lambda *a, **k: None
+    try:
+        # 都市計画区域の中だが区域区分は無い地点
+        e = enrichment.enrich(35.8, 139.8, "key")
+        assert e.urbanization is None
+        assert any(n.startswith("区域区分：未取得") for n in e.notes), e.notes
+        # 取れた地点では、未取得とは言わない
+        e2 = enrichment.enrich(35.15, 139.15, "key")
+        assert e2.urbanization == "市街化調整区域"
+        assert not any("区域区分" in n for n in e2.notes), e2.notes
+    finally:
+        enrichment._reinfolib_tile = real_tile
+        enrichment.fetch_shops_around = real_shops
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0
