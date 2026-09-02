@@ -538,3 +538,18 @@ def test_the_question_list_can_be_taken_out_of_the_house():
     assert "#ask, #ask *{visibility:visible}" in html
     # 紙にしたときに、どの物件の話か分かること
     assert 'class="only-print"' in html
+
+
+def test_the_score_animation_respects_reduced_motion():
+    """動かすのは点数の周りだけ。中立を売りにする画面で、あちこち動かさない。
+
+    OSで「視差効果を減らす」にしている人には動かさない。そして、
+    JSが動かなくても表示が正しいこと（サーバーが出した数字が最初から
+    入っていて、動かすときだけ0に戻す）。
+    """
+    import re
+    html = _client().post("/pro/diagnose", data=FREE_INPUT).data.decode("utf-8")
+    assert 'class="ring-arc"' in html, "弧はクラスで拾う（:last-of-type は壊れやすい）"
+    assert "prefers-reduced-motion: reduce" in html
+    m = re.search(r'<div class="num"><b[^>]*>(\d+)</b>', html)
+    assert m and 0 <= int(m.group(1)) <= 100, "点数はサーバーが描いている"

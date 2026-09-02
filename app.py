@@ -773,7 +773,7 @@ BRAND_BAR
    <div class="ring">
     <svg viewBox="0 0 132 132" width="132" height="132">
      <circle cx="66" cy="66" r="58" fill="none" stroke="#e8eef2" stroke-width="12"/>
-     <circle cx="66" cy="66" r="58" fill="none" stroke="{{grade_color}}" stroke-width="12"
+     <circle class="ring-arc" cx="66" cy="66" r="58" fill="none" stroke="{{grade_color}}" stroke-width="12"
        stroke-linecap="round" stroke-dasharray="{{ring_circ}}" stroke-dashoffset="{{ring_off}}"
        transform="rotate(-90 66 66)"/>
     </svg>
@@ -1004,6 +1004,34 @@ async function shareReport(){
     }
   }catch(e){}
 }
+
+/* 点数を0から数え上げ、輪を空から描く。
+   サーバーが出したままの数字が最初から入っているので、この処理が
+   動かなくても表示は正しい。動かすときだけ0に戻して始める。 */
+(function(){
+  if (window.matchMedia &&
+      matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  var num = document.querySelector(".ring .num b");
+  var arc = document.querySelector(".ring-arc");
+  if (!num || !arc) return;
+  var total = parseInt(num.textContent, 10);
+  var circ = parseFloat(arc.getAttribute("stroke-dasharray"));
+  var off = parseFloat(arc.getAttribute("stroke-dashoffset"));
+  if (isNaN(total) || isNaN(circ) || isNaN(off)) return;
+  num.textContent = "0";
+  arc.setAttribute("stroke-dashoffset", circ);
+  var t0 = null, dur = 900;
+  function step(t){
+    if (t0 === null) t0 = t;
+    var p = Math.min(1, (t - t0) / dur);
+    var e = 1 - Math.pow(1 - p, 3);      /* 終わりに向けて減速する */
+    num.textContent = Math.round(total * e);
+    arc.setAttribute("stroke-dashoffset", circ - (circ - off) * e);
+    if (p < 1) { requestAnimationFrame(step); }
+    else { num.textContent = total; arc.setAttribute("stroke-dashoffset", off); }
+  }
+  requestAnimationFrame(step);
+})();
 </script>
 </div></body></html>
 """
