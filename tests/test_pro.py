@@ -521,3 +521,20 @@ if __name__ == "__main__":
         passed += 1
         print(f"[OK] {fn.__name__}")
     print(f"\n{passed}/{len(fns)} tests passed")
+
+
+def test_the_question_list_can_be_taken_out_of_the_house():
+    """使うのは内見や商談の場。画面の途中に埋めておくものではない。
+
+    チェックを付けられる形にして、その一覧だけを紙にできること。
+    """
+    html = _client().post("/pro/diagnose", data=dict(
+        FREE_INPUT, leak="ok")).data.decode("utf-8")
+    assert 'id="ask"' in html
+    assert html.count('type="checkbox"') >= 3, "質問ごとにチェックを付けられる"
+    assert "window.print()" in html
+    # 結果を全部刷ると、持ち歩きたい1枚が何ページもの中に埋もれる
+    assert "@media print" in html
+    assert "#ask, #ask *{visibility:visible}" in html
+    # 紙にしたときに、どの物件の話か分かること
+    assert 'class="only-print"' in html

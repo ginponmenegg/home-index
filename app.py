@@ -738,6 +738,26 @@ FONT_LINK_PLACEHOLDER
   .ring{width:112px;height:112px} .ring svg{width:112px;height:112px}
   table{font-size:12px} th,td{padding:6px 5px;white-space:nowrap}
  }
+ .only-print{display:none}
+ .asklist{margin:0;padding:0;list-style:none}
+ .asklist li{margin-bottom:9px}
+ .asklist label{display:flex;gap:10px;align-items:flex-start;cursor:pointer;
+   line-height:1.8}
+ .asklist input{flex:none;width:16px;height:16px;margin-top:5px}
+ /* 聞くことの一覧だけを刷る。結果を全部刷ると、持ち歩きたい1枚が
+    何ページもの中に埋もれる。visibility で消すのは、#ask の祖先
+    （.wrap や body）を display:none にすると #ask ごと消えるため。 */
+ @media print{
+   body{background:#fff}
+   body *{visibility:hidden}
+   #ask, #ask *{visibility:visible}
+   #ask{position:absolute;left:0;top:0;width:100%;border:none;
+     box-shadow:none;padding:0;margin:0}
+   .no-print, .no-print *{visibility:hidden}
+   .only-print{display:block;color:#444;font-size:12px;margin:0 0 12px}
+   .asklist input{-webkit-appearance:none;appearance:none;
+     border:1px solid #888;border-radius:3px}
+ }
  BRAND_CSS_PLACEHOLDER
 </style></head><body>
 BRAND_BAR
@@ -909,16 +929,26 @@ BRAND_BAR
  </div>
 
   {% if questions %}
-  <div class="card">
+  <div class="card" id="ask">
    <h2 style="margin-top:0">仲介業者に聞くこと（{{questions|length}}件）</h2>
-   <p class="muted" style="margin:6px 0 10px">
+   <p class="only-print">{{s.address}}　{{s.ptype}}　{{price_man}}</p>
+   <p class="muted no-print" style="margin:6px 0 10px">
     {{questions_note}}
     下の質問をそのまま仲介業者にお伝えください。
     答えが分かったらもう一度診断すると、情報充足度が上がります。
    </p>
-   <ol style="margin:0;padding-left:1.2em">
-    {% for q in questions %}<li style="margin-bottom:6px">{{q}}</li>{% endfor %}
+   <ol class="asklist">
+    {% for q in questions %}
+    <li><label><input type="checkbox"><span>{{q}}</span></label></li>
+    {% endfor %}
    </ol>
+   <p class="no-print" style="margin:14px 0 0">
+    <button type="button" class="sub" onclick="window.print()">この一覧だけ印刷する</button>
+   </p>
+   <p class="muted no-print" style="font-size:12px;margin:8px 0 0">
+    内見や商談に持っていけます。チェックは印刷の前に付けるためのもので、
+    どこにも保存されません。
+   </p>
   </div>
   {% endif %}
 
