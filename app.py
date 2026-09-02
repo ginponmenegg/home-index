@@ -2335,7 +2335,8 @@ def guide_page(slug):
             f'<div class="lead"><p style="margin:0">{g.lead}</p></div>'
             + toc + article
             + '<div class="after"><p>この記事の数字は、診断の採点にそのまま'
-              '使っています。<a href="/buy">構造を選んで試す</a></p></div>')
+              f'使っています。<a href="{g.cta_href}">{html.escape(g.cta_text)}'
+              '</a></p></div>')
     return _guide_shell(g.title, g.description, f"/guide/{g.slug}", head, body)
 
 

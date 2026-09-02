@@ -193,10 +193,13 @@ def test_the_article_is_marked_up_as_an_article():
         ["ホーム", "解説", g.title]
 
 
-def test_the_article_sends_the_reader_to_the_diagnosis():
-    g = guides.all_guides()[0]
-    h = _client().get(f"/guide/{g.slug}").get_data(as_text=True)
-    assert 'href="/buy"' in h
+def test_every_article_sends_the_reader_somewhere_it_can_be_checked():
+    """マンションの話を戸建の診断へ送っても、読んだ人は確かめられない。"""
+    c = _client()
+    for g in guides.GUIDES:
+        h = c.get(f"/guide/{g.slug}").get_data(as_text=True)
+        assert f'<a href="{g.cta_href}">{g.cta_text}</a>' in h, g.slug
+        assert c.get(g.cta_href).status_code == 200, g.cta_href
 
 
 # ---- 書き手 ---------------------------------------------------------------
@@ -239,3 +242,99 @@ def test_no_author_is_claimed_while_the_name_is_a_placeholder():
         assert "author" not in _node(h, "Article")
     finally:
         _restore(keep)
+
+
+# ---- 記事ごとの数字を、採点そのものに突き合わせる -------------------------
+#
+# 数字はテストに書き写さない。採点を実際に走らせて出た値が、記事に
+# 書いてあるかを見る。採点を変えたらここが落ちる。
+
+from types import SimpleNamespace  # noqa: E402
+
+from src.config import CONFIG  # noqa: E402
+from src.enrichment import FLOOD_RANK_LABEL  # noqa: E402
+from src.scoring import score_risk  # noqa: E402
+from src.mansion_scoring import (NEW_QUAKE_STANDARD_YEAR,  # noqa: E402
+                                 is_new_quake_standard)
+
+
+def _pt(x):
+    """点数の書き方をそろえる。7.50ではなく7.5、3.00ではなく3。"""
+    return f"{x:.2f}".rstrip("0").rstrip(".")
+
+
+def _hazard(**kw):
+    base = dict(checked=True, flood_rank=None, flood_label="", sediment=None,
+                tsunami=False, storm_surge=False, liquefaction=None,
+                danger_zone=None, steep_slope=False, landslide_zone=False,
+                embankment=None)
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+def _risk_raw(**kw):
+    return score_risk(None, None, _hazard(**kw)).raw
+
+
+def test_the_flood_article_matches_the_risk_scoring():
+    body = guides.by_slug("kouzui-shinsui-fukasa").body
+    w = CONFIG["category_weights"]["リスク"]
+    assert f"リスクは{w}点満点" in body
+
+    # 上限を掛ける扱い（その点以下に抑える）
+    for kw in ({"flood_rank": 4}, {"flood_rank": 3},
+               {"sediment": "特別警戒区域"}, {"sediment": "警戒区域"},
+               {"checked": False}):
+        cap = _pt(w * _risk_raw(**kw))
+        assert f"{cap}点" in body, f"{kw} → {cap}点 が記事に無い"
+
+    # 引く扱い（満点からの差）
+    for kw in ({"flood_rank": 1}, {"flood_rank": 2},
+               {"tsunami": True}, {"storm_surge": True}):
+        cut = _pt(w * (1.0 - _risk_raw(**kw)))
+        assert f"{cut}点" in body, f"{kw} → {cut}点 が記事に無い"
+
+
+def test_the_flood_article_lists_every_depth_band():
+    body = guides.by_slug("kouzui-shinsui-fukasa").body
+    for rank, label in FLOOD_RANK_LABEL.items():
+        assert label in body, f"ランク{rank}（{label}）が記事に無い"
+
+
+def test_the_repair_fund_article_matches_the_guideline():
+    body = guides.by_slug("shuzen-tsumitatekin-meyasu").body
+    g = CONFIG["mansion_repair_fund_guideline"]
+    for band in list(g["under_20f_bands"]) + [g["over_20f"]]:
+        for k in ("low", "high", "avg"):
+            assert str(band[k]) in body, f"{k}={band[k]} が記事に無い"
+    # 建築延床面積を聞いていないので、20階未満は4区分を包絡して判定する
+    lo = min(b["low"] for b in g["under_20f_bands"])
+    hi = max(b["high"] for b in g["under_20f_bands"])
+    assert f"{lo}〜{hi}円/㎡" in body
+
+    w = CONFIG["mansion_category_weights"]["管理"]
+    assert f"管理は\n{w}点満点" in body or f"管理は{w}点満点" in body
+    for raw in (0.85, 0.5, 0.75):     # 範囲内 / 下限割れ / 上回る
+        assert f"{_pt(w * raw)}点" in body, f"{raw} → {_pt(w * raw)}点 が記事に無い"
+
+
+def test_the_repair_fund_example_divides_correctly():
+    body = guides.by_slug("shuzen-tsumitatekin-meyasu").body
+    assert f"{round(13000 / 70)}円" in body
+
+
+def test_the_seismic_article_matches_the_cutoff():
+    body = guides.by_slug("shin-taishin-kenchiku-kakunin").body
+    assert str(NEW_QUAKE_STANDARD_YEAR) in body
+    # 記事は「1981年築は旧耐震の側に倒す」と書いている
+    assert is_new_quake_standard(NEW_QUAKE_STANDARD_YEAR - 1) is False
+    assert is_new_quake_standard(NEW_QUAKE_STANDARD_YEAR) is True
+    assert "1981年6月1日" in body, "基準日は建築確認の日"
+
+
+def test_no_guide_talks_about_the_price_estimate():
+    """鑑定評価の法的な整理が済むまで、価格の根拠は記事にしない。"""
+    for g in guides.GUIDES:
+        text = g.lead + g.body
+        for word in ("推定価格", "適正価格", "査定"):
+            assert word not in text, f"{g.slug} に「{word}」が出ている"
