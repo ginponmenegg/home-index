@@ -36,6 +36,12 @@ EQUIPMENT_LABEL = {"water_heater": "給湯器", "kitchen": "キッチン",
 # 更新時期。給湯器は寿命が短いので、古いときの引きを大きくする。
 EQUIPMENT_ADJ = {"le5": 0.02, "le10": 0.01, "gt10": -0.03}
 
+# 省エネ基準への適合。2025年4月から新築は適合が義務。義務を満たしただけの
+# 「適合」に加点はせず、上回った場合だけ足す。下回っていれば引く。
+ENERGY_ADJ = {"zeh": (0.05, "ZEH水準の省エネ性能"),
+              "meets": (0.0, "省エネ基準に適合"),
+              "below": (-0.05, "省エネ基準に適合していない")}
+
 RENO_FIELDS = (("reno_water", "水回り", 0.04), ("reno_exterior", "外壁・屋根", 0.05),
                ("reno_interior", "内装", 0.02), ("reno_pipes", "給排水管", 0.04))
 
@@ -43,6 +49,8 @@ RENO_FIELDS = (("reno_water", "水回り", 0.04), ("reno_exterior", "外壁・�
 # 自己申告の項目より重く見てよい。ただし積み上がりすぎないよう幅は抑える。
 CERT_FIELDS = ("long_term_excellent", "performance_cert", "quake_grade",
                "defect_insurance")
+# 新築で聞く認定。既存住宅売買瑕疵保険は中古の制度なので外す。
+CERT_NEW_FIELDS = ("long_term_excellent", "performance_cert", "quake_grade")
 PERFORMANCE_ADJ = {"construction": (0.06, "建設住宅性能評価あり"),
                    "design": (0.03, "設計住宅性能評価あり"),
                    "existing": (0.05, "既存住宅性能評価あり"),
@@ -94,8 +102,22 @@ def _rebuild(cat: CategoryScore, raw: float, sufficiency: float,
                    minus=list(cat.minus) + list(minus or []))
 
 
+def property_fields(newbuild: bool = False):
+    """物件の評価で見る項目。種別によって変える。
+
+    新築に「給湯器はいつ交換したか」と聞いても答えようがない。それでも
+    分母に入れておくと、いくら答えても情報充足度が上がりきらない。PROは
+    充足度を上げるサービスなので、聞かない項目は分母からも外す。
+    """
+    if newbuild:
+        return ("insulation", "energy_saving") + CERT_NEW_FIELDS
+    return (CONDITION_FIELDS + EQUIPMENT_FIELDS
+            + ("quake_retrofit", "insulation") + CERT_FIELDS)
+
+
 def score_property_detail(base: CategoryScore, detail: ProDetail,
-                          current_year: int) -> CategoryScore:
+                          current_year: int,
+                          newbuild: bool = False) -> CategoryScore:
     """物件：FREEの築年ベースの点に、建物の中身の答えを足し引きする。"""
     raw = base.raw
     bits: List[str] = []
@@ -160,9 +182,16 @@ def score_property_detail(base: CategoryScore, detail: ProDetail,
     if detail.inspection == "done":
         bits.append("住宅診断あり")
 
-    answered = detail.known_ratio(CONDITION_FIELDS + EQUIPMENT_FIELDS
-                                  + ("quake_retrofit", "insulation")
-                                  + CERT_FIELDS)
+    en = ENERGY_ADJ.get(detail.energy_saving)
+    if en:
+        raw += en[0]
+        bits.append(en[1])
+        if en[0] > 0:
+            plus.append(en[1])
+        elif en[0] < 0:
+            minus.append(en[1])
+
+    answered = detail.known_ratio(property_fields(newbuild))
     # 無料診断の充足度を出発点にして、答えた分だけ上げる。0から計算し直すと、
     # 未回答のままPROに来たときに無料診断より低く出てしまう。
     suff = base.sufficiency + (1.0 - base.sufficiency) * answered
@@ -300,6 +329,8 @@ AGENT_QUESTIONS = {
     "performance_cert": "住宅性能評価書は残っていますか。設計と建設のどちらですか。",
     "quake_grade": "耐震等級はいくつですか。証明する書類はありますか。",
     "defect_insurance": "既存住宅売買瑕疵保険に加入できる物件ですか。",
+    "energy_saving": "省エネ基準に適合していますか。ZEH水準の場合は、"
+                     "それを示す書類を見せていただけますか。",
 }
 
 # 入力には取らないが、戸建では必ず見ておきたい書類
@@ -309,17 +340,36 @@ ALWAYS_ASK = [
     "建築確認済証と検査済証は残っていますか。",
 ]
 
+# 新築で必ず聞くこと。物件状況報告書は中古で売主が過去の不具合を申告する
+# 書類なので、新築では外す。
+ALWAYS_ASK_NEW = [
+    "建築確認済証と検査済証は残っていますか。",
+]
 
-def agent_questions(detail: ProDetail, subj: SubjectProperty) -> List[str]:
-    """未回答の項目から、仲介業者や売主に聞くべきことを組み立てる。"""
+# 敷地と法規は種別を問わず聞く。建て替えと売却に効く話なので、新築でも
+# 確かめておくものになる。
+RISK_QUESTION_FIELDS = ("rebuildable", "road_width", "boundary",
+                        "encroachment")
+
+
+def agent_questions(detail: ProDetail, subj: SubjectProperty,
+                    newbuild: bool = False) -> List[str]:
+    """未回答の項目から、仲介業者や売主に聞くべきことを組み立てる。
+
+    聞くのは、その種別で実際に入力してもらう項目だけ。新築に
+    「給湯器はいつ交換しましたか」と聞いても、相手も答えに困る。
+    """
     # 一度に多くの答えが得られる書類の依頼を先に置く。個別に聞くより早い。
-    out = list(ALWAYS_ASK)
+    out = list(ALWAYS_ASK_NEW if newbuild else ALWAYS_ASK)
     # 新旧の耐震基準が築年だけでは決まらない年は、確認済証の日付を聞く
     if subj.build_year and 1981 <= subj.build_year <= 1983:
         out.append(f"{subj.build_year}年築は、建築確認を受けた日によって"
                    "新耐震か旧耐震かが分かれます。確認済証の日付を教えてください。")
+    asked = set(property_fields(newbuild)) | set(RISK_QUESTION_FIELDS)
+    if not newbuild:
+        asked.add("inspection")
     out += [q for f, q in AGENT_QUESTIONS.items()
-            if getattr(detail, f, "unknown") == "unknown"]
+            if f in asked and getattr(detail, f, "unknown") == "unknown"]
     return out
 
 
@@ -334,10 +384,12 @@ def apply_pro(diagnosis: Diagnosis, detail: ProDetail,
     if current_year is None:
         current_year = datetime.date.today().year
 
+    newbuild = (getattr(subj, "property_type", "") == "shinchiku_kodate")
     cats = []
     for c in diagnosis.categories:
         if c.name == "物件":
-            cats.append(score_property_detail(c, detail, current_year))
+            cats.append(score_property_detail(c, detail, current_year,
+                                              newbuild))
         elif c.name == "リスク":
             cats.append(score_risk_detail(c, detail))
         else:

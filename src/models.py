@@ -158,6 +158,9 @@ class ProDetail:
     insulation: str = "unknown"      # high / standard / low / unknown
     quake_retrofit: str = "unknown"  # done / none / unknown（耐震補強）
     inspection: str = "unknown"      # done / none / unknown（住宅診断の実施）
+    # 省エネ基準への適合。2025年4月から新築は適合が義務づけられている。
+    # zeh / meets / below / unknown
+    energy_saving: str = "unknown"
 
     # ---- 公的な認定・評価。中古では有無の差が大きい ----
     # 長期優良住宅：yes / no / unknown。中古は認定の承継手続きが要る。

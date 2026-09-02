@@ -2894,6 +2894,7 @@ def _run_diagnose(f, datetime):
             "address": subject.address, "price": f.get("price") or "",
             "byear": f.get("byear") or "", "land": f.get("land") or "",
             "building": f.get("building") or "",
+            "ptype": subject.property_type,
             "station": f.get("station") or "",
             "income": f.get("income") or "", "down": f.get("down") or "",
             "loan_years": str(loan_years),
@@ -3316,6 +3317,8 @@ _PRO_CHOICES = {
                     ("design", "設計住宅性能評価のみ"),
                     ("existing", "既存住宅性能評価あり"),
                     ("none", "なし"), ("unknown", "未確認")],
+    "energy": [("zeh", "ZEH水準"), ("meets", "省エネ基準に適合"),
+               ("below", "適合していない"), ("unknown", "未確認")],
     "quake_grade": [("g3", "等級3"), ("g2", "等級2"),
                     ("g1", "等級1（建築基準法と同等）"), ("unknown", "未確認")],
     "road": [("ge4", "幅員4m以上に接道"), ("lt4", "幅員4m未満"),
@@ -3329,27 +3332,36 @@ _PRO_CHOICES = {
                    ("unknown", "未回答")],
 }
 
+# 各項目に、どの種別で聞くかを付ける。
+#   ""        … 中古でも新築でも聞く
+#   chuko     … 中古だけ。新築では答えようがない（築0年の設備の更新時期など）
+#   shinchiku … 新築だけ
+#
+# 新築の画面から中古前提の項目を消すのは、見た目の問題だけではない。
+# 答えようのない項目を分母に残すと、いくら答えても情報充足度が上がりきらない。
+# 採点側の分母は src/pro_scoring.py の property_fields() が持っている。
 _PRO_SECTIONS = [
-    ("建物の中の状態", "実際に見て確認できたことを選んでください。未確認のままでも診断はできますが、情報充足度は上がりません。",
-     [("leak", "雨漏りの跡", "condition"), ("termite", "シロアリ・腐朽", "condition"),
-      ("tilt", "床の傾き", "condition"), ("plumbing", "給排水の不具合", "condition"),
-      ("foundation", "基礎のひび", "condition")]),
-    ("主要設備の更新時期", "給湯器は寿命が短く、10年を超えると交換費用を見込む必要があります。",
-     [("water_heater", "給湯器", "equipment"), ("kitchen", "キッチン", "equipment"),
-      ("bath", "浴室", "equipment"), ("electrical", "電気設備・分電盤", "equipment")]),
-    ("性能・診断", "住宅性能評価書や認定通知書が残っていれば、売主か仲介会社に確認できます。",
-     [("quake_retrofit", "耐震補強", "yesno"),
-      ("inspection", "住宅診断（インスペクション）", "yesno"),
-      ("insulation", "断熱性能", "insulation")]),
-    ("公的な認定・評価", "第三者の検査や基準に裏付けられているため、自己申告の項目より重く評価します。中古では有無の差が大きく出ます。",
-     [("long_term_excellent", "長期優良住宅の認定", "cert_yesno"),
-      ("performance_cert", "住宅性能評価書", "performance"),
-      ("quake_grade", "耐震等級", "quake_grade"),
-      ("defect_insurance", "既存住宅売買瑕疵保険", "cert_yesno")]),
-    ("敷地・法規", "再建築の可否と接道は、将来の建て替えと売却に直結します。重要事項説明書で確認できます。",
-     [("road_width", "接道", "road"), ("rebuildable", "再建築の可否", "rebuild"),
-      ("boundary", "隣地との境界", "boundary"),
-      ("encroachment", "越境（塀・屋根・配管）", "encroach")]),
+    ("chuko", "建物の中の状態", "実際に見て確認できたことを選んでください。未確認のままでも診断はできますが、情報充足度は上がりません。",
+     [("leak", "雨漏りの跡", "condition", ""), ("termite", "シロアリ・腐朽", "condition", ""),
+      ("tilt", "床の傾き", "condition", ""), ("plumbing", "給排水の不具合", "condition", ""),
+      ("foundation", "基礎のひび", "condition", "")]),
+    ("chuko", "主要設備の更新時期", "給湯器は寿命が短く、10年を超えると交換費用を見込む必要があります。",
+     [("water_heater", "給湯器", "equipment", ""), ("kitchen", "キッチン", "equipment", ""),
+      ("bath", "浴室", "equipment", ""), ("electrical", "電気設備・分電盤", "equipment", "")]),
+    ("", "性能・診断", "住宅性能評価書や認定通知書が残っていれば、売主か仲介会社に確認できます。",
+     [("quake_retrofit", "耐震補強", "yesno", "chuko"),
+      ("inspection", "住宅診断（インスペクション）", "yesno", "chuko"),
+      ("insulation", "断熱性能", "insulation", ""),
+      ("energy_saving", "省エネ基準への適合", "energy", "shinchiku")]),
+    ("", "公的な認定・評価", "第三者の検査や基準に裏付けられているため、自己申告の項目より重く評価します。",
+     [("long_term_excellent", "長期優良住宅の認定", "cert_yesno", ""),
+      ("performance_cert", "住宅性能評価書", "performance", ""),
+      ("quake_grade", "耐震等級", "quake_grade", ""),
+      ("defect_insurance", "既存住宅売買瑕疵保険", "cert_yesno", "chuko")]),
+    ("", "敷地・法規", "再建築の可否と接道は、将来の建て替えと売却に直結します。重要事項説明書で確認できます。",
+     [("road_width", "接道", "road", ""), ("rebuildable", "再建築の可否", "rebuild", ""),
+      ("boundary", "隣地との境界", "boundary", ""),
+      ("encroachment", "越境（塀・屋根・配管）", "encroach", "")]),
 ]
 
 _PRO_RENO = [("reno_water", "水回り"), ("reno_exterior", "外壁・屋根"),
@@ -3363,18 +3375,30 @@ def _pro_select(name, kind):
     return f'<select name="{name}">{opts}</select>'
 
 
+def _ptype_attr(scope: str) -> str:
+    return f' data-only="{scope}"' if scope else ""
+
+
 def _pro_detail_html():
+    """詳細入力のHTML。種別で出し分ける印だけ付け、実際に隠すのはCSS。
+
+    サーバー側で組み立てを分けないのは、フォームの中で種別を選び直せる
+    ようにするため。隠れた項目は未回答（unknown）のまま送られるので、
+    採点には効かない。
+    """
     out = []
-    for title, note, fields in _PRO_SECTIONS:
-        out.append('<div class="card">')
+    for scope, title, note, fields in _PRO_SECTIONS:
+        out.append(f'<div class="card"{_ptype_attr(scope)}>')
         out.append(f"<h2 style=\"font-size:15px;margin:0 0 6px\">{title}</h2>")
         if note:
             out.append(f'<div class="hint" style="margin-bottom:8px">{note}</div>')
-        for name, label, kind in fields:
-            out.append(f"<label>{label}</label>{_pro_select(name, kind)}")
+        for name, label, kind, fscope in fields:
+            out.append(f"<div{_ptype_attr(fscope)}><label>{label}</label>"
+                       f"{_pro_select(name, kind)}</div>")
         out.append("</div>")
-    # リフォーム箇所はチェックボックス
-    out.append('<div class="card"><h2 style="font-size:15px;margin:0 0 6px">'
+    # リフォーム箇所はチェックボックス。新築には無い話なので中古だけ。
+    out.append('<div class="card" data-only="chuko">'
+               '<h2 style="font-size:15px;margin:0 0 6px">'
                "リフォームした箇所</h2>"
                '<div class="hint" style="margin-bottom:8px">'
                "箇所ごとに評価します。無料診断は有無だけを見ています。</div>")
@@ -3428,6 +3452,14 @@ BRAND_BAR
      <div class="hint">バス便のときだけ入力</div></div>
    </div>
    <div class="row">
+    <div><label>種別</label>
+     <select name="ptype" id="ptype">
+      <option value="chuko_kodate" {{'selected' if v.ptype!='shinchiku_kodate' else ''}}>中古戸建</option>
+      <option value="shinchiku_kodate" {{'selected' if v.ptype=='shinchiku_kodate' else ''}}>新築戸建</option>
+     </select>
+     <div class="hint">新築を選ぶと、答えようのない項目（設備の更新時期・
+      耐震補強・リフォーム箇所など）は出しません。価格の比較に使う成約事例も
+      新築のものに切り替わります。</div></div>
     <div><label>構造</label>
      <select name="structure">
       {% for val, lbl in structures %}
@@ -3440,7 +3472,25 @@ BRAND_BAR
    </div>
   </div>
 
+<div id="detail" class="{{ 'is-new' if v.ptype=='shinchiku_kodate' else 'is-old' }}">
 PRO_DETAIL_PLACEHOLDER
+</div>
+<style>
+ /* 種別で聞く項目が変わる。隠すのはCSSだけで、項目そのものは残す。
+    隠れた項目は未回答（unknown）のまま送られるので採点には効かない。
+    採点側の分母は src/pro_scoring.py の property_fields が持っている。 */
+ #detail.is-new [data-only="chuko"]{display:none}
+ #detail.is-old [data-only="shinchiku"]{display:none}
+</style>
+<script>
+(function(){
+  var sel=document.getElementById("ptype"), box=document.getElementById("detail");
+  if(!sel||!box) return;
+  sel.addEventListener("change",function(){
+    box.className = sel.value === "shinchiku_kodate" ? "is-new" : "is-old";
+  });
+})();
+</script>
 
   <div class="card">
    <h2 style="font-size:15px;margin:0 0 6px">お住まいになる方について</h2>
@@ -3477,13 +3527,13 @@ PRO_DETAIL_PLACEHOLDER
 
 def _pro_defaults_full():
     v = {"address": "", "price": "", "byear": "", "land": "", "building": "",
-         "station": "", "bus": "", "age": "", "household_size": "",
-         "children": "",
+         "station": "", "bus": "", "ptype": "chuko_kodate",
+         "age": "", "household_size": "", "children": "",
          "employment": "unknown", "tenure_years": "", "hold_years": "",
          "income": "", "down": "", "reserve": "", "other_debt": "",
          "structure": "", "loan_years": "35"}
-    for _t, _n, fields in _PRO_SECTIONS:
-        for name, _label, _kind in fields:
+    for _s, _t, _n, fields in _PRO_SECTIONS:
+        for name, _label, _kind, _scope in fields:
             v[name] = "unknown"
     for name, _label in _PRO_RENO:
         v[name] = False
@@ -3563,8 +3613,12 @@ def _run_pro_diagnose(f):
         except Exception:
             pass
 
+    # 無料診断が新築と判定した物件を、PROで中古として採点しない。
+    # 種別は推定価格の比較対象（新築の成約事例だけを見るか）まで変える。
+    ptype = ("shinchiku_kodate" if f.get("ptype") == "shinchiku_kodate"
+             else "chuko_kodate")
     subject = SubjectProperty(
-        property_type="chuko_kodate", price=to_yen(f.get("price")) or 0,
+        property_type=ptype, price=to_yen(f.get("price")) or 0,
         address=address, land_area_m2=to_float(f.get("land")),
         building_area_m2=to_float(f.get("building")),
         build_year=to_int(f.get("byear")),
@@ -3576,7 +3630,8 @@ def _run_pro_diagnose(f):
 
     detail = ProDetail(
         **{name: (f.get(name) or "unknown")
-           for _t, _n, fields in _PRO_SECTIONS for name, _l, _k in fields},
+           for _s, _t, _n, fields in _PRO_SECTIONS
+           for name, _l, _k, _sc in fields},
         **{name: (f.get(name) == "1") for name, _l in _PRO_RENO})
 
     buyer = BuyerProfile(
@@ -3609,7 +3664,8 @@ def _run_pro_diagnose(f):
 
     free = res.diagnosis
     res.diagnosis = apply_pro(free, detail, subject, buyer)
-    questions = agent_questions(detail, subject)
+    questions = agent_questions(detail, subject,
+                                ptype == "shinchiku_kodate")
     questions_note = ("未回答だった項目です。建物の中の状態は売主が記入する"
                       "物件状況報告書に、境界や再建築の可否は測量図と"
                       "重要事項説明書に書かれています。")
@@ -3624,7 +3680,9 @@ def _run_pro_diagnose(f):
     bits.append(f"築{age}年" if age is not None else "築年不明")
     if buyer.hold_years:
         bits.append(f"居住予定 {buyer.hold_years}年")
-    sctx = dict(address=subject.address, ptype="中古戸建（PRO）",
+    sctx = dict(address=subject.address,
+                ptype=("新築戸建（PRO）" if ptype == "shinchiku_kodate"
+                       else "中古戸建（PRO）"),
                 specs=" ・ ".join(bits))
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           free_diagnosis=free, questions=questions,

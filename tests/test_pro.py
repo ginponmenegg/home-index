@@ -553,3 +553,99 @@ def test_the_score_animation_respects_reduced_motion():
     assert "prefers-reduced-motion: reduce" in html
     m = re.search(r'<div class="num"><b[^>]*>(\d+)</b>', html)
     assert m and 0 <= int(m.group(1)) <= 100, "点数はサーバーが描いている"
+
+
+# ---- 新築戸建 -------------------------------------------------------------
+#
+# 無料診断が新築と判定した物件を、PROが中古として採点していた。効いていたのは
+# 項目の見た目だけではなく、推定価格の比較対象（新築の成約事例だけを見るか）
+# まで変わる。
+
+def test_the_free_diagnosis_hands_the_property_type_to_pro():
+    import re
+    html = _client().post("/diagnose", data=dict(
+        FREE_INPUT, ptype="shinchiku_kodate", byear="")).data.decode("utf-8")
+    form = re.search(r'action="/pro/start">(.*?)</form>', html, re.S).group(1)
+    carry = dict(re.findall(r'name="([^"]+)" value="([^"]*)"', form))
+    assert carry.get("ptype") == "shinchiku_kodate"
+
+
+def test_pro_opens_the_form_as_the_type_it_was_handed():
+    import re
+    html = _client().post("/pro/start", data=dict(
+        FREE_INPUT, ptype="shinchiku_kodate")).data.decode("utf-8")
+    assert re.search(r'<option value="shinchiku_kodate" selected', html)
+    assert 'id="detail" class="is-new"' in html
+    html2 = _client().post("/pro/start", data=dict(
+        FREE_INPUT, ptype="chuko_kodate")).data.decode("utf-8")
+    assert 'id="detail" class="is-old"' in html2
+
+
+def test_pro_scores_a_new_build_as_a_new_build():
+    """種別は成約事例の選び方まで変える（src/pipeline.py）。"""
+    new = _client().post("/pro/diagnose", data=dict(
+        FREE_INPUT, ptype="shinchiku_kodate")).data.decode("utf-8")
+    old = _client().post("/pro/diagnose", data=dict(
+        FREE_INPUT, ptype="chuko_kodate")).data.decode("utf-8")
+    assert "新築戸建（PRO）" in new and "中古戸建（PRO）" not in new
+    assert "中古戸建（PRO）" in old
+
+
+def test_the_form_marks_which_items_belong_to_which_type():
+    html = _client().get("/pro/diagnose").data.decode("utf-8")
+    assert 'data-only="chuko"' in html and 'data-only="shinchiku"' in html
+    # 隠すのはCSS。項目は残るので、未回答のまま送られて採点には効かない
+    assert '#detail.is-new [data-only="chuko"]{display:none}' in html
+
+
+def test_a_new_build_is_not_asked_what_it_cannot_answer():
+    """築0年の家に「給湯器はいつ交換しましたか」と聞かない。"""
+    from src.pro_scoring import agent_questions
+    from src.models import ProDetail
+    subj = _subject(build_year=2026)
+    new = " ".join(agent_questions(ProDetail(), subj, newbuild=True))
+    old = " ".join(agent_questions(ProDetail(), subj, newbuild=False))
+    for word in ("給湯器", "耐震補強", "シロアリ", "雨漏り", "既存住宅売買瑕疵保険"):
+        assert word not in new, f"新築に「{word}」を聞いている"
+        assert word in old, f"中古で「{word}」を聞かなくなっている"
+    # 敷地と法規は種別を問わず聞く
+    for word in ("再建築", "境界", "越境", "幅員"):
+        assert word in new and word in old, word
+
+
+def test_a_new_build_can_reach_full_sufficiency():
+    """答えようのない項目を分母に残すと、いくら答えても充足度が上がりきらない。
+
+    PROは充足度を上げるサービスなので、聞かない項目は分母からも外す。
+    """
+    from src.pro_scoring import property_fields, score_property_detail
+    from src.models import ProDetail
+    from src.scoring import CategoryScore
+
+    fields = property_fields(newbuild=True)
+    assert "water_heater" not in fields and "quake_retrofit" not in fields
+    assert "defect_insurance" not in fields, "既存住宅の制度は新築で聞かない"
+    assert "energy_saving" in fields
+
+    detail = ProDetail(insulation="high", energy_saving="zeh",
+                       long_term_excellent="yes",
+                       performance_cert="construction", quake_grade="g3")
+    base = CategoryScore("物件", 25, 0.7, 17.5, 0.6, "築0年")
+    got = score_property_detail(base, detail, 2026, newbuild=True)
+    assert got.sufficiency == 1.0, "新築で答えられる項目を全部埋めれば満たされる"
+
+
+def test_meeting_the_energy_standard_is_not_worth_extra_points():
+    """2025年4月から適合は義務。義務を満たしただけでは加点しない。"""
+    from src.pro_scoring import score_property_detail
+    from src.models import ProDetail
+    from src.scoring import CategoryScore
+    base = CategoryScore("物件", 25, 0.7, 17.5, 0.6, "築0年")
+
+    def raw(v):
+        return score_property_detail(base, ProDetail(energy_saving=v),
+                                     2026, newbuild=True).raw
+
+    assert raw("meets") == raw("unknown")
+    assert raw("zeh") > raw("meets")
+    assert raw("below") < raw("meets")
