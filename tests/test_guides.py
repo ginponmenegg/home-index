@@ -164,6 +164,15 @@ def test_the_sitemap_carries_the_guides():
         assert f"/guide/{g.slug}<" in h
 
 
+def test_the_landing_page_links_to_every_guide():
+    """トップから各記事へ内部リンクを張る。フッターの一行だけでは、
+    書いた記事に辿り着けない。記事が増えたら自動で並ぶこと。"""
+    h = _client().get("/").get_data(as_text=True)
+    for g in guides.GUIDES:
+        assert f'href="/guide/{g.slug}"' in h, g.slug
+    assert "GUIDE_LINKS_PLACEHOLDER" not in h
+
+
 def test_every_page_can_reach_the_guides():
     """フッターに導線を置く。記事だけ孤立させない。"""
     c = _client()

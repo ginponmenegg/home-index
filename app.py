@@ -1126,6 +1126,15 @@ a{color:inherit}
   font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.1em;
   color:var(--pin); white-space:nowrap; opacity:.9;
 }
+/* 561〜700pxの帯では、ピンとラベルが本文の上に乗る。
+   ピンは hero の幅に対する72%で置いているのに、本文（.lead）の幅は
+   32em で固定なので、画面が狭くなるほど本文の右端がピンに近づく。
+   700px を切ると重なり、560px 以下は下の @media で右端に置き直している。
+   その間は飾りのほうを消す。位置をずらして逃げると、本文を書き換えた
+   ときにまた乗る。飾りなので、入らないなら出さないほうがよい。 */
+@media (min-width:561px) and (max-width:700px){
+  .pin, .pin-label{display:none}
+}
 
 .cta-row{display:flex; flex-wrap:wrap; gap:12px; align-items:center}
 .btn{
@@ -1314,6 +1323,13 @@ footer{padding:30px 0 46px; text-align:center}
 footer p{margin:0 0 6px; font-size:12px; color:var(--sub); line-height:1.9}
 footer a{color:var(--ink)}
 
+.glist{list-style:none; padding:0; margin:18px 0 14px;
+  display:grid; gap:2px}
+.glist li{border-top:1px solid var(--line, rgba(240,238,233,.14))}
+.glist li:last-child{border-bottom:1px solid var(--line, rgba(240,238,233,.14))}
+.glist a{display:block; padding:13px 2px; text-decoration:none; font-weight:700;
+  font-size:15px; line-height:1.55}
+.lead-sm{font-size:14px; line-height:1.9; max-width:34em; margin:0}
 .reveal{opacity:0; transform:translateY(14px); transition:opacity .7s ease, transform .7s ease}
 .reveal.is-in{opacity:1; transform:none}
 
@@ -1725,6 +1741,17 @@ LP_MENU_PLACEHOLDER
   </div>
 </section>
 
+<section id="guides">
+  <div class="wrap reveal">
+    <p class="eyebrow">解説</p>
+    <h2>点数の根拠は、開いて書いています。</h2>
+    <p class="lead-sm">どの公的データのどの区分を、何点として扱っているか。
+     採点に使っている数字そのものを記事にしています。</p>
+    <ul class="glist">GUIDE_LINKS_PLACEHOLDER</ul>
+    <p class="fine"><a href="/guide">解説の一覧を見る →</a></p>
+  </div>
+</section>
+
 <section>
   <div class="wrap">
     <div class="note">
@@ -1857,7 +1884,14 @@ LP_MENU_PLACEHOLDER
 </body></html>
 """
 
-LP = (LP.replace("LP_FONT_LINK_PLACEHOLDER", LP_FONT_LINK)
+# トップから各記事へ内部リンクを張る。記事は src/guides.py が持っている
+# ので、増えれば自動で並ぶ。手で書くと、書き足すたびに直し忘れる。
+_LP_GUIDE_LINKS = "".join(
+    f'<li><a href="/guide/{g.slug}">{html.escape(g.title)}</a></li>'
+    for g in guides.all_guides())
+
+LP = (LP.replace("GUIDE_LINKS_PLACEHOLDER", _LP_GUIDE_LINKS)
+      .replace("LP_FONT_LINK_PLACEHOLDER", LP_FONT_LINK)
       .replace("ICON_LINKS_PLACEHOLDER", ICON_LINKS)
       .replace("HI_SYMBOL_PLACEHOLDER", symbol_small())
       .replace("HI_WORDMARK_PLACEHOLDER", WORDMARK)
