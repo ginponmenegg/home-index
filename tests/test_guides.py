@@ -497,3 +497,60 @@ def test_a_diagnosis_is_never_given_a_share_link():
     c = _client()
     for url in ("/buy", "/mansion", "/pro/diagnose", "/pro/finance"):
         assert 'class="share"' not in c.get(url).get_data(as_text=True), url
+
+
+# ---- OG画像 ---------------------------------------------------------------
+#
+# 画像は tools/make_images.py で焼いてコミットする。本番のコンテナに日本語
+# フォントが無いので、実行時には作れない。見出しを書き換えたのに焼き直して
+# いない、という食い違いを manifest.json で捕まえる。
+
+import pytest  # noqa: E402
+
+
+def _og_dir():
+    return os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "static", "og")
+
+
+def test_every_guide_has_its_own_share_image():
+    c = _client()
+    for g in guides.GUIDES:
+        h = c.get(f"/guide/{g.slug}").get_data(as_text=True)
+        assert (f'property="og:image" content="http://localhost'
+                f'/static/og/{g.slug}.png?v=1"') in h, g.slug
+        assert os.path.exists(os.path.join(_og_dir(), f"{g.slug}.png")), g.slug
+
+
+def test_the_share_images_match_the_titles_they_were_baked_from():
+    """見出しを直したら画像も焼き直す。ずれたらここで落ちる。
+
+        python tools/make_images.py
+    """
+    with open(os.path.join(_og_dir(), "manifest.json"), encoding="utf-8") as fp:
+        baked = json.load(fp)
+    assert {g.slug for g in guides.GUIDES} == set(baked), \
+        "記事と画像の顔ぶれが違う。tools/make_images.py を実行すること"
+    for g in guides.GUIDES:
+        assert baked[g.slug]["title"] == g.title, \
+            f"{g.slug} の画像が古い見出しのまま。tools/make_images.py を実行すること"
+
+
+def test_the_share_images_are_the_size_the_platforms_expect():
+    pytest.importorskip("PIL")
+    from PIL import Image
+    for g in guides.GUIDES:
+        with Image.open(os.path.join(_og_dir(), f"{g.slug}.png")) as im:
+            assert im.size == (1200, 630), g.slug
+    h = _client().get(f"/guide/{guides.GUIDES[0].slug}").get_data(as_text=True)
+    assert 'property="og:image:width" content="1200"' in h
+    assert 'property="og:image:height" content="630"' in h
+
+
+def test_a_guide_without_a_baked_image_falls_back():
+    """焼いていない記事でもページは普通に出る。共通の画像に落ちるだけ。"""
+    from src.guides import Guide
+    g = Guide(slug="not-baked", title="題", description="x" * 60,
+              published="2026-01-01", updated="2026-01-01", lead="", body="")
+    with webapp.app.test_request_context("/guide/not-baked"):
+        assert webapp._guide_og("https://x", g) == "https://x/static/ogp.png?v=1"

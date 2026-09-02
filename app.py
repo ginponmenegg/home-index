@@ -2347,6 +2347,32 @@ def _guide_base() -> str:
     return request.url_root.rstrip("/")
 
 
+def _load_og_manifest():
+    """記事ごとのOG画像の対応表。無ければ空。
+
+    画像は tools/make_images.py で焼いてコミットする。実行時に作らない
+    のは、本番のコンテナに日本語フォントが無いため。焼いていない記事は
+    共通の画像に落ちるだけで、ページは普通に出る。
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "static", "og", "manifest.json")
+    try:
+        with open(path, encoding="utf-8") as fp:
+            return json.load(fp)
+    except Exception:
+        return {}
+
+
+OG_GUIDES = _load_og_manifest()
+
+
+def _guide_og(base: str, g=None) -> str:
+    """OG画像のURL。記事のものが焼いてあればそれを使う。"""
+    if g is not None and g.slug in OG_GUIDES:
+        return f"{base}/static/og/{g.slug}.png?v=1"
+    return f"{base}/static/ogp.png?v=1"
+
+
 _H2 = re.compile(r"<h2>(.*?)</h2>", re.S)
 
 
@@ -2379,7 +2405,7 @@ def _jsonld(obj) -> str:
     return f'<script type="application/ld+json">{body}</script>'
 
 
-def _guide_shell(title, description, path, head_extra, body) -> str:
+def _guide_shell(title, description, path, head_extra, body, og=None) -> str:
     """記事と一覧に共通の外側。検索結果に出す前提の head を持つ。"""
     base = _guide_base()
     url = base + path
@@ -2395,7 +2421,9 @@ def _guide_shell(title, description, path, head_extra, body) -> str:
             f'<meta property="og:title" content="{t}">'
             f'<meta property="og:description" content="{d}">'
             f'<meta property="og:url" content="{url}">'
-            f'<meta property="og:image" content="{base}/static/ogp.png?v=1">'
+            f'<meta property="og:image" content="{og or _guide_og(base)}">'
+            '<meta property="og:image:width" content="1200">'
+            '<meta property="og:image:height" content="630">'
             '<meta name="twitter:card" content="summary_large_image">'
             + FONT_LINK + ICON_LINKS + head_extra
             + f'<style>{_GUIDE_CSS}</style></head><body>'
@@ -2494,7 +2522,8 @@ def guide_page(slug):
               f'使っています。<a href="{g.cta_href}">{html.escape(g.cta_text)}'
               '</a></p></div>'
             + _share_row(base, g))
-    return _guide_shell(g.title, g.description, f"/guide/{g.slug}", head, body)
+    return _guide_shell(g.title, g.description, f"/guide/{g.slug}", head, body,
+                        og=_guide_og(base, g))
 
 
 # サイトマップに載せるのはGETで開けるページだけ。

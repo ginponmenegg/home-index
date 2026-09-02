@@ -64,7 +64,12 @@ def bezier(p0, p1, p2, p3, n=60):
     return pts
 
 
-def build():
+def background():
+    """濃紺の地に等高線・区画・道路を敷いた背景。LPのヒーローと同じ絵柄。
+
+    OGP本体と記事の画像で共用する。記事ごとに絵を変えないのは、並んだ
+    ときに同じサイトのものだと分かるほうが効くため。
+    """
     img = Image.new("RGB", (W, H), BG)
 
     # 右上のほのかな明るみ（LPの radial-gradient 相当）
@@ -130,8 +135,11 @@ def build():
     for y in range(H):
         a = int(140 * max(0.0, (y - H * 0.55) / (H * 0.45)) ** 1.2)
         vd.line([(0, y), (W, y)], fill=BG + (a,))
-    img = Image.alpha_composite(img, veil).convert("RGB")
+    return Image.alpha_composite(img, veil).convert("RGB")
 
+
+def build():
+    img = background()
     d = ImageDraw.Draw(img)
 
     # 物件ピン。見出しに重ならないよう右上の余白へ置き、ラベルは左側に流す
@@ -200,6 +208,99 @@ def build_icon():
     print("wrote", out, os.path.getsize(out) // 1024, "KB")
 
 
+# 行頭に置かない文字。約物が行の先頭に落ちると読みにくい（行頭禁則）。
+_NO_LINE_START = "、。，．・）」』】〉》〕｝’”ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮーぷ％"
+
+
+def wrap_ja(text, font, draw, width, max_lines):
+    """日本語を幅で折る。空白が無いので1文字ずつ測る。
+
+    収まらなければ None を返す。呼び出し側が字を小さくして掛け直す。
+    """
+    lines, cur = [], ""
+    for ch in text:
+        if draw.textlength(cur + ch, font=font) <= width:
+            cur += ch
+            continue
+        # 次の行の頭に来てはいけない字なら、1文字だけ前の行に残す
+        if ch in _NO_LINE_START and cur:
+            lines.append(cur + ch)
+            cur = ""
+        else:
+            lines.append(cur)
+            cur = ch
+        if len(lines) > max_lines:
+            return None
+    if cur:
+        lines.append(cur)
+    return lines if len(lines) <= max_lines else None
+
+
+def build_guide(slug, title):
+    """記事1本ぶんのOG画像。"""
+    img = background()
+    d = ImageDraw.Draw(img)
+    L, RIGHT = 78, W - 78
+    box = RIGHT - L
+
+    # 見出しは長さがまちまちなので、3行に収まるまで字を小さくする。
+    for size in range(66, 39, -2):
+        f = noto(size, "Bold")
+        lines = wrap_ja(title, f, d, box, 3)
+        if lines:
+            break
+    else:
+        f, lines = noto(40, "Bold"), [title[:40]]
+
+    draw_tracked(d, (L, 132), "解説", noto(22, "Medium"), PIN, tracking=6)
+    d.line([(L, 176), (L + 54, 176)], fill=PIN, width=2)
+
+    # 見出しの帯（金の罫線の下から、下段の罫線の手前まで）に縦で中央寄せする。
+    # 行数で置き場所を決め打ちすると、3行のときだけ下の罫線に触れる。
+    lh = int(size * 1.42)
+    block = (len(lines) - 1) * lh + d.textbbox((0, 0), lines[-1], font=f)[3]
+    band_top, band_bottom = 200, 474
+    top = band_top + max(0, (band_bottom - band_top - block)) // 2
+    for i, ln in enumerate(lines):
+        d.text((L, top + i * lh), ln, font=f, fill=PAPER)
+
+    d.line([(L, 492), (RIGHT, 492)], fill=(60, 82, 105), width=1)
+    x = draw_tracked(d, (L, 520), "HOME INDEX", ImageFont.truetype(F_GEO, 30),
+                     PAPER, tracking=4)
+    d.text((x + 26, 528), "診断で使っている数字の根拠", font=noto(19),
+           fill=(150, 164, 180))
+
+    out_dir = os.path.join(ROOT, "static", "og")
+    os.makedirs(out_dir, exist_ok=True)
+    out = os.path.join(out_dir, f"{slug}.png")
+    img.save(out, "PNG", optimize=True)
+    return out
+
+
+def build_guides():
+    """全記事のOG画像と、対応表を書き出す。
+
+    対応表（manifest.json）は、記事の見出しを書き換えたのに画像を焼き
+    直していない、という食い違いをテストで捕まえるために置いている。
+    """
+    import json
+    import sys
+    sys.path.insert(0, ROOT)
+    from src import guides
+
+    made = {}
+    for g in guides.all_guides():
+        out = build_guide(g.slug, g.title)
+        made[g.slug] = {"title": g.title}
+        print("wrote", os.path.relpath(out, ROOT),
+              os.path.getsize(out) // 1024, "KB")
+    path = os.path.join(ROOT, "static", "og", "manifest.json")
+    with open(path, "w", encoding="utf-8") as fp:
+        json.dump(made, fp, ensure_ascii=False, indent=1, sort_keys=True)
+    print("wrote", os.path.relpath(path, ROOT), f"({len(made)}本)")
+
+
 if __name__ == "__main__":
     build()
     build_icon()
+    build_guides()
