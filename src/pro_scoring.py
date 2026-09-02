@@ -111,8 +111,10 @@ def property_fields(newbuild: bool = False):
     """
     if newbuild:
         return ("insulation", "energy_saving") + CERT_NEW_FIELDS
+    # 省エネ基準は中古でも聞く。2025年4月以降に建った家は適合しているはずで、
+    # それ以前でも上位の性能を取っている家がある。分からなければ未確認のまま。
     return (CONDITION_FIELDS + EQUIPMENT_FIELDS
-            + ("quake_retrofit", "insulation") + CERT_FIELDS)
+            + ("quake_retrofit", "insulation", "energy_saving") + CERT_FIELDS)
 
 
 def score_property_detail(base: CategoryScore, detail: ProDetail,

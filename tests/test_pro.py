@@ -162,10 +162,18 @@ FREE_INPUT = {"address": "神奈川県小田原市城山1-2-3", "price": "3880",
               "down": "300", "loan_years": "35"}
 
 
-def _hidden_fields(html):
+def _hidden_fields(html, action="/pro/start"):
+    """指定のフォームが送る hidden だけを拾う。
+
+    結果画面には引き継ぎ・修正・保存と複数のフォームがある。ブラウザは
+    押したフォームの分しか送らないので、テストも同じように絞る。
+    """
     import re
-    return dict(re.findall(r'<input type="hidden" name="(\w+)" value="([^"]*)">',
-                           html))
+    m = re.search(r'<form[^>]*action="' + re.escape(action) + r'"[^>]*>(.*?)</form>',
+                  html, re.S)
+    assert m, f"{action} のフォームが無い"
+    return dict(re.findall(
+        r'<input type="hidden" name="(\w+)" value="([^"]*)">', m.group(1)))
 
 
 def test_free_result_offers_the_pro_diagnosis():

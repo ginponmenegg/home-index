@@ -739,6 +739,11 @@ FONT_LINK_PLACEHOLDER
   table{font-size:12px} th,td{padding:6px 5px;white-space:nowrap}
  }
  .only-print{display:none}
+ .fixrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 0}
+ .fixrow .muted{font-size:12px}
+ button.fix{width:auto;margin:0;padding:8px 14px;font-size:13px;font-weight:700;
+   background:#fff;color:#111;border:1px solid #c6ced7;border-radius:8px;cursor:pointer}
+ button.fix:hover{border-color:#111}
  .asklist{margin:0;padding:0;list-style:none}
  .asklist li{margin-bottom:9px}
  .asklist label{display:flex;gap:10px;align-items:flex-start;cursor:pointer;
@@ -769,6 +774,15 @@ BRAND_BAR
   <p class="sub">{{s.address}}</p>
   <h1>{{s.ptype}}　売出 {{price_man}}</h1>
   <p class="muted">{{s.specs}}</p>
+  {% if edit %}
+  <form method="post" action="{{edit.action}}" class="fixrow no-print">
+   {% for k, val in edit.fields.items() %}
+   <input type="hidden" name="{{k}}" value="{{val}}">
+   {% endfor %}
+   <button type="submit" class="fix">入力を修正する</button>
+   <span class="muted">数字や住所を直して、もう一度診断できます。入力はそのまま残ります。</span>
+  </form>
+  {% endif %}
   <div class="hero-score">
    <div class="ring">
     <svg viewBox="0 0 132 132" width="132" height="132">
@@ -2561,6 +2575,39 @@ def fetch():
         return render_template_string(FORM, v=_example_v(), listing="",
                                       banner=f"URL取得に失敗しました：{e}")
 
+def _form_values(f):
+    """送られてきた値を戸建フォームの初期値に載せ替える。"""
+    v = _example_v()
+    for k in v:
+        if k == "reno":
+            v[k] = (f.get("reno") == "1")
+        elif f.get(k) is not None:
+            v[k] = f.get(k)
+    return v
+
+
+_EDIT_BANNER = ("<b>入力した内容を残してあります。</b>"
+                "直したいところを書き換えて、もう一度診断してください。")
+
+
+@app.route("/buy/edit", methods=["POST"])
+def buy_edit():
+    """結果から入力へ戻る（戸建）。
+
+    住所や年収を含むので、クエリ文字列ではなくPOSTで受ける。
+    """
+    return render_template_string(FORM, v=_form_values(request.form),
+                                  listing="", banner=_EDIT_BANNER)
+
+
+@app.route("/mansion/edit", methods=["POST"])
+def mansion_edit():
+    """結果から入力へ戻る（マンション）。"""
+    return render_template_string(
+        MANSION_FORM, v=_mansion_form_values(request.form),
+        directions=DIRECTIONS, listing="", banner=_EDIT_BANNER)
+
+
 @app.route("/diagnose", methods=["POST"])
 def diagnose():
     f = request.form
@@ -2618,9 +2665,24 @@ def _finance_carry(subject, down_yen, loan_years, income_yen=None):
     return v
 
 
+def _edit_carry(action: str, f, keys) -> dict:
+    """結果画面から入力画面へ戻すための持ち物。
+
+    送られてきた値をそのまま返すだけ。診断し直すのではなく、入力欄を
+    埋め直して見せるためのもの。年収や頭金も含むが、もともと同じ画面から
+    送られてきた値なので、新しく外へ出すものは無い。
+    """
+    fields = {k: (f.get(k) or "") for k in keys if f.get(k)}
+    # 引き継ぎと戻りで同じ入口を使うので、どちらから来たかを渡す。
+    # 画面に出す案内が変わる。
+    fields["edit"] = "1"
+    return {"action": action, "fields": fields}
+
+
 def _render_result(res, subject, sctx, down_yen, loan_years,
                    free_diagnosis=None, carry=None, questions=None,
-                   questions_note=None, redo=None, finance_carry=None):
+                   questions_note=None, redo=None, finance_carry=None,
+                   edit=None):
     """診断結果ページを描画する。戸建とマンションで共通。
 
     res は run_pipeline / run_mansion_pipeline のどちらの戻り値でもよい。
@@ -2829,7 +2891,8 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
         pro=pro_delta, handover=handover,
         handover_action=handover_action, handover_label=handover_label,
         handover_unknowns=handover_unknowns, questions=questions,
-        questions_note=questions_note, finance_carry=finance_carry)
+        questions_note=questions_note, finance_carry=finance_carry,
+        edit=edit)
 
 
 def _run_diagnose(f, datetime):
@@ -2914,7 +2977,8 @@ def _run_diagnose(f, datetime):
             "loan_years": str(loan_years)}
     return _render_result(res, subject, sctx,
                           to_yen(f.get("down")) or 0, loan_years, carry=carry,
-                          redo=redo)
+                          redo=redo,
+                          edit=_edit_carry("/buy/edit", f, _example_v()))
 
 
 
@@ -3296,7 +3360,9 @@ def _run_mansion_diagnose(f):
             "reno": "1" if subject.renovated else "",
             "loan_years": str(loan_years)}
     return _render_result(res, subject, sctx, down_yen, loan_years,
-                          carry=carry, redo=redo)
+                          carry=carry, redo=redo,
+                          edit=_edit_carry("/mansion/edit", f,
+                                           _mansion_example_v()))
 
 # ---- PRO 購入診断（たたき台・戸建）--------------------------------
 # 仕様書§4-A/§4-C。ここで受けた詳細は物件スコアとリスクにだけ反映し、
@@ -3352,7 +3418,7 @@ _PRO_SECTIONS = [
      [("quake_retrofit", "耐震補強", "yesno", "chuko"),
       ("inspection", "住宅診断（インスペクション）", "yesno", "chuko"),
       ("insulation", "断熱性能", "insulation", ""),
-      ("energy_saving", "省エネ基準への適合", "energy", "shinchiku")]),
+      ("energy_saving", "省エネ基準への適合", "energy", "")]),
     ("", "公的な認定・評価", "第三者の検査や基準に裏付けられているため、自己申告の項目より重く評価します。",
      [("long_term_excellent", "長期優良住宅の認定", "cert_yesno", ""),
       ("performance_cert", "住宅性能評価書", "performance", ""),
@@ -3559,6 +3625,9 @@ def pro_start():
     （URLに残さない・アクセスログに出さない）。
     """
     v = _pro_form_values(request.form)
+    if request.form.get("edit"):
+        return render_template_string(PRO_DIAGNOSE_FORM, v=v,
+                                      banner=_EDIT_BANNER)
     msg = ("無料診断の入力を引き継ぎました。"
            "以下の項目に答えるほど、情報充足度が上がります。")
     if request.form.get("renovated_hint") == "1":
@@ -3689,7 +3758,9 @@ def _run_pro_diagnose(f):
                           questions_note=questions_note,
                           finance_carry=_finance_carry(
                               subject, down_yen, loan_years,
-                              to_yen(f.get("income"))))
+                              to_yen(f.get("income"))),
+                          edit=_edit_carry("/pro/start", f,
+                                           list(_pro_defaults_full()) + ["edit"]))
 
 
 # ---- マンションPRO 購入診断 ----------------------------------------
@@ -3919,8 +3990,9 @@ def pro_mansion_start():
     return render_template_string(
         MANSION_PRO_FORM, v=_mpro_form_values(request.form),
         directions=DIRECTIONS,
-        banner="無料診断の入力を引き継ぎました。"
-               "管理の中身に答えるほど、情報充足度が上がります。")
+        banner=(_EDIT_BANNER if request.form.get("edit") else
+                "無料診断の入力を引き継ぎました。"
+                "管理の中身に答えるほど、情報充足度が上がります。"))
 
 
 @app.route("/pro/mansion", methods=["GET", "POST"])
@@ -4026,7 +4098,9 @@ def _run_mansion_pro(f):
                           questions_note=questions_note,
                           finance_carry=_finance_carry(
                               subject, down_yen, loan_years,
-                              to_yen(f.get("income"))))
+                              to_yen(f.get("income"))),
+                          edit=_edit_carry("/pro/mansion_start", f,
+                                           list(_mpro_defaults()) + ["edit"]))
 
 
 # ---- アカウント（ログイン・保存・比較・プラン） ----------------------
@@ -5555,11 +5629,19 @@ FONT_LINK_PLACEHOLDER
   font-family:inherit}
  button:hover{background:#333}
  BRAND_CSS_PLACEHOLDER
+ .backform{margin:0}
+ button.backbtn{width:auto;margin:0;padding:0;border:none;background:none;
+   color:var(--acc);font-size:14px;font-family:inherit;cursor:pointer}
+ button.backbtn:hover{text-decoration:underline}
  @media (max-width:560px){.wrap{padding:16px 12px}.card{padding:16px}table{font-size:12px}}
 </style></head><body>
 BRAND_BAR
 <div class="wrap">
- <a class="back" href="/pro/finance">← 条件を変えて試算</a>
+ <form method="post" action="/pro/finance_start" class="backform">
+  {% for k, val in form.items() %}<input type="hidden" name="{{k}}" value="{{val}}">{% endfor %}
+  <input type="hidden" name="edit" value="1">
+  <button type="submit" class="backbtn">← 条件を変えて試算する</button>
+ </form>
 
  <form method="post" action="/pro/finance.pdf" class="card" style="text-align:center">
   {% for k, val in form.items() %}<input type="hidden" name="{{k}}" value="{{val}}">{% endfor %}
@@ -5776,9 +5858,10 @@ def pro_finance_start():
     v["newbuild"] = (f.get("newbuild") == "1")
     return render_template_string(
         PRO_FINANCE_FORM, v=v, **_finance_tmpl_kw(),
-        banner="<b>診断の入力を引き継ぎました。</b>"
-               "価格・面積・築年・借入の条件は入っています。"
-               "土地と建物の按分や、繰上返済の条件を足すと精度が上がります。")
+        banner=(_EDIT_BANNER if f.get("edit") else
+                "<b>診断の入力を引き継ぎました。</b>"
+                "価格・面積・築年・借入の条件は入っています。"
+                "土地と建物の按分や、繰上返済の条件を足すと精度が上がります。"))
 
 
 def _pro_compute(f):
