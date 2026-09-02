@@ -338,3 +338,70 @@ def test_no_guide_talks_about_the_price_estimate():
         text = g.lead + g.body
         for word in ("推定価格", "適正価格", "査定"):
             assert word not in text, f"{g.slug} に「{word}」が出ている"
+
+
+def _fin_points(rb, income):
+    from src.loan import LoanResult
+    from src.scoring import score_finance
+    lr = LoanResult(0, 0, 0, 0, rb, income)
+    return CONFIG["category_weights"]["資金"] * score_finance(lr).raw
+
+
+def test_the_burden_article_matches_the_finance_scoring():
+    body = guides.by_slug("hensai-futanritsu").body
+    w = CONFIG["category_weights"]["資金"]
+    assert f"資金は{w}点満点" in body
+    for rb in (20, 25, 35, 40, 41):        # 年収600万＝上限35%の側
+        assert f"{_pt(_fin_points(rb, 6_000_000))}点" in body, f"負担率{rb}%"
+    # 年収も頭金も入れなければ、良いとも悪いとも判断しない
+    from src.scoring import score_finance
+    assert f"{_pt(w * score_finance(None).raw)}点に" in body
+
+
+def test_the_burden_article_matches_the_income_cutoff():
+    """年収400万円で上限が30%と35%に切り替わる（フラット35の要件）。"""
+    body = guides.by_slug("hensai-futanritsu").body
+    assert "400万円" in body and "30%" in body and "35%" in body
+    # 400万円ちょうどは35%側、1円足りなければ30%側
+    assert _fin_points(35, 4_000_000) > _fin_points(35, 3_999_999)
+    assert _fin_points(30, 3_999_999) == _fin_points(35, 4_000_000)
+
+
+def test_the_burden_article_matches_the_loan_defaults():
+    body = guides.by_slug("hensai-futanritsu").body
+    assert f"{CONFIG['loan_rate'] * 100:g}%" in body
+    assert f"{CONFIG['loan_years']}年" in body
+
+
+def test_the_ground_article_matches_the_risk_scoring():
+    body = guides.by_slug("jiban-ekijoka-morido").body
+    w = CONFIG["category_weights"]["リスク"]
+    for kw in ({"steep_slope": True}, {"landslide_zone": True},
+               {"danger_zone": "指定あり"}):
+        cap = _pt(w * _risk_raw(**kw))
+        assert f"{cap}点" in body, f"{kw} → {cap}点 が記事に無い"
+    for kw in ({"liquefaction": "液状化しやすい"},
+               {"liquefaction": "やや液状化しやすい"},
+               {"embankment": "谷埋め型"}):
+        cut = _pt(w * (1.0 - _risk_raw(**kw)))
+        assert f"{cut}点" in body, f"{kw} → {cut}点 が記事に無い"
+
+
+def test_ground_that_is_unlikely_to_liquefy_is_not_penalised():
+    """記事は「しにくいなら引かない」と書いている。"""
+    assert _risk_raw(liquefaction="液状化しにくい") == 1.0
+    assert "しにくい" in guides.by_slug("jiban-ekijoka-morido").body
+
+
+def test_the_population_article_matches_the_adjustment():
+    from src.scoring import _future_population_adj
+    body = guides.by_slug("shorai-suikei-jinko-mesh").body
+    house = CONFIG["category_weights"]["資産性"]
+    flat = CONFIG["mansion_category_weights"]["資産性"]
+    for pct in (10, 2, -15, -30):          # 0になる帯（-10〜0%）は書きようがない
+        adj, _bit = _future_population_adj(pct)
+        assert adj, pct
+        for w in (house, flat):
+            assert f"{_pt(abs(adj) * w)}点" in body, f"{pct}% × {w}点"
+    assert _future_population_adj(-5)[0] == 0.0
+    assert "動かさない" in body
