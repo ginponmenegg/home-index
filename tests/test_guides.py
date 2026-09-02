@@ -81,9 +81,13 @@ def test_the_source_is_named_in_the_body():
 
 
 def test_the_article_says_it_is_not_a_lifespan():
-    """法定耐用年数を寿命と読ませない。ここを外すと記事が有害になる。"""
+    """法定耐用年数を寿命と読ませない。ここを外すと記事が有害になる。
+
+    言い回しではなく、否定していること自体を見る。
+    """
     body = guides.by_slug("keiryo-teppone-taiyo-nensu").body
-    assert "寿命ではありません" in body or "寿命でも" in body
+    assert "寿命" in body
+    assert "定めたものではありません" in body
 
 
 # ---- 記事そのものの決まりごと ---------------------------------------------
@@ -108,6 +112,33 @@ def test_descriptions_fit_a_search_result():
     """長すぎる説明文は検索結果で切られる。短すぎるとクリックされない。"""
     for g in guides.GUIDES:
         assert 60 <= len(g.description) <= 160, f"{g.slug}: {len(g.description)}字"
+
+
+# ---- 目次 -----------------------------------------------------------------
+
+def test_the_contents_list_every_heading():
+    """目次は本文の見出しから作る。記事側では何も書かない。"""
+    g = guides.all_guides()[0]
+    h = _client().get(f"/guide/{g.slug}").get_data(as_text=True)
+    heads = re.findall(r'<h2 id="(h\d+)">(.*?)</h2>', h, re.S)
+    assert len(heads) >= 3
+    toc = re.search(r'<nav class="toc">(.*?)</nav>', h, re.S).group(1)
+    for hid, text in heads:
+        assert f'href="#{hid}"' in toc, hid
+        assert re.sub(r"<[^>]+>", "", text).strip() in toc
+
+
+def test_the_body_carries_no_ids_of_its_own():
+    """見出しの id を記事に書かせない。書き忘れると目次だけ外れる。"""
+    for g in guides.GUIDES:
+        assert "id=" not in g.body, g.slug
+
+
+def test_short_pieces_get_no_contents_list():
+    """見出しが2つ以下なら目次は場所を取るだけ。"""
+    toc, body = webapp._with_toc("<h2>あ</h2><p>x</p><h2>い</h2>")
+    assert toc == ""
+    assert 'id="h1"' in body, "目次を出さなくても id は振る"
 
 
 # ---- ページとして出ること -------------------------------------------------

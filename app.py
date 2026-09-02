@@ -10,6 +10,7 @@ import sys
 import time
 import json
 import html
+import re
 import secrets
 import threading
 import urllib.parse
@@ -2176,9 +2177,11 @@ _GUIDE_CSS = (
     '.wrap{max-width:720px;margin:0 auto;padding:24px 16px}'
     '.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:22px}'
     'h1{font-size:21px;margin:0 0 8px;line-height:1.55}'
-    'h2{font-size:16px;margin:28px 0 8px;color:#111;'
-    'border-left:3px solid #14395C;padding-left:9px;line-height:1.5}'
-    'p,li{font-size:15px;line-height:1.9}'
+    # 目次から飛んだとき、見出しが上のバーに隠れないようにする
+    'h2{font-size:16px;margin:34px 0 10px;color:#111;'
+    'border-left:3px solid #14395C;padding-left:9px;line-height:1.55;'
+    'scroll-margin-top:80px}'
+    'p,li{font-size:15px;line-height:1.95}'
     'li{margin-bottom:4px}'
     'a{color:#111}'
     '.sub{color:#6b7280;font-size:12px;line-height:1.8}'
@@ -2187,13 +2190,21 @@ _GUIDE_CSS = (
     'padding:14px 16px;margin:0 0 6px}'
     '.formula{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:8px;'
     'padding:11px 14px;text-align:center}'
+    '.toc{border:1px solid #e5e7eb;border-radius:10px;padding:14px 18px 15px;'
+    'margin:20px 0 4px}'
+    '.toc>span{display:block;font-size:11px;color:#6b7280;letter-spacing:.14em;'
+    'margin-bottom:8px}'
+    '.toc ol{margin:0;padding-left:1.35em}'
+    '.toc li{font-size:14px;line-height:1.85;margin:0}'
+    '.toc a{color:#1f2937;text-decoration:none}'
+    '.toc a:hover{text-decoration:underline}'
     'table{border-collapse:collapse;width:100%;margin:12px 0}'
     'th,td{border:1px solid #e5e7eb;padding:7px 10px;text-align:left;font-size:13px}'
     'th{background:#f6f8fa;font-weight:600}'
-    '.cta{margin-top:26px;background:#14395C;border-radius:12px;padding:18px 20px}'
-    '.cta p{color:#f0eee9;margin:0 0 10px;font-size:14px}'
-    '.cta a{display:inline-block;background:#fff;color:#14395C;font-weight:700;'
-    'text-decoration:none;border-radius:8px;padding:10px 18px;font-size:14px}'
+    '.after{margin-top:34px;border-left:3px solid #14395C;background:#f6f8fa;'
+    'padding:14px 16px}'
+    '.after p{margin:0;font-size:14px;line-height:1.85}'
+    '.after a{color:#14395C;font-weight:700}'
     '.cards{list-style:none;padding:0;margin:0}'
     '.cards li{border-top:1px solid #e5e7eb;padding:16px 0;margin:0}'
     '.cards li:first-child{border-top:none;padding-top:4px}'
@@ -2204,6 +2215,32 @@ _GUIDE_CSS = (
 
 def _guide_base() -> str:
     return request.url_root.rstrip("/")
+
+
+_H2 = re.compile(r"<h2>(.*?)</h2>", re.S)
+
+
+def _with_toc(body: str):
+    """本文の見出しから目次を作り、あわせて見出しに id を振る。
+
+    id を記事側に書かせない。書き忘れると目次のリンクだけが外れ、
+    しかも見た目では気づけない。
+
+    見出しが2つ以下の記事に目次は要らない。画面を占めるだけになる。
+    """
+    heads = []
+
+    def tag(m):
+        n = len(heads) + 1
+        heads.append((f"h{n}", re.sub(r"<[^>]+>", "", m.group(1)).strip()))
+        return f'<h2 id="h{n}">{m.group(1)}</h2>'
+
+    body = _H2.sub(tag, body)
+    if len(heads) < 3:
+        return "", body
+    items = "".join(f'<li><a href="#{i}">{html.escape(t)}</a></li>'
+                    for i, t in heads)
+    return f'<nav class="toc"><span>目次</span><ol>{items}</ol></nav>', body
 
 
 def _jsonld(obj) -> str:
@@ -2288,6 +2325,7 @@ def guide_page(slug):
     head = _jsonld({"@context": "https://schema.org",
                     "@graph": [article, _breadcrumbs(base, g.title)]})
     updated = (f"　更新 {g.updated}" if g.updated != g.published else "")
+    toc, article = _with_toc(g.body)
     body = ('<p class="meta"><a href="/guide">← 解説の一覧</a></p>'
             f'<h1>{html.escape(g.title)}</h1>'
             f'<p class="meta">{g.published}{updated}'
@@ -2295,10 +2333,9 @@ def guide_page(slug):
                '　<a href="/about">運営者について</a>' if operator_named() else '')
             + '</p>'
             f'<div class="lead"><p style="margin:0">{g.lead}</p></div>'
-            + g.body
-            + '<div class="cta"><p>この記事の内容は、診断の採点にそのまま'
-              '使っています。構造を選んで、築年数の評価を確かめてください。</p>'
-              '<a href="/buy">無料で診断する</a></div>')
+            + toc + article
+            + '<div class="after"><p>この記事の数字は、診断の採点にそのまま'
+              '使っています。<a href="/buy">構造を選んで試す</a></p></div>')
     return _guide_shell(g.title, g.description, f"/guide/{g.slug}", head, body)
 
 
