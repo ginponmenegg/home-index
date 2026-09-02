@@ -2311,6 +2311,12 @@ _GUIDE_CSS = (
     'table{border-collapse:collapse;width:100%;margin:12px 0}'
     'th,td{border:1px solid #e5e7eb;padding:7px 10px;text-align:left;font-size:13px}'
     'th{background:#f6f8fa;font-weight:600}'
+    '.share{margin:26px 0 0;display:flex;align-items:center;gap:10px;'
+    'flex-wrap:wrap;font-size:13px;color:#6b7280}'
+    '.share a,.share button{display:inline-block;border:1px solid #e5e7eb;'
+    'border-radius:8px;padding:7px 13px;font-size:13px;color:#1f2937;'
+    'background:#fff;text-decoration:none;cursor:pointer;font-family:inherit}'
+    '.share a:hover,.share button:hover{border-color:#c6ced7}'
     '.after{margin-top:34px;border-left:3px solid #14395C;background:#f6f8fa;'
     'padding:14px 16px}'
     '.after p{margin:0;font-size:14px;line-height:1.85}'
@@ -2385,6 +2391,32 @@ def _guide_shell(title, description, path, head_extra, body) -> str:
             + FOOTER + '</div></body></html>')
 
 
+def _share_row(base, g) -> str:
+    """記事を共有するボタン。記事だけに置く（診断結果には置かない）。
+
+    診断結果を共有できる形にすると、住所や年収を含むURLが出回る作りに
+    なる。結果画面の「画像として保存」は、中身を自分で見てから渡せる
+    ので別の話。
+    """
+    url = f"{base}/guide/{g.slug}"
+    q = urllib.parse.quote(url, safe="")
+    t = urllib.parse.quote(g.title, safe="")
+    return (
+        '<p class="share"><span>この記事を共有</span>'
+        f'<a href="https://x.com/intent/post?text={t}&amp;url={q}"'
+        ' target="_blank" rel="noopener nofollow">X</a>'
+        f'<a href="https://social-plugins.line.me/lineit/share?url={q}"'
+        ' target="_blank" rel="noopener nofollow">LINE</a>'
+        f'<button type="button" class="copy" data-url="{html.escape(url)}">'
+        'URLをコピー</button></p>'
+        '<script>document.querySelectorAll(".copy").forEach(function(b){'
+        'b.addEventListener("click",function(){'
+        'navigator.clipboard.writeText(b.dataset.url).then(function(){'
+        'var o=b.textContent;b.textContent="コピーしました";'
+        'setTimeout(function(){b.textContent=o},1600);})'
+        '.catch(function(){});});});</script>')
+
+
 def _breadcrumbs(base, extra=None):
     items = [{"@type": "ListItem", "position": 1, "name": "ホーム",
               "item": base + "/"},
@@ -2446,7 +2478,8 @@ def guide_page(slug):
             + toc + article
             + '<div class="after"><p>この記事の数字は、診断の採点にそのまま'
               f'使っています。<a href="{g.cta_href}">{html.escape(g.cta_text)}'
-              '</a></p></div>')
+              '</a></p></div>'
+            + _share_row(base, g))
     return _guide_shell(g.title, g.description, f"/guide/{g.slug}", head, body)
 
 

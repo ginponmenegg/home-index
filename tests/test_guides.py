@@ -414,3 +414,34 @@ def test_the_population_article_matches_the_adjustment():
             assert f"{_pt(abs(adj) * w)}点" in body, f"{pct}% × {w}点"
     assert _future_population_adj(-5)[0] == 0.0
     assert "動かさない" in body
+
+
+# ---- 共有 -----------------------------------------------------------------
+
+def test_every_guide_can_be_shared():
+    c = _client()
+    for g in guides.GUIDES:
+        h = c.get(f"/guide/{g.slug}").get_data(as_text=True)
+        assert 'class="share"' in h, g.slug
+        assert "x.com/intent/post" in h and "lineit/share" in h
+        assert f'data-url="http://localhost/guide/{g.slug}"' in h
+
+
+def test_the_share_links_are_escaped_for_a_url():
+    """タイトルに記号が入っても壊れないこと。生のまま貼らない。"""
+    import urllib.parse
+    g = guides.by_slug("hensai-futanritsu")
+    h = _client().get(f"/guide/{g.slug}").get_data(as_text=True)
+    assert urllib.parse.quote(g.title, safe="") in h
+    assert f"text={g.title}" not in h
+
+
+def test_a_diagnosis_is_never_given_a_share_link():
+    """結果を共有できる形にすると、住所や年収を含むURLが出回る。
+
+    結果画面には「画像として保存・共有」がある。中身を自分で見てから
+    渡せるので、そちらは別の話。
+    """
+    c = _client()
+    for url in ("/buy", "/mansion", "/pro/diagnose", "/pro/finance"):
+        assert 'class="share"' not in c.get(url).get_data(as_text=True), url
