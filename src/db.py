@@ -178,6 +178,9 @@ ADDED_COLUMNS = [
     # Webhookは顧客IDしか持ってこないことがあるので、両方を持つ。
     ("users", "stripe_customer_id", "TEXT"),
     ("users", "stripe_subscription_id", "TEXT"),
+    # 解約を受け付けた日ではなく、使えなくなる日を持つ。
+    # 「解約済みだが、まだ使える」という状態を画面に出すために要る。
+    ("users", "plan_cancel_at", "TEXT"),
 ]
 
 

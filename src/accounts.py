@@ -191,6 +191,16 @@ def set_stripe_ids(user_id, customer_id: str | None = None,
     db.run(f"UPDATE users SET {', '.join(sets)} WHERE id = ?", tuple(args))
 
 
+def set_cancel_at(user_id, when: str | None) -> None:
+    """解約の予定日を入れる（Noneで解除）。
+
+    プランは PRO のまま、期限だけ先に決まっている状態を表す。
+    ここを見て「解約済み・◯日まで利用可」と出し、解約ボタンを引っ込める。
+    """
+    db.run("UPDATE users SET plan_cancel_at = ? WHERE id = ?",
+           (when, _uid(user_id)))
+
+
 def user_by_customer(customer_id: str) -> dict | None:
     """決済側の顧客IDから会員を引く。
 

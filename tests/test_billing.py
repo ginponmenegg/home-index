@@ -199,7 +199,97 @@ def test_cancelling_takes_a_confirmation_step(billing):
     # 3画面目：POSTで確定
     h = c.post("/plan/cancel").get_data(as_text=True)
     assert "解約しました" in h
+    u = billing.accounts.get_user(uid)
+    assert u["plan_cancel_at"] == "2099-01-01T00:00:00+00:00"
+
+
+def test_a_cancelled_member_keeps_pro_until_the_period_ends(billing):
+    """解約しても、支払い済みの期間はPROのまま使える。
+
+    画面も特商法の表記も規約も「お支払い済みの期間の末日まで」と
+    書いてある。ここで即座に落とすと、受け取った代金に対して役務を
+    渡していないことになる。
+    """
+    c, uid = _login(billing, "keeppro@example.com")
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO,
+                              "2099-01-01T00:00:00+00:00")
+    c.post("/plan/cancel")
+    assert billing.accounts.is_pro(billing.accounts.get_user(uid)),         "解約した瞬間に使えなくなってはいけない"
+    assert "<form" in c.get("/pro/diagnose").get_data(as_text=True),         "PROの画面もそのまま使える"
+    # 期間末を過ぎたら無料に戻る
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO,
+                              "2000-01-01T00:00:00+00:00")
     assert not billing.accounts.is_pro(billing.accounts.get_user(uid))
+
+
+def test_the_plan_page_says_when_it_ends_and_hides_the_button(billing):
+    """解約済みの人に、もう一度「解約する」を出さない。"""
+    c, uid = _login(billing, "ended@example.com")
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO,
+                              "2099-03-31T00:00:00+00:00")
+    c.post("/plan/cancel")
+    h = c.get("/plan").get_data(as_text=True)
+    assert "解約を受け付けました" in h
+    assert "2099-03-31" in h
+    assert "追加の請求はありません" in h
+    assert "/plan/cancel" not in h, "解約済みなのに解約ボタンが出ている"
+    # 二重に解約しようとしても、確認画面に入れない
+    assert c.get("/plan/cancel").status_code in (301, 302)
+
+
+def test_cancelling_without_a_known_end_date_stops_at_once(billing):
+    """期間末が分からないPRO（手動付与など）は、その場で無料に戻す。
+
+    ここをPROのまま残すと、期限なし＝永久にPROになる。
+    """
+    c, uid = _login(billing, "manual@example.com")
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, None)
+    c.post("/plan/cancel")
+    u = billing.accounts.get_user(uid)
+    assert not billing.accounts.is_pro(u)
+    assert not u["plan_cancel_at"]
+
+
+def test_restarting_clears_the_cancellation(billing, monkeypatch):
+    """解約したあとに再開したら、終了予定を消す。"""
+    c, uid = _login(billing, "restart@example.com")
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO,
+                              "2099-01-01T00:00:00+00:00")
+    c.post("/plan/cancel")
+    assert billing.accounts.get_user(uid)["plan_cancel_at"]
+    monkeypatch.setattr(billing.app.billing, "subscription",
+                        lambda i: _stripe_obj("Subscription", {
+                            "id": "sub_r", "object": "subscription",
+                            "current_period_end": 4102444800}))
+    body, sig = _signed(_event("checkout.session.completed", {
+        "id": "cs_r", "object": "checkout.session", "payment_status": "paid",
+        "client_reference_id": str(uid), "customer": "cus_r",
+        "subscription": "sub_r"}))
+    c.post("/stripe/webhook", data=body,
+           headers={"Stripe-Signature": sig,
+                    "Content-Type": "application/json"})
+    u = billing.accounts.get_user(uid)
+    assert billing.accounts.is_pro(u)
+    assert not u["plan_cancel_at"]
+    assert "/plan/cancel" in c.get("/plan").get_data(as_text=True)
+
+
+def test_a_cancellation_made_on_stripes_side_shows_here(billing):
+    """ポータルや管理画面で解約された場合も、画面の表示をそろえる。"""
+    c, uid = _login(billing, "portalside@example.com")
+    billing.accounts.set_stripe_ids(uid, "cus_p", "sub_p")
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, None)
+    body, sig = _signed(_event("customer.subscription.updated", {
+        "id": "sub_p", "object": "subscription", "customer": "cus_p",
+        "status": "active", "cancel_at_period_end": True,
+        "current_period_end": 4102444800}))
+    c.post("/stripe/webhook", data=body,
+           headers={"Stripe-Signature": sig,
+                    "Content-Type": "application/json"})
+    u = billing.accounts.get_user(uid)
+    assert billing.accounts.is_pro(u), "期間末まではPRO"
+    assert u["plan_cancel_at"], "解約予定を拾えていない"
+    assert "解約を受け付けました" in c.get("/plan").get_data(as_text=True)
 
 
 def test_the_confirmation_says_what_survives(billing):

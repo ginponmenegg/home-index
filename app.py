@@ -5066,6 +5066,15 @@ PLAN_PAGE = """
   詳細診断をお試しいただけます。<br>
   有料でのご提供を始めるときは、事前にこのページでご案内します。
  </div>
+{% elif pro and cancel_at %}
+ <div class="note" style="margin-top:14px">
+  <b>解約を受け付けました。</b>
+  {{ cancel_at[:10] }}まで、これまでどおりPROをご利用いただけます。<br>
+  その日以降は自動的に無料プランへ切り替わります。<b>追加の請求はありません。</b><br>
+  保存した診断は、そのあともご覧いただけます。
+ </div>
+ <p class="sub" style="margin-top:10px">
+  続けたくなったときは、この画面からいつでも再開できます。</p>
 {% elif pro %}
  <div class="note ok" style="margin-top:14px">
   PROをご利用中です。{{ price_label }}が毎月かかります。
@@ -5222,6 +5231,7 @@ def plan_page():
     u = current_user()
     body = render_template_string(
         PLAN_PAGE, pro=accounts.is_pro(u), billing=billing_on(),
+        cancel_at=(u or {}).get("plan_cancel_at"),   # 未ログインでも開ける
         price_label=PRICE_LABEL,
         expires=(u or {}).get("plan_expires_at"),
         free_limit=saved.FREE_LIMIT, pro_limit=saved.PRO_LIMIT)
@@ -5413,6 +5423,7 @@ def _apply_stripe_event(kind, obj):
             except Exception as e:
                 print(f"[stripe] period lookup failed: {e}")
         accounts.set_plan(uid, accounts.PLAN_PRO, expires)
+        accounts.set_cancel_at(uid, None)     # 再開なら解約予定を消す
         return
 
     if kind in ("customer.subscription.updated",
@@ -5424,7 +5435,12 @@ def _apply_stripe_event(kind, obj):
         # active / trialing のあいだはPRO。支払いが止まれば free に落ちる。
         active = _sv(obj, "status") in ("active", "trialing")
         plan = accounts.PLAN_PRO if active else accounts.PLAN_FREE
-        accounts.set_plan(u["id"], plan, billing.period_end(obj))
+        end = billing.period_end(obj)
+        accounts.set_plan(u["id"], plan, end)
+        # Stripe側（ポータルや管理画面）で解約された場合もここに来る。
+        # cancel_at_period_end を見ておけば、画面の表示がずれない。
+        accounts.set_cancel_at(
+            u["id"], end if _sv(obj, "cancel_at_period_end") else None)
         return
 
     if kind == "customer.subscription.deleted":
@@ -5433,6 +5449,7 @@ def _apply_stripe_event(kind, obj):
             return
         # 期間末に到達しての削除。ここで期限も消す。
         accounts.set_plan(u["id"], accounts.PLAN_FREE, None)
+        accounts.set_cancel_at(u["id"], None)
         accounts.set_stripe_ids(u["id"], subscription_id="")
         return
 
@@ -5446,6 +5463,8 @@ def plan_cancel():
     u = current_user()
     if not accounts.is_pro(u):
         return redirect("/plan")
+    if u.get("plan_cancel_at"):
+        return redirect("/plan")      # すでに解約済み。二重に受けない
     if request.method == "GET":
         body = render_template_string(
             PLAN_CANCEL, expires=u.get("plan_expires_at"),
@@ -5469,8 +5488,21 @@ def plan_cancel():
                     '続くようでしたらお問い合わせください。</p>'
                     '<a class="btn ghost" href="/plan">プランへもどる</a></div>')
             return _account_page("解約できませんでした", body, chip="プラン"), 503
-    # 期限まではPROのまま使える。切り替えは accounts.is_pro が期限で見る。
-    accounts.set_plan(u["id"], accounts.PLAN_FREE, expires)
+    # PROのまま、期限だけ決める。
+    #
+    # ここを free に落とすと、is_pro が plan を先に見るため、その場で
+    # 使えなくなる。解約画面も特商法の表記も規約も「お支払い済みの期間の
+    # 末日までご利用いただけます」と書いてあるので、それでは払った分を
+    # 渡していないことになる。無料に戻すのは、期間末に Stripe から
+    # customer.subscription.deleted が届いたとき。
+    if expires:
+        accounts.set_plan(u["id"], accounts.PLAN_PRO, expires)
+        accounts.set_cancel_at(u["id"], expires)
+    else:
+        # 期間末が分からないときは、残すべき期間も無い（手動付与など、
+        # 決済を伴わないPRO）。ここでPROのまま期限なしにすると、解約
+        # した人が永久にPROになる。
+        accounts.set_plan(u["id"], accounts.PLAN_FREE, None)
     body = render_template_string(PLAN_CANCELED, expires=expires,
                                   reasons=CANCEL_REASONS)
     return _account_page("解約しました", body, chip="プラン")
