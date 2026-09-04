@@ -5351,6 +5351,21 @@ def stripe_webhook():
     return "", 200
 
 
+def _sv(obj, key, default=None):
+    """Stripeのオブジェクトからも、ふつうのdictからも値を取る。
+
+    stripe-python の Session や Subscription は dict ではない。
+    obj.get(...) を呼ぶと AttributeError を投げる（15.x で確認）。
+    Webhookで届くのはこのオブジェクトなので、ここを間違えると
+    受け取った瞬間に500になり、支払いがプランに反映されない。
+
+    テストからは素のdictを渡したいので、両方に効く形にしておく。
+    """
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
 def _catch_up_from_checkout(user, session_id):
     """Webhookがまだ届いていないときの保険。
 
@@ -5370,17 +5385,13 @@ def _catch_up_from_checkout(user, session_id):
     except Exception as e:
         print(f"[stripe] checkout lookup failed: {e}")
         return
-    def g(k):
-        return sess.get(k) if isinstance(sess, dict) else getattr(sess, k, None)
-    if g("payment_status") != "paid":
+    if _sv(sess, "payment_status") != "paid":
         return
-    if str(g("client_reference_id") or "") != str(user["id"]):
+    if str(_sv(sess, "client_reference_id") or "") != str(user["id"]):
         print("[stripe] session does not belong to this user")
         return
     try:
-        _apply_stripe_event("checkout.session.completed", {
-            "client_reference_id": g("client_reference_id"),
-            "customer": g("customer"), "subscription": g("subscription")})
+        _apply_stripe_event("checkout.session.completed", sess)
     except Exception as e:
         print(f"[stripe] catch-up failed: {e}")
 
@@ -5388,9 +5399,9 @@ def _catch_up_from_checkout(user, session_id):
 def _apply_stripe_event(kind, obj):
     """イベントを会員のプランに落とす。知らないイベントは何もしない。"""
     if kind == "checkout.session.completed":
-        uid = obj.get("client_reference_id")
-        cust = obj.get("customer")
-        sub_id = obj.get("subscription")
+        uid = _sv(obj, "client_reference_id")
+        cust = _sv(obj, "customer")
+        sub_id = _sv(obj, "subscription")
         if not uid:
             print("[stripe] checkout without client_reference_id")
             return
@@ -5406,18 +5417,18 @@ def _apply_stripe_event(kind, obj):
 
     if kind in ("customer.subscription.updated",
                 "customer.subscription.created"):
-        u = accounts.user_by_customer(obj.get("customer"))
+        u = accounts.user_by_customer(_sv(obj, "customer"))
         if not u:
             return
-        accounts.set_stripe_ids(u["id"], subscription_id=obj.get("id"))
+        accounts.set_stripe_ids(u["id"], subscription_id=_sv(obj, "id"))
         # active / trialing のあいだはPRO。支払いが止まれば free に落ちる。
-        active = obj.get("status") in ("active", "trialing")
+        active = _sv(obj, "status") in ("active", "trialing")
         plan = accounts.PLAN_PRO if active else accounts.PLAN_FREE
         accounts.set_plan(u["id"], plan, billing.period_end(obj))
         return
 
     if kind == "customer.subscription.deleted":
-        u = accounts.user_by_customer(obj.get("customer"))
+        u = accounts.user_by_customer(_sv(obj, "customer"))
         if not u:
             return
         # 期間末に到達しての削除。ここで期限も消す。

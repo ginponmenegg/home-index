@@ -311,37 +311,122 @@ def test_a_webhook_without_a_valid_signature_is_refused(billing):
     assert r.status_code == 400
 
 
+def _signed(payload_dict, secret="whsec_dummy"):
+    """Stripeが送ってくるのと同じ形の本文と署名を作る。
+
+    素のdictを直に渡すテストでは、本番で起きることを再現できない。
+    Stripeが実際に渡してくるのは dict ではなく Session/Subscription で、
+    それらは .get() を受け付けない。construct_event を通すことで、
+    本番と同じ型がハンドラに届く。
+    """
+    import hashlib
+    import hmac
+    import json
+    import time
+    body = json.dumps(payload_dict).encode()
+    ts = int(time.time())
+    sig = hmac.new(secret.encode(), f"{ts}.".encode() + body,
+                   hashlib.sha256).hexdigest()
+    return body, f"t={ts},v1={sig}"
+
+
+def _event(kind, obj):
+    return {"id": "evt_1", "object": "event", "type": kind,
+            "api_version": "2024-06-20", "created": 1700000000,
+            "data": {"object": obj}}
+
+
 def test_a_completed_checkout_turns_the_plan_on(billing, monkeypatch):
+    """署名の検証からプラン変更まで、経路を丸ごと通す。
+
+    ここを素のdictで済ませると、Stripeのオブジェクトが dict ではない
+    ことに気づけない。実際それで本番だけ500になった。
+    """
     c, uid = _login(billing, "hook@example.com")
-    monkeypatch.setattr(billing.app.billing, "subscription", lambda i: {})
-    monkeypatch.setattr(billing.app.billing, "period_end",
-                        lambda s: "2099-01-01T00:00:00+00:00")
-    billing.app._apply_stripe_event("checkout.session.completed", {
+    monkeypatch.setattr(billing.app.billing, "subscription",
+                        lambda i: _stripe_obj("Subscription", {
+                            "id": "sub_1", "object": "subscription",
+                            "current_period_end": 4102444800}))
+    body, sig = _signed(_event("checkout.session.completed", {
+        "id": "cs_1", "object": "checkout.session", "payment_status": "paid",
         "client_reference_id": str(uid), "customer": "cus_1",
-        "subscription": "sub_1"})
+        "subscription": "sub_1"}))
+    r = c.post("/stripe/webhook", data=body,
+               headers={"Stripe-Signature": sig,
+                        "Content-Type": "application/json"})
+    assert r.status_code == 200, r.get_data(as_text=True)
     u = billing.accounts.get_user(uid)
     assert billing.accounts.is_pro(u)
     assert u["stripe_customer_id"] == "cus_1"
     assert u["stripe_subscription_id"] == "sub_1"
+    assert u["plan_expires_at"].startswith("2100-"), "期間末を取れていない"
+
+
+def _stripe_obj(cls, data):
+    import stripe
+    return getattr(stripe, cls).construct_from(data, "sk_test_dummy")
+
+
+def test_stripe_objects_are_not_dicts():
+    """この前提が崩れたら、読み取りを見直すこと。
+
+    stripe-python の API リソースは dict ではなく、.get() は例外を
+    投げる。__getitem__ と getattr は通る。ここが変わると _sv の
+    書き方も変わるので、前提そのものを固定しておく。
+    """
+    import pytest as _pytest
+    o = _stripe_obj("Subscription", {"id": "sub_x", "object": "subscription",
+                                     "status": "active"})
+    assert not isinstance(o, dict)
+    with _pytest.raises(AttributeError):
+        o.get("status")
+    assert o["status"] == "active"
+    assert getattr(o, "status", None) == "active"
 
 
 def test_a_failed_payment_drops_the_plan(billing, monkeypatch):
     """支払いが止まればPROではなくなる。顧客IDから会員を辿る。"""
     c, uid = _login(billing, "unpaid@example.com")
     billing.accounts.set_stripe_ids(uid, "cus_2", "sub_2")
-    monkeypatch.setattr(billing.app.billing, "period_end", lambda s: None)
-    billing.app._apply_stripe_event("customer.subscription.updated", {
-        "id": "sub_2", "customer": "cus_2", "status": "active"})
-    assert billing.accounts.is_pro(billing.accounts.get_user(uid))
-    billing.app._apply_stripe_event("customer.subscription.updated", {
-        "id": "sub_2", "customer": "cus_2", "status": "past_due"})
-    assert not billing.accounts.is_pro(billing.accounts.get_user(uid))
+    for status, expect in (("active", True), ("past_due", False)):
+        body, sig = _signed(_event("customer.subscription.updated",
+                                   {"id": "sub_2", "object": "subscription",
+                                    "customer": "cus_2", "status": status}))
+        r = c.post("/stripe/webhook", data=body,
+                   headers={"Stripe-Signature": sig,
+                            "Content-Type": "application/json"})
+        assert r.status_code == 200, r.get_data(as_text=True)
+        assert billing.accounts.is_pro(
+            billing.accounts.get_user(uid)) is expect, status
+
+
+def test_a_deleted_subscription_ends_the_plan(billing):
+    c, uid = _login(billing, "gone@example.com")
+    billing.accounts.set_stripe_ids(uid, "cus_3", "sub_3")
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO,
+                              "2099-01-01T00:00:00+00:00")
+    body, sig = _signed(_event("customer.subscription.deleted",
+                               {"id": "sub_3", "object": "subscription",
+                                "customer": "cus_3", "status": "canceled"}))
+    r = c.post("/stripe/webhook", data=body,
+               headers={"Stripe-Signature": sig,
+                        "Content-Type": "application/json"})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    u = billing.accounts.get_user(uid)
+    assert not billing.accounts.is_pro(u)
+    assert not u["plan_expires_at"], "期限も消すこと"
 
 
 def test_an_unknown_event_changes_nothing(billing):
     c, uid = _login(billing, "noise@example.com")
     before = billing.accounts.get_user(uid)
-    billing.app._apply_stripe_event("invoice.upcoming", {"customer": "cus_x"})
+    body, sig = _signed(_event("invoice.upcoming",
+                               {"id": "in_1", "object": "invoice",
+                                "customer": "cus_x"}))
+    r = c.post("/stripe/webhook", data=body,
+               headers={"Stripe-Signature": sig,
+                        "Content-Type": "application/json"})
+    assert r.status_code == 200
     assert billing.accounts.get_user(uid)["plan"] == before["plan"]
 
 
@@ -454,9 +539,13 @@ def test_pro_stays_open_while_it_is_free():
 
 
 def _fake_session(uid, paid=True, cust="cus_z", sub="sub_z"):
-    return {"payment_status": "paid" if paid else "unpaid",
-            "client_reference_id": str(uid), "customer": cust,
-            "subscription": sub}
+    """本番と同じ型を返す。dictを返すと本番で落ちる書き方を見逃す。"""
+    import stripe
+    return stripe.checkout.Session.construct_from(
+        {"id": "cs_x", "object": "checkout.session",
+         "payment_status": "paid" if paid else "unpaid",
+         "client_reference_id": str(uid), "customer": cust,
+         "subscription": sub}, "sk_test_dummy")
 
 
 def test_the_return_screen_asks_stripe_when_the_hook_is_late(billing,

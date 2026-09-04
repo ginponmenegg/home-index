@@ -109,8 +109,10 @@ def period_end(sub) -> Optional[str]:
     """サブスクリプションの期間末をISO文字列で返す。"""
     ts = _get(sub, "current_period_end")
     if not ts:
-        items = _get(sub, "items") or {}
-        data = (items.get("data") if isinstance(items, dict) else None) or []
+        # 新しいAPIバージョンでは期間末がサブスクリプションではなく
+        # items の側に載る。items も dict ではなく ListObject なので、
+        # ここも _get で読む。
+        data = _get(_get(sub, "items"), "data") or []
         if data:
             ts = _get(data[0], "current_period_end")
     if not ts:
