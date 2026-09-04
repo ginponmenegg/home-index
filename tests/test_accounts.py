@@ -184,8 +184,36 @@ def test_free_limit(env):
     env.accounts.set_plan(u["id"], env.accounts.PLAN_PRO, None)
     u2 = env.accounts.get_user(u["id"])
     assert env.accounts.is_pro(u2)
-    assert env.saved.limit_for(u2) == env.saved.PRO_LIMIT
+    assert env.saved.limit_for(u2) is None, "PROは無制限"
     env.saved.save(u2, "chuko_kodate", "4件目", "住所", 1, 50, "C", _payload())
+
+
+def test_pro_has_no_ceiling(env):
+    """PROに保存の上限を置かない。
+
+    家探しは何十件も見て絞る作業なので、上限があると「どれを消すか」を
+    考えさせることになる。旧上限(20件)をはっきり超えて保存できること。
+    """
+    u = _user(env, "nolimit@example.com")
+    env.accounts.set_plan(u["id"], env.accounts.PLAN_PRO, None)
+    u = env.accounts.get_user(u["id"])
+    for i in range(35):
+        env.saved.save(u, "chuko_kodate", f"物件{i}", "住所", 1, 50, "C",
+                       _payload())
+    assert env.saved.count(u["id"]) == 35
+    assert len(env.saved.listing(u["id"])) == 35
+
+
+def test_the_pages_say_unlimited(env):
+    """画面の文言と実装を食い違わせない（特商法の確認画面を含む）。"""
+    u = _user(env, "saysunlimited@example.com")
+    env.accounts.set_plan(u["id"], env.accounts.PLAN_PRO, None)
+    c = env.app.app.test_client()
+    with c.session_transaction() as sess:
+        sess["uid"] = u["id"]
+    h = c.get("/mypage").get_data(as_text=True)
+    assert "保存できる件数に制限はありません" in h
+    assert "件までです" not in h
 
 
 def test_expired_plan_is_free(env):

@@ -4650,12 +4650,12 @@ MYPAGE = """
   <span class="plan-badge {{ 'is-pro' if pro }}">{{ 'PRO' if pro else '無料プラン' }}</span>
  </div>
  <p class="lead" style="margin-top:8px">{{ user.email }}
-  <span class="sub">保存 {{ items|length }} / {{ limit }} 件</span></p>
+  <span class="sub">保存 {{ items|length }} 件{% if limit %} / {{ limit }} 件{% endif %}</span></p>
 
  {% if added %}<div class="note ok">保存しました。</div>{% endif %}
  {% if full %}<div class="note warn">保存できる件数（{{ limit }}件）に達しています。
-   いずれかを削除するか、PROで上限を増やしてください。</div>{% endif %}
- {% if items|length > limit %}
+   いずれかを削除するか、PROにすると件数の制限がなくなります。</div>{% endif %}
+ {% if limit and items|length > limit %}
   <div class="note">PROのときに保存した分が残っています。
    <b>これまでの保存はすべてご覧いただけます</b>が、
    いまの上限（{{ limit }}件）を超えているため、新しく保存するには
@@ -4711,7 +4711,7 @@ MYPAGE = """
 <div class="card" style="margin-top:14px">
  <h2 style="margin-top:0">プランと設定</h2>
  <p class="lead">いまは<b>{{ 'PRO' if pro else '無料プラン' }}</b>です。
-  保存できるのは{{ limit }}件までです。</p>
+  {% if limit %}保存できるのは{{ limit }}件までです。{% else %}保存できる件数に制限はありません。{% endif %}</p>
  <p><a class="btn ghost sm" href="/plan">プランを見る</a></p>
  <form method="post" action="/logout" style="margin-top:14px">
   <button class="btn ghost sm" type="submit">ログアウト</button></form>
@@ -4984,7 +4984,8 @@ PLAN_PAGE = """
   <thead><tr><th class="rowlbl">できること</th><th>無料</th><th>PRO</th></tr></thead>
   <tbody>
    <tr><th class="rowlbl">購入診断（戸建・マンション）</th><td>○</td><td>○</td></tr>
-   <tr><th class="rowlbl">診断結果の保存</th><td>{{ free_limit }}件</td><td>{{ pro_limit }}件</td></tr>
+   <tr><th class="rowlbl">診断結果の保存</th><td>{{ free_limit }}件</td>
+    <td>{% if pro_limit %}{{ pro_limit }}件{% else %}無制限{% endif %}</td></tr>
    <tr><th class="rowlbl">保存した物件の比較</th><td>○</td><td>○</td></tr>
    <tr><th class="rowlbl">詳細診断（PRO）</th><td>—</td><td>○</td></tr>
    <tr><th class="rowlbl">仲介業者に聞くことの一覧</th><td>—</td><td>○</td></tr>
@@ -5047,7 +5048,7 @@ PLAN_CONFIRM = """
     <td>HOME INDEX PRO<br>
      <span class="sub">契約期間中、詳細診断・仲介業者に聞くことの一覧・
       資金計画のPDFをご利用いただけます。診断の回数に制限はありません。
-      診断結果の保存は{{ pro_limit }}件までです。</span></td></tr>
+      {% if pro_limit %}診断結果の保存は{{ pro_limit }}件までです。{% else %}診断結果の保存にも件数の制限はありません。{% endif %}</span></td></tr>
    <tr><th class="rowlbl">料金</th>
     <td><b>{{ price_label }}</b><br>
      <span class="sub">2回目以降も同額です。初回だけ安くなる、

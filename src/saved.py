@@ -7,8 +7,13 @@
 「そのとき何と出たか」を残すほうが比較として正しい。
 
 ■保存件数の上限
-無料プランは3件まで、PROは20件まで。無料でも複数物件を並べられるように
+無料プランは3件まで。無料でも複数物件を並べられるようにするため
 （比較したいのは2〜3件目が出てきたときなので、1件では意味がない）。
+
+PROは無制限。家探しは何十件も見て絞る作業なので、上限があると
+「どれを消すか」を考えさせることになる。それは診断とは関係のない手間で、
+しかも消した物件こそ後から見返したくなる。件数の歯止めは、保存ではなく
+1日あたりの診断回数（app.py の RATE_LIMIT_PER_DAY）で掛けている。
 
 ■メモ
 点数に出ない条件（駐車場の広さ、隣家との距離、内見したときの印象）を
@@ -23,7 +28,7 @@ from . import db
 from . import accounts
 
 FREE_LIMIT = 3
-PRO_LIMIT = 20
+PRO_LIMIT = None    # PROは無制限。None は「上限なし」の意味。
 NOTE_MAX = 1000     # メモの上限（画面の但し書きと合わせる）
 
 # 再診断のために入力を残すが、家計に関わるものは保存しない。
@@ -36,7 +41,8 @@ class LimitReached(Exception):
     """保存件数の上限。呼び出し側でPROへの導線を出す。"""
 
 
-def limit_for(user: dict | None) -> int:
+def limit_for(user: dict | None) -> int | None:
+    """保存できる件数。None は無制限。"""
     return PRO_LIMIT if accounts.is_pro(user) else FREE_LIMIT
 
 
@@ -53,10 +59,12 @@ def save(user: dict, kind: str, title: str, address: str, price,
     now = db.now()
 
     def _go(exec_):
-        n = exec_("SELECT COUNT(*) AS c FROM saved_diagnoses WHERE user_id = ?",
-                  (user["id"],)).fetchone()
-        if int(dict(n)["c"]) >= lim:
-            raise LimitReached(str(lim))
+        if lim is not None:
+            n = exec_(
+                "SELECT COUNT(*) AS c FROM saved_diagnoses WHERE user_id = ?",
+                (user["id"],)).fetchone()
+            if int(dict(n)["c"]) >= lim:
+                raise LimitReached(str(lim))
         row = exec_(
             "INSERT INTO saved_diagnoses "
             "(user_id, kind, title, address, price, total_score, grade, "
