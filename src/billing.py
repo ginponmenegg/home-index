@@ -82,8 +82,17 @@ def checkout_url(email: str, user_id, success_url: str,
     )
     if customer_id:
         kw["customer"] = customer_id
-    else:
-        kw["customer_email"] = email
+        try:
+            return s.checkout.Session.create(**kw).url
+        except Exception as e:
+            # 保存してある顧客IDが今の鍵で通らないことがある。
+            # テスト環境で作ったIDを持ったまま本番の鍵に切り替えた場合が
+            # まさにこれで、そのままだと本人が申し込めなくなる。
+            # 紐付けは checkout.session.completed で付け直されるので、
+            # ここは顧客IDを外して進めてよい。
+            print(f"[stripe] retrying without customer {customer_id}: {e}")
+            kw.pop("customer")
+    kw["customer_email"] = email
     return s.checkout.Session.create(**kw).url
 
 

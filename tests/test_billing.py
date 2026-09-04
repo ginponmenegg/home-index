@@ -706,3 +706,38 @@ def test_a_member_id_reaches_the_database_as_a_number(billing):
     assert all(isinstance(v, int) for v in seen), \
         f"文字列のまま渡っている: {seen}"
     assert billing.accounts.is_pro(billing.accounts.get_user(uid))
+
+
+def test_a_stale_customer_id_does_not_block_signing_up():
+    """テスト環境の顧客IDを持ったまま本番の鍵に変えても、申し込める。
+
+    切り替えの直後にこれで詰まると、直せるのは運用側だけになる。
+    """
+    import types
+    from src import billing as b
+    calls = []
+
+    class Boom(Exception):
+        pass
+
+    def create(**kw):
+        calls.append(kw)
+        if "customer" in kw:
+            raise Boom("No such customer: cus_old")
+        return types.SimpleNamespace(url="https://checkout.stripe.com/ok")
+
+    fake = types.SimpleNamespace(
+        checkout=types.SimpleNamespace(
+            Session=types.SimpleNamespace(create=create)))
+    keep = b._stripe
+    b._stripe = lambda: fake
+    try:
+        url = b.checkout_url(email="a@example.com", user_id=1,
+                             success_url="/s", cancel_url="/c",
+                             customer_id="cus_old")
+    finally:
+        b._stripe = keep
+    assert url == "https://checkout.stripe.com/ok"
+    assert len(calls) == 2, "顧客IDを外して1度だけやり直すこと"
+    assert "customer" not in calls[1]
+    assert calls[1]["customer_email"] == "a@example.com"
