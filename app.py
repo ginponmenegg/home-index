@@ -408,7 +408,21 @@ LEGAL_LINKS = (_about_link()
                + ('　・　<a href="/tokushoho" style="color:#111">'
                   '特定商取引法に基づく表記</a>' if billing_on() else ''))
 
-PRO_LINKS = ('<a href="/pro" style="color:#111">PRO（試験公開中）</a>：'
+# 試験公開のあいだは無料で開けていた。課金を始めた以上、同じ案内を
+# 出し続けると「無料と書いて2,980円を請求する」表示になる。
+TRIAL_BANNER = ('' if billing_on() else
+                '<div class="banner"><b>試験公開中です。</b>現在は無料でお使い'
+                'いただけますが、将来は有料（月額）になる予定です。'
+                '会員登録はまだ不要です。</div>')
+TRIAL_NOTE = ('' if billing_on() else
+              '<p style="background:#fafafa;border:1px solid #e5e5e5;'
+              'border-radius:10px;padding:12px 14px;font-size:14px;'
+              'line-height:1.8;margin:12px 0"><b>試験公開中です。</b>'
+              '現在は無料でお使いいただけますが、将来は有料（月額）に'
+              'なる予定です。会員登録はまだ不要です。</p>')
+
+PRO_LINKS = (f'<a href="/pro" style="color:#111">'
+             f'{"PRO" if billing_on() else "PRO（試験公開中）"}</a>：'
              '<a href="/pro/diagnose" style="color:#111">購入診断（戸建）</a>　・　'
              '<a href="/pro/mansion" style="color:#111">購入診断（マンション）</a>　・　'
              '<a href="/pro/finance" style="color:#111">詳細な資金計画</a>')
@@ -2532,8 +2546,11 @@ def guide_page(slug):
 # サイトマップに載せるのはGETで開けるページだけ。
 # 診断結果はPOSTでしか生成されず、固有のURLを持たないのでクロール対象にならない。
 SITEMAP_PATHS = ["/", "/buy", "/mansion", "/copy-guide", "/pro",
-                 "/pro/diagnose", "/pro/mansion", "/pro/finance",
                  "/terms", "/privacy"]
+if not billing_on():
+    # 課金中は会員しか開けない。開けないURLを検索エンジンに出すと、
+    # 来た人が案内ページに突き当たるだけになる。/pro は案内なので残す。
+    SITEMAP_PATHS[5:5] = ["/pro/diagnose", "/pro/mansion", "/pro/finance"]
 if operator_named():
     # 誰が作ったかは検索エンジンにも見せる（YMYLではここが効く）
     SITEMAP_PATHS.insert(3, "/about")
@@ -3522,7 +3539,7 @@ BRAND_BAR
  <h1>購入診断(戸建)(PRO)</h1>
  <p class="aim">無料診断で「未確認」として点数に入れていなかったことを、あなたの回答で埋めます。
   情報が増えるぶん、同じ物件でも点数は変わります。</p>
- <div class="banner"><b>試験公開中です。</b>現在は無料でお使いいただけますが、将来は有料（月額）になる予定です。会員登録はまだ不要です。</div>
+ TRIAL_BANNER_PLACEHOLDER
  <div class="banner">
   <b>推定価格レンジは無料診断と同じ計算です。</b>ここで入力していただく建物の状態や
   リフォームの内容は、<b>物件評価とリスクにのみ</b>反映し、価格の推定には使いません。
@@ -3644,6 +3661,7 @@ PRO_DIAGNOSE_FORM = (PRO_DIAGNOSE_FORM
                               _pro_select("employment", "employment"))
                      .replace("MANSION_CSS_PLACEHOLDER", _FORM_CSS)
                      .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
+                     .replace("TRIAL_BANNER_PLACEHOLDER", TRIAL_BANNER)
                      .replace("BRAND_BAR", brand_bar("購入診断(戸建)(PRO)"))
                      .replace("</div></body></html>",
                               FOOTER + "</div></body></html>"))
@@ -3656,6 +3674,9 @@ def pro_start():
     年収や検討中の住所を含むため、クエリ文字列ではなくPOSTで受ける
     （URLに残さない・アクセスログに出さない）。
     """
+    g = _require_pro()
+    if g is not None:
+        return g
     v = _pro_form_values(request.form)
     if request.form.get("edit"):
         return render_template_string(PRO_DIAGNOSE_FORM, v=v,
@@ -3671,7 +3692,10 @@ def pro_start():
 
 @app.route("/pro/diagnose", methods=["GET", "POST"])
 def pro_diagnose():
-    """PROの購入診断（戸建）。まだログイン判定は入れていない。"""
+    """PROの購入診断（戸建）。課金中はPRO会員だけ。"""
+    g = _require_pro()
+    if g is not None:
+        return g
     if request.method == "GET":
         return render_template_string(PRO_DIAGNOSE_FORM,
                                       v=_pro_defaults_full(), banner=None)
@@ -3915,7 +3939,7 @@ BRAND_BAR
  <p class="aim">分かる範囲で答えるほど、診断の確かさが上がります。
   <b>分からない項目は「未確認」のままで構いません。</b>
   答えられなかったことは、最後に「仲介業者に聞くこと」としてまとめてお渡しします。</p>
- <div class="banner"><b>試験公開中です。</b>現在は無料でお使いいただけますが、将来は有料（月額）になる予定です。会員登録はまだ不要です。</div>
+ TRIAL_BANNER_PLACEHOLDER
  <div class="banner">
   <b>推定価格レンジは無料診断と同じ計算です。</b>ここで入力していただく内容は、
   <b>管理・資産性・リスクにのみ</b>反映し、価格の推定には使いません。
@@ -4001,6 +4025,7 @@ MANSION_PRO_FORM = (MANSION_PRO_FORM
                     .replace("MPRO_DETAIL_PLACEHOLDER", _mpro_detail_html())
                     .replace("MANSION_CSS_PLACEHOLDER", _FORM_CSS)
                     .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
+                    .replace("TRIAL_BANNER_PLACEHOLDER", TRIAL_BANNER)
                     .replace("BRAND_BAR", brand_bar("購入診断(マンション)(PRO)"))
                     .replace("</div></body></html>",
                              FOOTER + "</div></body></html>"))
@@ -4019,6 +4044,9 @@ def _mpro_form_values(f):
 @app.route("/pro/mansion_start", methods=["POST"])
 def pro_mansion_start():
     """無料のマンション診断から、入力を引き継いでPROのフォームを開く。"""
+    g = _require_pro()
+    if g is not None:
+        return g
     return render_template_string(
         MANSION_PRO_FORM, v=_mpro_form_values(request.form),
         directions=DIRECTIONS,
@@ -4029,7 +4057,10 @@ def pro_mansion_start():
 
 @app.route("/pro/mansion", methods=["GET", "POST"])
 def pro_mansion():
-    """マンションのPRO診断。まだログイン判定は入れていない。"""
+    """マンションのPRO診断。課金中はPRO会員だけ。"""
+    g = _require_pro()
+    if g is not None:
+        return g
     if request.method == "GET":
         return render_template_string(MANSION_PRO_FORM, v=_mpro_defaults(),
                                       directions=DIRECTIONS, banner=None)
@@ -4235,6 +4266,41 @@ _ACCOUNT_CSS = """
    padding:12px 0;margin-top:6px;display:flex;gap:10px;align-items:center}
  .selbar .n{font-size:13px;color:#6b7280}
 """
+
+
+_PRO_LOCKED_BODY = """
+<div class="card">
+ <h1>PROプランの機能です</h1>
+ <p class="lead">この画面は、PROプランをご利用中の方にお使いいただけます。</p>
+ <p>無料の購入診断は、そのままお使いいただけます。
+  PROは、無料診断が「未確認」として点数に入れていない項目を、
+  ご自身の回答で埋めて診断し直すためのものです。</p>
+ <p style="margin-top:14px">
+  <a class="btn" href="/plan">プランを見る</a>
+  <a class="btn ghost" href="/buy">無料で診断する</a></p>
+</div>
+"""
+
+
+def _require_pro():
+    """PROの画面を開いてよいか。開いてよければ None。
+
+    試験公開のあいだは誰でも使えた（料金をいただいていなかったため）。
+    課金を始めた以上、同じものを無料で配り続けると、払う理由が無くなる。
+    ここを塞がないと、プラン画面だけが有料で中身は全部開いたままになる。
+
+    入口で止める。フォームは見せて結果だけ隠す作りにはしない。
+    入力し終えてから「お金を払え」と言うのは、こちらの都合で相手の
+    時間を使わせる形になる。
+    """
+    if not billing_on():
+        return None
+    r = _require_login()
+    if r is not None:
+        return r
+    if accounts.is_pro(current_user()):
+        return None
+    return _account_page("PROプランの機能です", _PRO_LOCKED_BODY, chip="PRO")
 
 
 def _account_page(title, body, chip="マイページ"):
@@ -5583,7 +5649,7 @@ FONT_LINK_PLACEHOLDER
 BRAND_BAR
 <div class="wrap">
  <h1>詳細な資金計画<span class="tag">PRO</span></h1>
- <p style="background:#fafafa;border:1px solid #e5e5e5;border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.8;margin:12px 0"><b>試験公開中です。</b>現在は無料でお使いいただけますが、将来は有料（月額）になる予定です。会員登録はまだ不要です。</p>
+ TRIAL_NOTE_PLACEHOLDER
  <p class="lead">購入にかかる諸費用、金利が上がったときの返済額、繰上返済の効果、住宅ローン控除の見込みを、
   公的な税率と料率にもとづいて試算します。<b>物件の価格を評価するものではありません。</b></p>
  {% if banner %}<p style="background:#eef4fa;border:1px solid #cddcea;border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.8;margin:12px 0">{{banner|safe}}</p>{% endif %}
@@ -5911,6 +5977,7 @@ BRAND_BAR
 """
 
 PRO_FINANCE_FORM = (PRO_FINANCE_FORM
+                    .replace("TRIAL_NOTE_PLACEHOLDER", TRIAL_NOTE)
                     .replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
                     .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
                     .replace("BRAND_BAR", brand_bar("PRO"))
@@ -5950,9 +6017,12 @@ def _pro_defaults():
 # 申し込んだ人が最初に着く場所が無く、何が使えるのかを説明する場所も
 # 無かった。ここがその場所になる。
 
+_PRO_HUB_TRIAL = ('' if billing_on() else
+                  '<b>試験公開中で、いまは無料で使えます。</b>')
+
 _PRO_HUB_BODY = ("""
 <p class="sub">PROは、無料診断が「未確認」として点数に入れていない項目を、
-ご自身の回答で埋めるためのものです。<b>試験公開中で、いまは無料で使えます。</b></p>
+ご自身の回答で埋めるためのものです。""" + _PRO_HUB_TRIAL + """</p>
 
 <h2>1. 購入診断（PRO）</h2>
 <p>建物内部の状態、設備の更新時期、リフォームした箇所、接道と再建築の可否、
@@ -5987,6 +6057,7 @@ _PRO_HUB_BODY = ("""
 
 @app.route("/pro")
 def pro_hub():
+    """PROの入口。ここは案内なので、会員でなくても開ける。"""
     return _legal_page("PRO", _PRO_HUB_BODY)
 
 
@@ -6005,6 +6076,9 @@ def _finance_tmpl_kw():
 
 @app.route("/pro/finance", methods=["GET", "POST"])
 def pro_finance():
+    g = _require_pro()
+    if g is not None:
+        return g
     if request.method == "GET":
         return render_template_string(PRO_FINANCE_FORM, v=_pro_defaults(),
                                       **_finance_tmpl_kw())
@@ -6018,6 +6092,9 @@ def pro_finance_start():
     年収と住所を含むので、クエリ文字列ではなくPOSTで受ける
     （URLに残さない・アクセスログに出さない）。/pro/start と同じ理由。
     """
+    g = _require_pro()
+    if g is not None:
+        return g
     f = request.form
     v = _pro_defaults()
     for k in v:
@@ -6169,6 +6246,9 @@ def _pro_compute(f):
 @app.route("/pro/finance.pdf", methods=["POST"])
 def pro_finance_pdf():
     """試算結果をPDFレポートとして返す。計算はHTML版と同じ経路を使う。"""
+    g = _require_pro()
+    if g is not None:
+        return g
     from flask import Response
     from src.report import build_finance_pdf
     ctx = _pro_compute(request.form)

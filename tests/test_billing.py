@@ -359,3 +359,86 @@ def test_the_screens_stay_hidden_without_payment_keys():
             os.environ["STRIPE_SECRET_KEY"] = keep
         from src import billing as b2
         importlib.reload(b2)
+
+
+# ---- 売っているものを、同時に無料で配らない -------------------------------
+#
+# 試験公開のあいだ /pro/* は誰でも開けた。料金をいただいていなかったため。
+# 課金を始めた以上、同じものが無料で使えると、払う理由が無くなる。
+
+_PRO_PAGES = ["/pro/diagnose", "/pro/mansion", "/pro/finance"]
+_PRO_POSTS = ["/pro/start", "/pro/mansion_start", "/pro/finance_start",
+              "/pro/finance.pdf"]
+
+
+def test_pro_is_closed_to_visitors_while_charging(billing):
+    """未ログインではPROの画面に入れない。"""
+    c = billing.app.app.test_client()
+    for p in _PRO_PAGES:
+        assert c.get(p).status_code in (301, 302), p
+    for p in _PRO_POSTS:
+        assert c.post(p, data={}).status_code in (301, 302), p
+
+
+def test_a_free_member_is_shown_the_plan_instead(billing):
+    """無料会員には、フォームではなく案内を出す。
+
+    入口で止める。フォームを見せて結果だけ隠すと、入力し終えてから
+    お金の話をすることになる。
+    """
+    c, _uid = _login(billing, "freemember@example.com")
+    for p in _PRO_PAGES:
+        h = c.get(p).get_data(as_text=True)
+        assert "PROプランの機能です" in h, p
+        assert "<form" not in h.split("PROプランの機能です")[1][:2000], p
+    for p in _PRO_POSTS:
+        assert "PROプランの機能です" in c.post(p, data={}).get_data(as_text=True), p
+
+
+def test_a_subscriber_can_use_pro(billing):
+    c, uid = _login(billing, "promember@example.com")
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, None)
+    for p in _PRO_PAGES:
+        h = c.get(p).get_data(as_text=True)
+        assert "PROプランの機能です" not in h, p
+        assert "<form" in h, p
+
+
+def test_the_free_trial_wording_is_gone_once_charging(billing):
+    """「いまは無料」と書いたまま2,980円を請求しない。"""
+    c, uid = _login(billing, "wording@example.com")
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, None)
+    for p in _PRO_PAGES + ["/pro", "/plan"]:
+        assert "試験公開中" not in c.get(p).get_data(as_text=True), p
+
+
+def test_the_sitemap_drops_the_pages_behind_the_paywall(billing):
+    """開けないURLを検索エンジンに出さない。/pro は案内なので残す。"""
+    sm = billing.app.app.test_client().get("/sitemap.xml").get_data(as_text=True)
+    assert "/pro<" in sm or "/pro</loc>" in sm
+    for p in _PRO_PAGES:
+        assert p not in sm, p
+
+
+def test_pro_stays_open_while_it_is_free():
+    """試験公開中は誰でも使える。閉じるのは課金を始めてから。"""
+    keep = {k: os.environ.get(k) for k in ("BILLING_ENABLED",
+                                           "STRIPE_SECRET_KEY")}
+    try:
+        os.environ["BILLING_ENABLED"] = ""
+        os.environ["STRIPE_SECRET_KEY"] = ""
+        webapp, _db, _ac = _reload()
+        assert not webapp.billing_on()
+        c = webapp.app.test_client()
+        for p in _PRO_PAGES:
+            h = c.get(p)
+            assert h.status_code == 200, p
+            assert "<form" in h.get_data(as_text=True), p
+        assert "試験公開中" in c.get("/pro/diagnose").get_data(as_text=True)
+    finally:
+        for k, v in keep.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        _reload()
