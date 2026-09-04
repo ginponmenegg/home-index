@@ -19,7 +19,7 @@ import webbrowser
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flask import (Flask, request, render_template_string,  # noqa: E402
                    session, redirect)
-from src import db, accounts, saved, mailer, billing  # noqa: E402
+from src import db, accounts, saved, mailer, billing, campaign  # noqa: E402
 from src.models import SubjectProperty, MansionSubject  # noqa: E402
 from src.pipeline import run_pipeline, run_mansion_pipeline  # noqa: E402
 from src.extract import parse_listing_text, extract_from_url  # noqa: E402
@@ -384,6 +384,23 @@ OPERATOR_TEL = os.environ.get("OPERATOR_TEL", "")
 # 規約の課金条項も整えてから。
 PRICE_YEN = 2980                     # 税込。総額表示義務があるため税別で持たない
 PRICE_LABEL = f"月額 {PRICE_YEN:,}円（税込）"
+
+
+def price_now():
+    """いま申し込む人に請求する金額とラベル。
+
+    キャンペーン中は安いほうを返す。特商法の最終確認画面はここの値を
+    出すので、実際に請求する額とずれないよう、Priceを選ぶのと同じ関数
+    から取る。表示と請求を別々に組み立てると、片方だけ直し忘れる。
+    """
+    if campaign.active():
+        return campaign.price_yen(), campaign.label()
+    return PRICE_YEN, PRICE_LABEL
+
+
+def campaign_price_id():
+    """申込に使うStripeのPrice。キャンペーン中だけ差し替わる。"""
+    return campaign.price_id() if campaign.active() else None
 
 
 def billing_on() -> bool:
@@ -5083,11 +5100,22 @@ PLAN_PAGE = """
  <p style="margin-top:14px"><a class="btn ghost" href="/plan/cancel">解約する</a></p>
 {% else %}
  <div class="note" style="margin-top:14px">
+  {% if campaign %}
+  <p style="margin:0 0 6px"><b>PRO　{{ price_label }}</b>
+   <span class="sub" style="text-decoration:line-through">{{ normal_label }}</span></p>
+  <p style="margin:0 0 6px"><b>{{ campaign_until }}までにお申し込みの方は、
+   そのあともずっとこの金額です。</b>あとから通常価格に上がることはありません。</p>
+  {% else %}
   <p style="margin:0 0 6px"><b>PRO　{{ price_label }}</b></p>
+  {% endif %}
   <p style="margin:0">解約されるまで毎月自動で更新されます。
    金額は初回も2回目以降も同じです。<br>
    <b>マイページからいつでも解約できます。</b>
    解約後も、保存した診断はそのままご覧いただけます。</p>
+  {% if campaign %}
+  <p class="sub" style="margin:6px 0 0">
+   いったん解約されますと、再開のお申し込みは通常価格になります。</p>
+  {% endif %}
  </div>
  <p style="margin-top:14px">
   <a class="btn" href="/plan/confirm">PROに申し込む</a></p>
@@ -5126,8 +5154,16 @@ PLAN_CONFIRM = """
       {% if pro_limit %}診断結果の保存は{{ pro_limit }}件までです。{% else %}診断結果の保存にも件数の制限はありません。{% endif %}</span></td></tr>
    <tr><th class="rowlbl">料金</th>
     <td><b>{{ price_label }}</b><br>
+     {% if campaign %}
+     <span class="sub"><b>{{ campaign_until }}までのお申し込みに適用される
+      価格です。</b>通常価格は月額{{ normal_yen }}円（税込）ですが、
+      いまお申し込みいただいた場合、ご契約が続くかぎり上の金額のままです。<br>
+      2回目以降も同額です。あとから値上がりすることはありません。<br>
+      なお、解約されたあとに再開される場合は、通常価格となります。</span>
+     {% else %}
      <span class="sub">2回目以降も同額です。初回だけ安くなる、
-      あとから値上がりする、といったことはありません。</span></td></tr>
+      あとから値上がりする、といったことはありません。</span>
+     {% endif %}</td></tr>
    <tr><th class="rowlbl">支払総額</th>
     <td><b>解約されるまで、毎月{{ price_yen }}円（税込）が発生します。</b><br>
      <span class="sub">契約期間の定めがないため、総額はご利用期間によります。
@@ -5232,7 +5268,9 @@ def plan_page():
     body = render_template_string(
         PLAN_PAGE, pro=accounts.is_pro(u), billing=billing_on(),
         cancel_at=(u or {}).get("plan_cancel_at"),   # 未ログインでも開ける
-        price_label=PRICE_LABEL,
+        campaign=campaign.active(), campaign_until=campaign.until_ja(),
+        normal_label=PRICE_LABEL,
+        price_label=price_now()[1],
         expires=(u or {}).get("plan_expires_at"),
         free_limit=saved.FREE_LIMIT, pro_limit=saved.PRO_LIMIT)
     return _account_page("プラン", body, chip="プラン")
@@ -5250,7 +5288,9 @@ def plan_confirm():
     if accounts.is_pro(current_user()):
         return redirect("/plan")
     body = render_template_string(
-        PLAN_CONFIRM, price_label=PRICE_LABEL, price_yen=PRICE_YEN,
+        PLAN_CONFIRM, price_label=price_now()[1], price_yen=price_now()[0],
+        campaign=campaign.active(), campaign_until=campaign.until_ja(),
+        normal_yen=PRICE_YEN,
         free_limit=saved.FREE_LIMIT, pro_limit=saved.PRO_LIMIT)
     return _account_page("お申込みの確認", body, chip="プラン")
 
@@ -5273,7 +5313,8 @@ def plan_subscribe():
             email=u.get("email"), user_id=u["id"],
             success_url=f"{base}/plan/done?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base}/plan/confirm",
-            customer_id=u.get("stripe_customer_id") or None)
+            customer_id=u.get("stripe_customer_id") or None,
+            price=campaign_price_id())
     except Exception as e:
         # 決済側の不調をそのまま500にしない。押した人には何が起きたかを
         # 伝え、こちらはログで拾う。

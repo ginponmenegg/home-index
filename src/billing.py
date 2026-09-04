@@ -62,7 +62,8 @@ def mode() -> str:
 
 
 def checkout_url(email: str, user_id, success_url: str,
-                 cancel_url: str, customer_id: Optional[str] = None) -> str:
+                 cancel_url: str, customer_id: Optional[str] = None,
+                 price: Optional[str] = None) -> str:
     """申込のCheckoutを作ってURLを返す。
 
     client_reference_id に会員IDを入れる。Webhookが「どの会員の支払いか」を
@@ -71,7 +72,7 @@ def checkout_url(email: str, user_id, success_url: str,
     s = _stripe()
     kw = dict(
         mode="subscription",
-        line_items=[{"price": _env(PRICE_ID), "quantity": 1}],
+        line_items=[{"price": price or _env(PRICE_ID), "quantity": 1}],
         success_url=success_url,
         cancel_url=cancel_url,
         client_reference_id=str(user_id),
