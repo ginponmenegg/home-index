@@ -287,7 +287,9 @@ def test_subscribe_sends_the_buyer_to_stripe(billing, monkeypatch):
     assert r.status_code == 303
     assert r.headers["Location"].startswith("https://checkout.stripe.com/")
     assert seen["user_id"] == uid, "誰の支払いかをStripeに渡すこと"
-    assert seen["success_url"].endswith("/plan/done")
+    assert seen["success_url"].endswith(
+        "/plan/done?session_id={CHECKOUT_SESSION_ID}"), \
+        "戻り先でStripeに問い合わせられるよう、セッションIDを受け取る"
     # 押しただけではPROにならない
     assert not billing.accounts.is_pro(billing.accounts.get_user(uid))
 
@@ -442,3 +444,86 @@ def test_pro_stays_open_while_it_is_free():
             else:
                 os.environ[k] = v
         _reload()
+
+
+# ---- Webhookが届かなかったときの保険 ---------------------------------------
+#
+# 正はWebhook。ただ設定を取り違えると、払った人が「PROになっていない」
+# 画面を見ることになる。戻ってきた人については、こちらからStripeに
+# 「この決済は済んでいるか」を聞きに行く。
+
+
+def _fake_session(uid, paid=True, cust="cus_z", sub="sub_z"):
+    return {"payment_status": "paid" if paid else "unpaid",
+            "client_reference_id": str(uid), "customer": cust,
+            "subscription": sub}
+
+
+def test_the_return_screen_asks_stripe_when_the_hook_is_late(billing,
+                                                             monkeypatch):
+    c, uid = _login(billing, "late@example.com")
+    monkeypatch.setattr(billing.app.billing, "checkout_session",
+                        lambda sid: _fake_session(uid))
+    monkeypatch.setattr(billing.app.billing, "subscription", lambda i: {})
+    monkeypatch.setattr(billing.app.billing, "period_end",
+                        lambda s: "2099-01-01T00:00:00+00:00")
+    h = c.get("/plan/done?session_id=cs_test_1").get_data(as_text=True)
+    assert billing.accounts.is_pro(billing.accounts.get_user(uid))
+    assert "確認をしています" not in h
+
+
+def test_an_unpaid_session_grants_nothing(billing, monkeypatch):
+    c, uid = _login(billing, "unpaidsess@example.com")
+    monkeypatch.setattr(billing.app.billing, "checkout_session",
+                        lambda sid: _fake_session(uid, paid=False))
+    c.get("/plan/done?session_id=cs_test_2")
+    assert not billing.accounts.is_pro(billing.accounts.get_user(uid))
+
+
+def test_someone_elses_session_grants_nothing(billing, monkeypatch):
+    """他人のセッションIDを貼っても、自分がPROにならない。"""
+    c, uid = _login(billing, "borrower@example.com")
+    other = billing.accounts._upsert_user("owner@example.com")
+    monkeypatch.setattr(billing.app.billing, "checkout_session",
+                        lambda sid: _fake_session(other["id"]))
+    monkeypatch.setattr(billing.app.billing, "subscription", lambda i: {})
+    monkeypatch.setattr(billing.app.billing, "period_end", lambda s: None)
+    c.get("/plan/done?session_id=cs_test_3")
+    assert not billing.accounts.is_pro(billing.accounts.get_user(uid))
+    assert not billing.accounts.is_pro(
+        billing.accounts.get_user(other["id"])), "他人のプランも動かさない"
+
+
+def test_the_return_screen_needs_no_session_id(billing):
+    """直接開かれても落ちない。"""
+    c, uid = _login(billing, "bare@example.com")
+    assert c.get("/plan/done").status_code == 200
+
+
+def test_a_member_id_reaches_the_database_as_a_number(billing):
+    """会員IDを文字列のままDBに渡さない。
+
+    Webhookの client_reference_id は文字列で届く。SQLiteは型親和性で
+    '3' を 3 として扱うため、ここを間違えてもテストでは気づけない。
+    PostgreSQL は integer = text を拒むので本番だけ落ちる。
+    型がそろっていることを直接見る。
+    """
+    seen = []
+    real = billing.db.run
+
+    def spy(q, params=(), fetch="none"):
+        if "users" in q and "WHERE id = ?" in q:
+            seen.append(params[-1])
+        return real(q, params, fetch)
+
+    billing.accounts.db.run = spy
+    try:
+        _c, uid = _login(billing, "typed@example.com")
+        billing.accounts.set_plan(str(uid), billing.accounts.PLAN_PRO, None)
+        billing.accounts.set_stripe_ids(str(uid), "cus_t", "sub_t")
+    finally:
+        billing.accounts.db.run = real
+    assert seen, "更新が走っていない"
+    assert all(isinstance(v, int) for v in seen), \
+        f"文字列のまま渡っている: {seen}"
+    assert billing.accounts.is_pro(billing.accounts.get_user(uid))

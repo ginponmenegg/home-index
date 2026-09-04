@@ -142,3 +142,12 @@ def verify_event(payload: bytes, signature: str):
 
 def subscription(subscription_id: str):
     return _stripe().Subscription.retrieve(subscription_id)
+
+
+def checkout_session(session_id: str):
+    """Checkoutの結果をStripeに直接聞く。
+
+    戻り画面の保険。URLに載ってくるのはセッションIDだけで、支払いが
+    済んだかどうかはStripeに聞いて確かめる。URLの中身は信用しない。
+    """
+    return _stripe().checkout.Session.retrieve(session_id)

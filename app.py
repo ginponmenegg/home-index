@@ -5261,7 +5261,7 @@ def plan_subscribe():
     try:
         url = billing.checkout_url(
             email=u.get("email"), user_id=u["id"],
-            success_url=f"{base}/plan/done",
+            success_url=f"{base}/plan/done?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base}/plan/confirm",
             customer_id=u.get("stripe_customer_id") or None)
     except Exception as e:
@@ -5287,7 +5287,11 @@ def plan_done():
     r = _require_login()
     if r is not None:
         return r
-    pro = accounts.is_pro(current_user())
+    u = current_user()
+    if not accounts.is_pro(u):
+        _catch_up_from_checkout(u, request.args.get("session_id"))
+        u = accounts.get_user(u["id"])
+    pro = accounts.is_pro(u)
     body = ('<div class="card"><h1>お申込みありがとうございます</h1>'
             + ('<p class="lead">PROをご利用いただけます。</p>'
                if pro else
@@ -5345,6 +5349,40 @@ def stripe_webhook():
         print(f"[stripe] handling {kind} failed: {e}")
         return "error", 500
     return "", 200
+
+
+def _catch_up_from_checkout(user, session_id):
+    """Webhookがまだ届いていないときの保険。
+
+    正はWebhook。ただ、Webhookの設定を取り違えていたり、届くのが遅れ
+    たりすると、払った人が「PROになっていない」画面を見ることになる。
+    それが一番まずいので、戻ってきた人については、こちらからStripeに
+    「この決済は済んでいるか」を聞きに行く。
+
+    URLのセッションIDは信用しない。信用するのはStripeの答えのほうで、
+    しかも client_reference_id がログイン中の本人と一致するときだけ
+    適用する。他人のセッションIDを貼っても何も起きない。
+    """
+    if not session_id or not billing.enabled():
+        return
+    try:
+        sess = billing.checkout_session(session_id)
+    except Exception as e:
+        print(f"[stripe] checkout lookup failed: {e}")
+        return
+    def g(k):
+        return sess.get(k) if isinstance(sess, dict) else getattr(sess, k, None)
+    if g("payment_status") != "paid":
+        return
+    if str(g("client_reference_id") or "") != str(user["id"]):
+        print("[stripe] session does not belong to this user")
+        return
+    try:
+        _apply_stripe_event("checkout.session.completed", {
+            "client_reference_id": g("client_reference_id"),
+            "customer": g("customer"), "subscription": g("subscription")})
+    except Exception as e:
+        print(f"[stripe] catch-up failed: {e}")
 
 
 def _apply_stripe_event(kind, obj):

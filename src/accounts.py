@@ -142,6 +142,17 @@ def _upsert_user(email: str) -> dict:
     return db.run_many(_go)
 
 
+def _uid(user_id):
+    """会員IDを整数にそろえる。
+
+    Webhookの client_reference_id は文字列で届く。SQLiteは型親和性で
+    '3' を 3 として扱うのでテストでは通るが、PostgreSQL は
+    integer = text を受け付けずエラーになる。本番だけ落ちるという
+    一番たちの悪い形になるので、DBに触る手前でそろえる。
+    """
+    return int(user_id)
+
+
 def get_user(user_id) -> dict | None:
     if not user_id:
         return None
@@ -161,7 +172,7 @@ def is_pro(user: dict | None) -> bool:
 def set_plan(user_id, plan: str, expires_at: str | None = None) -> None:
     """プランを変更する。決済を繋いだあとはWebhookからここを呼ぶ。"""
     db.run("UPDATE users SET plan = ?, plan_expires_at = ? WHERE id = ?",
-           (plan, expires_at, user_id))
+           (plan, expires_at, _uid(user_id)))
 
 
 def set_stripe_ids(user_id, customer_id: str | None = None,
@@ -176,7 +187,7 @@ def set_stripe_ids(user_id, customer_id: str | None = None,
         args.append(subscription_id)
     if not sets:
         return
-    args.append(user_id)
+    args.append(_uid(user_id))
     db.run(f"UPDATE users SET {', '.join(sets)} WHERE id = ?", tuple(args))
 
 
