@@ -162,3 +162,31 @@ def set_plan(user_id, plan: str, expires_at: str | None = None) -> None:
     """プランを変更する。決済を繋いだあとはWebhookからここを呼ぶ。"""
     db.run("UPDATE users SET plan = ?, plan_expires_at = ? WHERE id = ?",
            (plan, expires_at, user_id))
+
+
+def set_stripe_ids(user_id, customer_id: str | None = None,
+                   subscription_id: str | None = None) -> None:
+    """決済側のIDを結びつける。渡したものだけ書き換える。"""
+    sets, args = [], []
+    if customer_id is not None:
+        sets.append("stripe_customer_id = ?")
+        args.append(customer_id)
+    if subscription_id is not None:
+        sets.append("stripe_subscription_id = ?")
+        args.append(subscription_id)
+    if not sets:
+        return
+    args.append(user_id)
+    db.run(f"UPDATE users SET {', '.join(sets)} WHERE id = ?", tuple(args))
+
+
+def user_by_customer(customer_id: str) -> dict | None:
+    """決済側の顧客IDから会員を引く。
+
+    Webhookには会員IDが載らないイベントがある（更新・解約など）。
+    そのときはこちらで辿る。
+    """
+    if not customer_id:
+        return None
+    return db.run("SELECT * FROM users WHERE stripe_customer_id = ?",
+                  (customer_id,), "one")

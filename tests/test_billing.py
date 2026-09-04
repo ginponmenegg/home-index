@@ -16,10 +16,15 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# 決済の鍵が無いと申込画面は出ない（押した先で失敗するため）。
+# ここではStripeを呼ばないので、形だけのテスト鍵で足りる。
 _ENV = {"BILLING_ENABLED": "1", "OPERATOR_NAME": "山田 太郎",
         "OPERATOR_ADDRESS": "神奈川県小田原市栄町1-1-1",
         "OPERATOR_TEL": "0465-00-0000",
-        "CONTACT_EMAIL": "support@example.jp"}
+        "CONTACT_EMAIL": "support@example.jp",
+        "STRIPE_SECRET_KEY": "sk_test_dummy",
+        "STRIPE_PRICE_ID": "price_dummy",
+        "STRIPE_WEBHOOK_SECRET": "whsec_dummy"}
 
 
 def _reload(extra=None):
@@ -262,9 +267,95 @@ def test_saved_diagnoses_survive_cancelling(billing):
         c.get("/mypage").get_data(as_text=True)
 
 
-def test_subscribe_is_not_wired_yet(billing):
-    """決済は未接続。押しても課金されないこと。"""
-    c, uid = _login(billing, "notwired@example.com")
-    h = c.post("/plan/subscribe").get_data(as_text=True)
-    assert "準備中" in h
+# ---- Stripeとの接続 -------------------------------------------------------
+#
+# 実際にStripeを呼ばない。呼ぶ関数を差し替えて、こちら側の道筋だけを見る。
+# 見たいのは「プランが動くのは署名を確かめたWebhookだけ」という一点。
+
+
+def test_subscribe_sends_the_buyer_to_stripe(billing, monkeypatch):
+    """カード番号はこのサーバーを通さない。Stripeのページへ送る。"""
+    c, uid = _login(billing, "checkout@example.com")
+    seen = {}
+
+    def fake(**kw):
+        seen.update(kw)
+        return "https://checkout.stripe.com/c/pay/test123"
+
+    monkeypatch.setattr(billing.app.billing, "checkout_url", fake)
+    r = c.post("/plan/subscribe")
+    assert r.status_code == 303
+    assert r.headers["Location"].startswith("https://checkout.stripe.com/")
+    assert seen["user_id"] == uid, "誰の支払いかをStripeに渡すこと"
+    assert seen["success_url"].endswith("/plan/done")
+    # 押しただけではPROにならない
     assert not billing.accounts.is_pro(billing.accounts.get_user(uid))
+
+
+def test_the_return_screen_does_not_grant_the_plan(billing):
+    """戻り先は誰でも開ける。ここでプランを上げない。"""
+    c, uid = _login(billing, "done@example.com")
+    h = c.get("/plan/done").get_data(as_text=True)
+    assert "確認をしています" in h
+    assert not billing.accounts.is_pro(billing.accounts.get_user(uid))
+
+
+def test_a_webhook_without_a_valid_signature_is_refused(billing):
+    """署名を確かめないと、誰でもPOSTでPROになれる。"""
+    c = billing.app.app.test_client()
+    r = c.post("/stripe/webhook",
+               data=b'{"type":"checkout.session.completed"}',
+               headers={"Stripe-Signature": "t=1,v1=deadbeef"})
+    assert r.status_code == 400
+
+
+def test_a_completed_checkout_turns_the_plan_on(billing, monkeypatch):
+    c, uid = _login(billing, "hook@example.com")
+    monkeypatch.setattr(billing.app.billing, "subscription", lambda i: {})
+    monkeypatch.setattr(billing.app.billing, "period_end",
+                        lambda s: "2099-01-01T00:00:00+00:00")
+    billing.app._apply_stripe_event("checkout.session.completed", {
+        "client_reference_id": str(uid), "customer": "cus_1",
+        "subscription": "sub_1"})
+    u = billing.accounts.get_user(uid)
+    assert billing.accounts.is_pro(u)
+    assert u["stripe_customer_id"] == "cus_1"
+    assert u["stripe_subscription_id"] == "sub_1"
+
+
+def test_a_failed_payment_drops_the_plan(billing, monkeypatch):
+    """支払いが止まればPROではなくなる。顧客IDから会員を辿る。"""
+    c, uid = _login(billing, "unpaid@example.com")
+    billing.accounts.set_stripe_ids(uid, "cus_2", "sub_2")
+    monkeypatch.setattr(billing.app.billing, "period_end", lambda s: None)
+    billing.app._apply_stripe_event("customer.subscription.updated", {
+        "id": "sub_2", "customer": "cus_2", "status": "active"})
+    assert billing.accounts.is_pro(billing.accounts.get_user(uid))
+    billing.app._apply_stripe_event("customer.subscription.updated", {
+        "id": "sub_2", "customer": "cus_2", "status": "past_due"})
+    assert not billing.accounts.is_pro(billing.accounts.get_user(uid))
+
+
+def test_an_unknown_event_changes_nothing(billing):
+    c, uid = _login(billing, "noise@example.com")
+    before = billing.accounts.get_user(uid)
+    billing.app._apply_stripe_event("invoice.upcoming", {"customer": "cus_x"})
+    assert billing.accounts.get_user(uid)["plan"] == before["plan"]
+
+
+def test_the_screens_stay_hidden_without_payment_keys():
+    """鍵が無いまま申込画面を出すと、押した先で失敗する。出さない。"""
+    import importlib
+    keep = os.environ.get("STRIPE_SECRET_KEY")
+    os.environ["STRIPE_SECRET_KEY"] = ""
+    try:
+        from src import billing as b
+        importlib.reload(b)
+        assert not b.enabled()
+    finally:
+        if keep is None:
+            os.environ.pop("STRIPE_SECRET_KEY", None)
+        else:
+            os.environ["STRIPE_SECRET_KEY"] = keep
+        from src import billing as b2
+        importlib.reload(b2)

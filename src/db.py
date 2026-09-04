@@ -174,6 +174,10 @@ def schema_sql() -> list[str]:
 # （すでに在る場合のエラーは無視してよい）。
 ADDED_COLUMNS = [
     ("saved_diagnoses", "note", "TEXT"),
+    # 決済（Stripe）。どの会員がどの顧客・どの契約かを結ぶ。
+    # Webhookは顧客IDしか持ってこないことがあるので、両方を持つ。
+    ("users", "stripe_customer_id", "TEXT"),
+    ("users", "stripe_subscription_id", "TEXT"),
 ]
 
 

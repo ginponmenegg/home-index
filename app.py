@@ -19,7 +19,7 @@ import webbrowser
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flask import (Flask, request, render_template_string,  # noqa: E402
                    session, redirect)
-from src import db, accounts, saved, mailer  # noqa: E402
+from src import db, accounts, saved, mailer, billing  # noqa: E402
 from src.models import SubjectProperty, MansionSubject  # noqa: E402
 from src.pipeline import run_pipeline, run_mansion_pipeline  # noqa: E402
 from src.extract import parse_listing_text, extract_from_url  # noqa: E402
@@ -393,6 +393,9 @@ def billing_on() -> bool:
     表示義務違反になる。フラグだけでなく、実際に値があるかも見る。
     """
     if (os.environ.get("BILLING_ENABLED") or "").strip() not in ("1", "true"):
+        return False
+    # 決済の鍵が無いまま申込画面を出すと、押した先で失敗する。
+    if not billing.enabled():
         return False
     return bool(OPERATOR_ADDRESS and OPERATOR_TEL
                 and not OPERATOR.startswith("〔")
@@ -5177,23 +5180,145 @@ def plan_confirm():
 
 @app.route("/plan/subscribe", methods=["POST"])
 def plan_subscribe():
-    """ここで決済サービスのCheckoutを開く。まだ繋いでいない。
-
-    課金開始日が決まり、特定商取引法に基づく表記が実名・実住所で出せて、
-    規約の課金条項を整えてから接続する。それまでは billing_on() が
-    False なので、この経路には入らない。
-    """
+    """Stripe Checkout を開く。カード番号はこのサーバーを通らない。"""
     r = _require_login()
     if r is not None:
         return r
     if not billing_on():
         from flask import abort
         abort(404)
-    body = ('<div class="card"><h1>準備中です</h1>'
-            '<p class="lead">決済サービスの接続はこれからです。'
-            'いましばらくお待ちください。</p>'
-            '<a class="btn ghost" href="/plan">プランへもどる</a></div>')
-    return _account_page("準備中", body, chip="プラン")
+    u = current_user()
+    if accounts.is_pro(u):
+        return redirect("/plan")
+    base = request.url_root.rstrip("/")
+    try:
+        url = billing.checkout_url(
+            email=u.get("email"), user_id=u["id"],
+            success_url=f"{base}/plan/done",
+            cancel_url=f"{base}/plan/confirm",
+            customer_id=u.get("stripe_customer_id") or None)
+    except Exception as e:
+        # 決済側の不調をそのまま500にしない。押した人には何が起きたかを
+        # 伝え、こちらはログで拾う。
+        print(f"[stripe] checkout failed: {e}")
+        body = ('<div class="card"><h1>お手続きを開始できませんでした</h1>'
+                '<p class="lead">決済サービスに接続できませんでした。'
+                'お手数ですが、時間をおいてもう一度お試しください。'
+                '続くようでしたらお問い合わせください。</p>'
+                '<a class="btn ghost" href="/plan">プランへもどる</a></div>')
+        return _account_page("エラー", body, chip="プラン"), 503
+    return redirect(url, code=303)
+
+
+@app.route("/plan/done")
+def plan_done():
+    """Checkout から戻ってきた画面。
+
+    ここではプランを上げない。上げるのは署名を確かめた Webhook だけ。
+    戻る前にブラウザを閉じる人がいるし、このURLは誰でも開ける。
+    """
+    r = _require_login()
+    if r is not None:
+        return r
+    pro = accounts.is_pro(current_user())
+    body = ('<div class="card"><h1>お申込みありがとうございます</h1>'
+            + ('<p class="lead">PROをご利用いただけます。</p>'
+               if pro else
+               '<p class="lead">決済の確認をしています。反映まで少し時間が'
+               'かかることがあります。数分たっても切り替わらない場合は、'
+               'お問い合わせください。</p>')
+            + '<a class="btn" href="/pro">PROを使う</a>　'
+              '<a class="btn ghost" href="/plan">プランを見る</a></div>')
+    return _account_page("お申込み完了", body, chip="プラン")
+
+
+@app.route("/plan/billing", methods=["POST"])
+def plan_billing():
+    """支払い方法の変更と請求履歴（Stripeの画面へ）。
+
+    解約はここではなく /plan/cancel で受ける。Portal 側の解約は
+    ダッシュボードで無効にしておくこと。
+    """
+    r = _require_login()
+    if r is not None:
+        return r
+    u = current_user()
+    cid = u.get("stripe_customer_id")
+    if not billing_on() or not cid:
+        return redirect("/plan")
+    base = request.url_root.rstrip("/")
+    try:
+        return redirect(billing.portal_url(cid, f"{base}/plan"), code=303)
+    except Exception as e:
+        print(f"[stripe] portal failed: {e}")
+        return redirect("/plan")
+
+
+@app.route("/stripe/webhook", methods=["POST"])
+def stripe_webhook():
+    """決済の結果を受け取る。プランが動くのはここだけ。
+
+    署名を検証しないと、誰でもPOSTでPROになれる。検証に失敗したものは
+    400で返す（Stripeは再送してくれる）。
+    """
+    sig = request.headers.get("Stripe-Signature", "")
+    try:
+        event = billing.verify_event(request.get_data(), sig)
+    except Exception as e:
+        print(f"[stripe] bad webhook: {e}")
+        return "bad signature", 400
+
+    kind = event["type"]
+    obj = event["data"]["object"]
+    try:
+        _apply_stripe_event(kind, obj)
+    except Exception as e:
+        # 落ちたまま200を返すと、Stripeは成功と見なして再送しない。
+        # 500で返して再送してもらう。
+        print(f"[stripe] handling {kind} failed: {e}")
+        return "error", 500
+    return "", 200
+
+
+def _apply_stripe_event(kind, obj):
+    """イベントを会員のプランに落とす。知らないイベントは何もしない。"""
+    if kind == "checkout.session.completed":
+        uid = obj.get("client_reference_id")
+        cust = obj.get("customer")
+        sub_id = obj.get("subscription")
+        if not uid:
+            print("[stripe] checkout without client_reference_id")
+            return
+        accounts.set_stripe_ids(uid, cust, sub_id)
+        expires = None
+        if sub_id:
+            try:
+                expires = billing.period_end(billing.subscription(sub_id))
+            except Exception as e:
+                print(f"[stripe] period lookup failed: {e}")
+        accounts.set_plan(uid, accounts.PLAN_PRO, expires)
+        return
+
+    if kind in ("customer.subscription.updated",
+                "customer.subscription.created"):
+        u = accounts.user_by_customer(obj.get("customer"))
+        if not u:
+            return
+        accounts.set_stripe_ids(u["id"], subscription_id=obj.get("id"))
+        # active / trialing のあいだはPRO。支払いが止まれば free に落ちる。
+        active = obj.get("status") in ("active", "trialing")
+        plan = accounts.PLAN_PRO if active else accounts.PLAN_FREE
+        accounts.set_plan(u["id"], plan, billing.period_end(obj))
+        return
+
+    if kind == "customer.subscription.deleted":
+        u = accounts.user_by_customer(obj.get("customer"))
+        if not u:
+            return
+        # 期間末に到達しての削除。ここで期限も消す。
+        accounts.set_plan(u["id"], accounts.PLAN_FREE, None)
+        accounts.set_stripe_ids(u["id"], subscription_id="")
+        return
 
 
 @app.route("/plan/cancel", methods=["GET", "POST"])
@@ -5211,9 +5336,24 @@ def plan_cancel():
             free_limit=saved.FREE_LIMIT)
         return _account_page("解約の確認", body, chip="プラン")
 
-    # 決済側の解約はここで呼ぶ（未接続）。いまは期限を残したまま
-    # プランを free に落とす＝支払い済みの期間は使えるという扱い。
+    # 期間末での解約。日割り返金はしない代わりに、支払い済みの期間は
+    # 最後まで使える。画面と規約もその前提で書いてある。
     expires = u.get("plan_expires_at")
+    sub_id = u.get("stripe_subscription_id")
+    if sub_id and billing.enabled():
+        try:
+            expires = billing.cancel_at_period_end(sub_id) or expires
+        except Exception as e:
+            # 決済側を止められないまま「解約しました」と出すのが一番まずい。
+            print(f"[stripe] cancel failed: {e}")
+            body = ('<div class="card"><h1>解約を受け付けられませんでした</h1>'
+                    '<p class="lead">決済サービスに接続できませんでした。'
+                    '<b>まだ解約されていません。</b>'
+                    'お手数ですが、時間をおいてもう一度お試しください。'
+                    '続くようでしたらお問い合わせください。</p>'
+                    '<a class="btn ghost" href="/plan">プランへもどる</a></div>')
+            return _account_page("解約できませんでした", body, chip="プラン"), 503
+    # 期限まではPROのまま使える。切り替えは accounts.is_pro が期限で見る。
     accounts.set_plan(u["id"], accounts.PLAN_FREE, expires)
     body = render_template_string(PLAN_CANCELED, expires=expires,
                                   reasons=CANCEL_REASONS)
