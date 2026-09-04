@@ -156,7 +156,7 @@ def _uid(user_id):
 def get_user(user_id) -> dict | None:
     if not user_id:
         return None
-    return db.run("SELECT * FROM users WHERE id = ?", (user_id,), "one")
+    return db.run("SELECT * FROM users WHERE id = ?", (_uid(user_id),), "one")
 
 
 def is_pro(user: dict | None) -> bool:
