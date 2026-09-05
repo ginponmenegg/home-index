@@ -136,6 +136,18 @@ def test_the_page_is_absent_when_no_key_is_configured(monkeypatch):
     assert webapp.app.test_client().get("/metrics?key=").status_code == 404
 
 
+def test_the_page_survives_a_mistyped_day_count(env):
+    """days はURLに手で書き足す値。打ち間違いで画面を落とさない。"""
+    c = env.app.app.test_client()
+    for q in ("&days=abc", "&days=", "&days=-5", "&days=99999"):
+        assert c.get("/metrics?key=ひみつ" + q).status_code == 200, q
+
+
+def test_the_page_opens_before_anything_has_been_counted(env):
+    """入れたその日は1件も無い。空でも開くこと。"""
+    c = env.app.app.test_client()
+    assert c.get("/metrics?key=ひみつ").status_code == 200
+
 def test_the_page_shows_what_was_counted(env):
     c = env.app.app.test_client()
     _human(c, "/buy")

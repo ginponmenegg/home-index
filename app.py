@@ -2629,7 +2629,11 @@ def metrics_page():
         from flask import abort
         abort(404)
 
-    days = max(1, min(180, int(request.args.get("days") or 30)))
+    # days は手でURLに書き足す前提の値。打ち間違いで500にしない。
+    try:
+        days = max(1, min(180, int(request.args.get("days") or 30)))
+    except ValueError:
+        days = 30
     tot = metrics.totals(days)
     rows = metrics.by_day(days)
     names = list(metrics.EVENTS)
