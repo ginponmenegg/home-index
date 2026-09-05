@@ -2617,8 +2617,15 @@ def metrics_page():
     管理者フラグを持たせたくない（持たせると、その列を守る責任が増える）。
     METRICS_KEY が未設定なら、この画面自体を出さない。
     """
+    import secrets
     key = (os.environ.get("METRICS_KEY") or "").strip()
-    if not key or request.args.get("key") != key:
+    # 合鍵の比較は compare_digest で。== は先頭から順に見て違えば即座に
+    # 返すため、応答時間から何文字目まで合っているかを絞り込めてしまう。
+    # bytes で比べる。compare_digest は str だとASCII以外で例外を投げるため、
+    # 日本語の鍵を設定した瞬間に画面が壊れる。
+    if not key or not secrets.compare_digest(
+            (request.args.get("key") or "").encode("utf-8"),
+            key.encode("utf-8")):
         from flask import abort
         abort(404)
 
