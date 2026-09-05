@@ -304,6 +304,43 @@ def test_the_flood_article_matches_the_risk_scoring():
         assert f"{cut}点" in body, f"{kw} → {cut}点 が記事に無い"
 
 
+def test_the_sediment_article_matches_the_risk_scoring():
+    """イエロー・レッドと、名前の似た2区域の上限が記事と一致すること。"""
+    body = guides.by_slug("dosha-saigai-keikai-kuiki").body
+    w = CONFIG["category_weights"]["リスク"]
+    assert f"リスクは{w}点満点" in body
+    for kw in ({"sediment": "特別警戒区域"}, {"sediment": "警戒区域"},
+               {"steep_slope": True}, {"landslide_zone": True},
+               {"checked": False}):
+        cap = _pt(w * _risk_raw(**kw))
+        assert f"{cap}点" in body, f"{kw} → {cap}点 が記事に無い"
+
+
+def test_the_sediment_article_uses_the_labels_the_result_screen_shows():
+    """記事の区域名が、採点が理由欄に書く文言とそろっていること。"""
+    body = guides.by_slug("dosha-saigai-keikai-kuiki").body
+    for kw in ({"sediment": "特別警戒区域"}, {"sediment": "警戒区域"},
+               {"steep_slope": True}, {"landslide_zone": True}):
+        reason = score_risk(None, None, _hazard(**kw)).reason
+        for label in reason.split("・"):
+            assert label in body, f"結果画面の「{label}」が記事に無い"
+
+
+def test_the_sediment_article_says_which_law_designates_each_zone():
+    """似た名前の区域を、根拠の法律ごと書き分けていること。"""
+    body = guides.by_slug("dosha-saigai-keikai-kuiki").body
+    assert "第7条" in body and "第9条" in body, "警戒区域と特別警戒区域の条文"
+    assert "急傾斜地の崩壊による災害の防止に関する法律" in body
+    assert "地すべり等防止法" in body
+    # 建築の制限があるのはレッドだけ。ここを外すと記事が有害になる。
+    assert "制限していません" in body
+
+
+def test_the_sediment_article_admits_the_hazard_check_is_all_or_nothing():
+    """4つのうち1つでも取れれば「確認済み」にしている。黙らない。"""
+    body = guides.by_slug("dosha-saigai-keikai-kuiki").body
+    assert "一つでも取得できれば" in body
+
 def test_the_flood_article_lists_every_depth_band():
     body = guides.by_slug("kouzui-shinsui-fukasa").body
     for rank, label in FLOOD_RANK_LABEL.items():
