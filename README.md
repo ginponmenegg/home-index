@@ -134,9 +134,28 @@ tests/test_logic.py    オフライン単体テスト
 | `DATABASE_URL` | 会員機能そのものが出ない（診断は動く） |
 | `SECRET_KEY` | ログインのセッションが保てない |
 | `RESEND_API_KEY` | ログインのメールが飛ばない |
+| `MAIL_FROM` | resend.dev の共有アドレスから出る＝**迷惑メールに入る**（下記） |
 | `CANONICAL_HOST` | 別ホストからのアクセスを本番へ寄せない |
 | `OPERATOR_NAME` / `OPERATOR_ADDRESS` / `OPERATOR_TEL` | 特商法の表記が出せないので、課金の画面も出ない |
 | `CONTACT_EMAIL` | 同上 |
+
+### ログインのメールが迷惑メールに入るとき
+
+`MAIL_FROM` が未設定だと `onboarding@resend.dev` から送られる。届きはするが、
+本文中のドメイン（homeindex.jp）と差出人ドメインが揃わないため、受信側の
+判定を通りにくい。**iCloud や Gmail では迷惑メールに落ちる。**
+
+ログインはメールのリンクだけで成立する作りなので、ここが落ちると
+「ログインできないサービス」になる。直し方は2段階。
+
+1. Resend の Domains で `homeindex.jp` を追加し、表示された
+   **SPF / DKIM のDNSレコードをドメイン側に登録**して認証を通す
+2. Render に `MAIL_FROM=HOME INDEX <no-reply@homeindex.jp>` を設定
+
+`DMARC`（`_dmarc.homeindex.jp` の TXT に `v=DMARC1; p=none;`）も入れておくと
+判定が安定する。まず `p=none` で様子を見る。
+
+鍵があるのに `MAIL_FROM` が空のままだと、起動時のログに警告が出る。
 
 ### 課金（Stripe）
 

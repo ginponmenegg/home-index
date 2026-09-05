@@ -29,10 +29,29 @@ def enabled() -> bool:
     return bool((os.environ.get("RESEND_API_KEY") or "").strip())
 
 
+DEFAULT_FROM = "HOME INDEX <onboarding@resend.dev>"
+
+
 def sender() -> str:
-    """差出人。独自ドメインをResendで認証してから設定する。"""
-    return (os.environ.get("MAIL_FROM")
-            or "HOME INDEX <onboarding@resend.dev>")
+    """差出人。独自ドメインをResendで認証してから設定する。
+
+    MAIL_FROM を設定しないと resend.dev の共有アドレスから出る。届きは
+    するが、本文のドメイン（homeindex.jp）と差出人ドメインが揃わないため、
+    受信側の判定を通りにくい。iCloudやGmailでは迷惑メールに落ちる。
+
+    ログインはメールのリンクだけで成立する作りなので、ここが迷惑メールに
+    入ると「ログインできないサービス」になる。DNSにSPF/DKIMを入れて
+    MAIL_FROM を自ドメインにすること。
+    """
+    return (os.environ.get("MAIL_FROM") or "").strip() or DEFAULT_FROM
+
+
+def warn_if_shared_sender() -> str:
+    """共有の差出人のままなら警告文を返す（起動時のログ用）。"""
+    if enabled() and sender() == DEFAULT_FROM:
+        return ("[mailer] MAIL_FROM が未設定です。resend.dev の共有アドレス"
+                "から送るため、ログインのメールが迷惑メールに入ります。")
+    return ""
 
 
 def send(to: str, subject: str, html: str, text: str = "") -> tuple[bool, str]:

@@ -20,6 +20,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flask import (Flask, request, render_template_string,  # noqa: E402
                    session, redirect)
 from src import db, accounts, saved, mailer, billing, campaign  # noqa: E402
+
+_w = mailer.warn_if_shared_sender()
+if _w:
+    print(_w)
 from src.models import SubjectProperty, MansionSubject  # noqa: E402
 from src.pipeline import run_pipeline, run_mansion_pipeline  # noqa: E402
 from src.extract import parse_listing_text, extract_from_url  # noqa: E402
@@ -4193,6 +4197,9 @@ _ACCOUNT_CSS = """
    border:0;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;
    text-decoration:none;font-family:inherit}
  .btn.ghost{background:#eef2f7;color:#111}
+ /* inline-block なので、横に並ぶときは文字間の余白で離れるが、折り返すと
+    縦の隙間がゼロになり2つのボタンがくっついて見える。押し間違いのもと。 */
+ .btn{margin-bottom:10px}
  .btn.sm{padding:7px 12px;font-size:13px;border-radius:8px}
  .btn:disabled{opacity:.45;cursor:default}
  input[type=email]{width:100%;padding:13px;border:1px solid #d1d5db;
@@ -4248,6 +4255,12 @@ _ACCOUNT_CSS = """
   table.cmp td::before{content:attr(data-name); display:block; font-size:11px;
     color:#6b7280; font-weight:400; margin-bottom:3px;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  /* この grid は比較表（2〜3件を横に並べる）のためのもの。値が1つ
+     しかない表（特商法の確認画面、保存した診断の詳細）まで2列に割られ、
+     本文が画面の半分に押し込められていた。1つしか無いなら全幅を使う。 */
+  table.cmp td:only-of-type{grid-column:1/-1}
+  /* data-name が無い表では ::before が空のまま高さだけ作っていた */
+  table.cmp td:not([data-name])::before{display:none}
   table.cmp td.best{background:#ecfdf5; box-shadow:inset 0 0 0 1.5px #a7f3d0}
   table.cmp tr.sect{display:block; padding:16px 0 2px; border-bottom:0}
   table.cmp tr.sect th{background:none; padding:0}
