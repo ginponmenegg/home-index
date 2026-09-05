@@ -123,7 +123,12 @@ def consume_login_token(token: str):
 # ---- 利用者 ---------------------------------------------------------------
 
 def _upsert_user(email: str) -> dict:
-    """居なければ作り、居ればログイン時刻を更新して返す。"""
+    """居なければ作り、居ればログイン時刻を更新して返す。
+
+    新規かどうかを返り値に添える（`_is_new`）。呼び出し側が
+    「登録」と「再ログイン」を区別して数えるために要る。列ではないので
+    DBには残らない。
+    """
     now = db.now()
 
     def _go(exec_):
@@ -133,11 +138,14 @@ def _upsert_user(email: str) -> dict:
                   (now, email))
             u = dict(row)
             u["last_login_at"] = now
+            u["_is_new"] = False
             return u
         exec_("INSERT INTO users (email, plan, created_at, last_login_at) "
               "VALUES (?, ?, ?, ?)", (email, PLAN_FREE, now, now))
-        return dict(exec_("SELECT * FROM users WHERE email = ?",
-                          (email,)).fetchone())
+        u = dict(exec_("SELECT * FROM users WHERE email = ?",
+                       (email,)).fetchone())
+        u["_is_new"] = True
+        return u
 
     return db.run_many(_go)
 

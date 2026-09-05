@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flask import (Flask, request, render_template_string,  # noqa: E402
                    session, redirect)
 from src import db, accounts, saved, mailer, billing, campaign  # noqa: E402
+from src import metrics  # noqa: E402
 
 _w = mailer.warn_if_shared_sender()
 if _w:
@@ -460,6 +461,32 @@ FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#6
 _RATE: dict = {}
 _RATE_LIMIT = int(os.environ.get("RATE_LIMIT_PER_DAY", "40"))
 _SEM = threading.Semaphore(int(os.environ.get("MAX_CONCURRENT", "4")))
+
+
+# 自ら名乗っているものと、ブラウザではないクライアント。完全ではないが、
+# これだけでも外さないと「見られた数」が実態とかけ離れる。
+_BOT_HINTS = ("bot", "crawler", "spider", "slurp", "curl", "wget",
+              "python-requests", "httpx", "scrapy", "headless", "lighthouse",
+              "monitor", "preview", "facebookexternalhit", "embedly",
+              "uptimerobot", "werkzeug", "okhttp", "go-http", "java/",
+              "axios", "node-fetch", "libwww", "postman")
+
+
+def _looks_like_a_bot() -> bool:
+    """クローラと監視の巡回を、人の閲覧と混ぜない。
+
+    完全には見分けられないが、名乗っているものだけでも外しておかないと
+    「見られた数」が実態とかけ離れる。数えるのは画面の閲覧だけで、
+    診断の実行や登録はフォーム経由なので、この判定を通さない。
+    """
+    ua = (request.headers.get("User-Agent") or "").lower()
+    return (not ua) or any(h in ua for h in _BOT_HINTS)
+
+
+def _seen(name: str) -> None:
+    """画面が見られたことを数える（人だけ）。"""
+    if not _looks_like_a_bot():
+        metrics.bump(name)
 
 
 def _client_ip():
@@ -2314,6 +2341,7 @@ def tokushoho():
 @app.route("/")
 def index():
     """トップページ。サービスの説明を置き、診断（/buy）へ送る。"""
+    _seen("view_lp")
     base = request.url_root.rstrip("/")
     return LP.replace("CANONICAL_URL", base + "/")
 
@@ -2321,6 +2349,7 @@ def index():
 @app.route("/buy")
 def buy():
     """購入診断（戸建）の入力フォーム。以前の / がこのURLになった。"""
+    _seen("view_buy")
     return render_template_string(FORM, v=_example_v(), listing="", banner=None)
 
 
@@ -2532,6 +2561,8 @@ def guide_page(slug):
     if g is None:
         from flask import abort
         abort(404)
+    # 記事ごとの内訳はSearch Consoleで見る。ここは合計だけでよい。
+    _seen("view_guide")
     base = _guide_base()
     article = {"@type": "Article", "headline": g.title,
                "description": g.description, "inLanguage": "ja",
@@ -2576,6 +2607,60 @@ if operator_named():
     # 誰が作ったかは検索エンジンにも見せる（YMYLではここが効く）
     SITEMAP_PATHS.insert(3, "/about")
 SITEMAP_PATHS += guides.paths()
+
+
+@app.route("/metrics")
+def metrics_page():
+    """数字を見る画面。合鍵を知っている人だけ。
+
+    会員のログインとは別にしてある。運営者用の画面のために、会員に
+    管理者フラグを持たせたくない（持たせると、その列を守る責任が増える）。
+    METRICS_KEY が未設定なら、この画面自体を出さない。
+    """
+    key = (os.environ.get("METRICS_KEY") or "").strip()
+    if not key or request.args.get("key") != key:
+        from flask import abort
+        abort(404)
+
+    days = max(1, min(180, int(request.args.get("days") or 30)))
+    tot = metrics.totals(days)
+    rows = metrics.by_day(days)
+    names = list(metrics.EVENTS)
+
+    def cell(v):
+        return f"<td>{v}</td>" if v else '<td style="color:#cbd5e1">·</td>'
+
+    head = "".join(f"<th>{metrics.EVENTS[n]}</th>" for n in names)
+    body = "".join(
+        f"<tr><th class=\"rowlbl\">{day}</th>"
+        + "".join(cell(vals.get(n, 0)) for n in names) + "</tr>"
+        for day, vals in rows)
+    sums = "".join(f"<td><b>{tot[n]}</b></td>" for n in names)
+
+    # 見たいのは率。母数が0のときに割らない。
+    def rate(a, b):
+        return f"{round(tot[a] / tot[b] * 100)}%" if tot[b] else "—"
+
+    body_html = f'''
+<div class="card">
+ <h1>数字（直近{days}日）</h1>
+ <p class="lead">日付は日本時間。個人も物件も記録していません。
+  件数だけです。</p>
+ <div class="note" style="margin:14px 0">
+  <b>入力画面 → 診断</b>　{rate("diag_kodate", "view_buy")}（戸建）／
+  {rate("diag_mansion", "view_mansion")}（マンション）<br>
+  <b>診断 → 会員登録</b>　{tot["signup"]}人／
+  診断{tot["diag_kodate"] + tot["diag_mansion"]}件<br>
+  <b>PRO</b>　開始 {tot["pro_start"]}／解約 {tot["pro_cancel"]}
+ </div>
+ <div class="tablewrap"><table class="cmp">
+  <thead><tr><th class="rowlbl">日付</th>{head}</tr></thead>
+  <tbody><tr><th class="rowlbl">合計</th>{sums}</tr>{body}</tbody>
+ </table></div>
+ <p class="sub" style="margin-top:12px">
+  期間を変えるには <code>?days=90</code> を足してください（最大180日）。</p>
+</div>'''
+    return _account_page("数字", body_html, chip="運営")
 
 
 @app.route("/robots.txt")
@@ -3045,6 +3130,7 @@ def _run_diagnose(f, datetime):
             "structure": subject.structure or "",
             "reno": "1" if subject.renovated else "",
             "loan_years": str(loan_years)}
+    metrics.bump("diag_kodate")
     return _render_result(res, subject, sctx,
                           to_yen(f.get("down")) or 0, loan_years, carry=carry,
                           redo=redo,
@@ -3268,6 +3354,7 @@ def _mansion_parse_banner(p):
 @app.route("/mansion")
 def mansion():
     """マンション診断の入力フォーム。"""
+    _seen("view_mansion")
     return render_template_string(MANSION_FORM, v=_mansion_example_v(),
                                   directions=DIRECTIONS, banner=None,
                                   listing="")
@@ -3429,6 +3516,7 @@ def _run_mansion_diagnose(f):
             "mfee": f.get("mfee") or "", "rfund": f.get("rfund") or "",
             "reno": "1" if subject.renovated else "",
             "loan_years": str(loan_years)}
+    metrics.bump("diag_mansion")
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           carry=carry, redo=redo,
                           edit=_edit_carry("/mansion/edit", f,
@@ -3830,6 +3918,7 @@ def _run_pro_diagnose(f):
                 ptype=("新築戸建（PRO）" if ptype == "shinchiku_kodate"
                        else "中古戸建（PRO）"),
                 specs=" ・ ".join(bits))
+    metrics.bump("pro_diag")
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           free_diagnosis=free, questions=questions,
                           questions_note=questions_note,
@@ -4177,6 +4266,7 @@ def _run_mansion_pro(f):
     sctx = dict(address=(f"{subject.address}　{subject.name}"
                          if subject.name else subject.address),
                 ptype="中古マンション（PRO）", specs=" ・ ".join(bits))
+    metrics.bump("pro_diag")
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           free_diagnosis=free, questions=questions,
                           questions_note=questions_note,
@@ -4458,6 +4548,8 @@ def login_verify(token):
         user = accounts.consume_login_token(token)
     except Exception:
         user = None
+    if user and user.get("_is_new"):
+        metrics.bump("signup")
     if not user:
         body = ('<div class="card"><h1>リンクが使えません</h1>'
                 '<div class="note warn">期限が切れているか、すでに使われたリンクです。'
@@ -4518,6 +4610,7 @@ def save_diagnosis():
         return redirect("/mypage?full=1")
     except Exception:
         return redirect("/mypage?err=1")
+    metrics.bump("saved")
     return redirect("/mypage?added=1")
 
 
@@ -5277,6 +5370,7 @@ CANCEL_REASONS = [
 def plan_page():
     if not accounts_on():
         return _account_page("準備中", _OFF_BODY)
+    _seen("plan_view")
     u = current_user()
     body = render_template_string(
         PLAN_PAGE, pro=accounts.is_pro(u), billing=billing_on(),
@@ -5478,6 +5572,7 @@ def _apply_stripe_event(kind, obj):
                 print(f"[stripe] period lookup failed: {e}")
         accounts.set_plan(uid, accounts.PLAN_PRO, expires)
         accounts.set_cancel_at(uid, None)     # 再開なら解約予定を消す
+        metrics.bump("pro_start")
         return
 
     if kind in ("customer.subscription.updated",
@@ -5557,6 +5652,7 @@ def plan_cancel():
         # 決済を伴わないPRO）。ここでPROのまま期限なしにすると、解約
         # した人が永久にPROになる。
         accounts.set_plan(u["id"], accounts.PLAN_FREE, None)
+    metrics.bump("pro_cancel")
     body = render_template_string(PLAN_CANCELED, expires=expires,
                                   reasons=CANCEL_REASONS)
     return _account_page("解約しました", body, chip="プラン")

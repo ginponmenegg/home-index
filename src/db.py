@@ -164,6 +164,13 @@ def schema_sql() -> list[str]:
               payload TEXT NOT NULL,
               created_at TEXT NOT NULL
             )""",
+        # 日ごとの件数。個人も物件も入らない（日付・名前・件数だけ）。
+        """CREATE TABLE IF NOT EXISTS daily_counts (
+              day TEXT NOT NULL,
+              name TEXT NOT NULL,
+              n INTEGER NOT NULL DEFAULT 0,
+              PRIMARY KEY (day, name)
+            )""",
         "CREATE INDEX IF NOT EXISTS ix_saved_user ON saved_diagnoses (user_id)",
         "CREATE INDEX IF NOT EXISTS ix_token_email ON login_tokens (email)",
     ]
