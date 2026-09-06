@@ -347,6 +347,60 @@ def test_the_flood_article_lists_every_depth_band():
         assert label in body, f"ランク{rank}（{label}）が記事に無い"
 
 
+# ---- 旧耐震のマンション ---------------------------------------------------
+#
+# 記事に書いた点数を、採点そのものを走らせて突き合わせる。数字はテストに
+# 書き写さない。片方だけ直したらここが落ちる。
+
+def _asset_points(year):
+    from src.models import MansionSubject
+    from src.mansion_scoring import score_mansion_asset
+    s = MansionSubject(address="x", build_year=year, station_walk_min=5,
+                       exclusive_area_m2=70, floor=5, total_floors=10,
+                       direction="南")
+    return score_mansion_asset(s, current_year=2026)
+
+
+def test_the_old_standard_article_matches_the_asset_scoring():
+    body = guides.by_slug("kyu-taishin-mansion").body
+    w = CONFIG["mansion_category_weights"]["資産性"]
+    assert f"{w}点満点" in body
+    for year in (1975, 1981, 1983, 2015):
+        pts = _asset_points(year)
+        assert f"{pts.points}点 / {w}" in body, f"{year}年築 → {pts.points}点"
+
+
+def test_the_article_states_the_gap_it_leads_with():
+    """「5.6点変わる」が採点と合っていること。見出しの数字が嘘だと最悪。"""
+    body = guides.by_slug("kyu-taishin-mansion").body
+    # 0.1点単位で丸める。浮動小数のまま比べると 5.600000000000001 になる。
+    gap = round(_asset_points(1983).points - _asset_points(1981).points, 1)
+    assert f"{gap}点変わる" in body, f"実際の差は {gap}点"
+
+
+def test_the_article_matches_the_management_scoring():
+    """耐震診断の回答で動く管理の点。上限は素点ではなく点で書く。"""
+    body = guides.by_slug("kyu-taishin-mansion").body
+    w = CONFIG["mansion_category_weights"]["管理"]
+    assert f"{w}点満点" in body
+    cap = f"{w * 0.35:.2f}".rstrip("0").rstrip(".")
+    assert f"{cap}点以下" in body, f"要補強のときの上限 {cap}点"
+
+
+def test_the_article_names_the_articles_of_the_law():
+    """決議の要件は条文で書く。うろ覚えで書くと数字がずれる。"""
+    body = guides.by_slug("kyu-taishin-mansion").body
+    assert "第17条" in body and "4分の3" in body, "共用部分の変更"
+    assert "第62条" in body and "5分の4" in body, "建替え決議"
+    assert "耐震改修の促進に関する法律" in body and "第25条" in body
+
+
+def test_the_article_does_not_repeat_the_older_one():
+    """1981年6月の話は既存の記事にある。そちらへ送っていること。"""
+    body = guides.by_slug("kyu-taishin-mansion").body
+    assert 'href="/guide/shin-taishin-kenchiku-kakunin"' in body
+
+
 def test_the_repair_fund_article_matches_the_guideline():
     body = guides.by_slug("shuzen-tsumitatekin-meyasu").body
     g = CONFIG["mansion_repair_fund_guideline"]
