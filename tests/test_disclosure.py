@@ -152,6 +152,35 @@ def test_the_asbestos_note_does_not_read_as_all_clear():
     assert "「使われていない」という意味にはなりません" in hit.why
 
 
+def test_every_place_that_describes_pro_mentions_the_sheet():
+    """PROの中身は5か所に書いてある。1か所だけ直すと他が古くなる。
+
+    特定商取引法の最終確認画面は、実際に提供するものを正確に書く義務が
+    あるので、ここが漏れると表示の不備になる。だからまとめて見る。
+    """
+    import app as webapp
+    for name in ("PLAN_PAGE", "PLAN_CONFIRM", "_PRO_HUB_BODY",
+                 "_PRO_LOCKED_BODY"):
+        text = getattr(webapp, name)
+        assert "重要事項説明書" in text, name
+
+
+def test_the_plan_table_lists_it_as_a_pro_only_row():
+    """比較表では、無料は「—」でPROが「○」。"""
+    import app as webapp
+    row = [ln for ln in webapp.PLAN_PAGE.splitlines()
+           if "重要事項説明書で確認すること" in ln]
+    assert len(row) == 1, row
+    assert "<td>—</td><td>○</td>" in row[0]
+
+
+def test_the_pdf_description_lists_what_the_pdf_holds():
+    """PDFに入るものを数え上げている箇所。増えたら足す。"""
+    import app as webapp
+    assert "重要事項説明書で確認すること" in webapp.PRO_FINANCE_RESULT
+    assert "重要事項説明書で確認すること" in webapp.SAVED_DETAIL
+
+
 # ---- 画面 -----------------------------------------------------------------
 
 def test_the_free_diagnosis_does_not_show_the_sheet():
