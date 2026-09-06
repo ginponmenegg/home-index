@@ -291,6 +291,34 @@ def test_loan_deduction_kosodate_and_area():
     assert small.status == UNKNOWN
 
 
+def test_the_floor_area_floor_is_fifty_not_forty():
+    """40〜50㎡が対象になるのは取得時期に条件のある特例だけ。
+
+    その条件はここでは確かめられない。既定で下限を下げると、実際には
+    使えない控除を「使える」と見せることになる。ズレの向きが買う方向に
+    効くので、安全側に置く。
+    """
+    from src.finance import FCONFIG
+    c = FCONFIG["loan_deduction"]
+    assert c["floor_area_min"] == 50
+    assert "high_income_threshold" not in c, "所得で下限を下げる仕掛けを残さない"
+    d = loan_deduction(20_000_000, 0.0125, 35, category="その他",
+                       annual_income=6_000_000, floor_area_m2=45.0)
+    assert d.status == UNKNOWN and d.total == 0
+
+
+def test_a_flat_in_the_forties_is_told_the_exception_exists():
+    """門前払いにしない。条件次第で対象になり得ることは伝える。"""
+    d = loan_deduction(20_000_000, 0.0125, 35, category="その他",
+                       annual_income=6_000_000, floor_area_m2=45.0)
+    joined = "".join(d.notes)
+    assert "特例特別特例取得" in joined
+    assert "税務署または税理士" in joined
+    small = loan_deduction(20_000_000, 0.0125, 35, category="その他",
+                           annual_income=6_000_000, floor_area_m2=35.0)
+    assert "特例特別特例取得" not in "".join(small.notes),         "40㎡未満には可能性が無いので、言わない"
+
+
 def test_fire_insurance_and_scrivener():
     from src.finance import fire_insurance, judicial_scrivener
     no_eq = fire_insurance(False)

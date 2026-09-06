@@ -682,15 +682,20 @@ def loan_deduction(principal: int, annual_rate: float, years: int,
         return LoanDeduction(category, None, None, [], 0, UNKNOWN,
                              f"合計所得金額が{man_yen(income_limit)}を超えるため対象外", src)
 
+    # 中古住宅の床面積要件は50㎡以上。40〜50㎡が対象になるのは
+    # 「特例特別特例取得」に該当する場合だけで、取得時期の条件がある。
+    # その条件をここでは確かめられないので、下限は下げない。下げると、
+    # 実際には使えない控除を「使える」と見せることになる。
     fmin = c.get("floor_area_min")
-    if annual_income is not None and c.get("high_income_threshold") and \
-            annual_income > c["high_income_threshold"]:
-        fmin = c.get("floor_area_min_high_income", fmin)
     # 判定に使うのは登記簿の面積。マンションの専有部分は登記簿では内法
     # （壁の内側）で測るので、販売図面の壁芯面積より小さくなる。ここは
     # 入力された面積のまま計算し、差があることを但し書きで伝える。
     area_notes = _floor_area_notes(floor_area_m2, fmin)
     if floor_area_m2 is not None and fmin and floor_area_m2 < fmin:
+        # 40㎡台なら、条件次第で対象になり得る。門前払いにしない。
+        sp = c.get("floor_area_special_min")
+        if sp and floor_area_m2 >= sp and c.get("floor_area_special_note"):
+            area_notes = [c["floor_area_special_note"]] + area_notes
         return LoanDeduction(category, None, None, [], 0, UNKNOWN,
                              f"床面積が{fmin}㎡未満のため対象外", src,
                              notes=area_notes)
