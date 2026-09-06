@@ -279,6 +279,19 @@ def build_finance_pdf(ctx: dict) -> bytes:
                          ("頭金を加えた購入可能額", a["price"])], st, W),
             Paragraph(a["note"], st["note"])]))
 
+    # ---- 重要事項説明書の、どこを見るか ----
+    disc = (ctx.get("diag") or {}).get("disc") or []
+    if disc:
+        story.append(Paragraph("重要事項説明書の、どこを見るか", st["h2"]))
+        story.append(Paragraph(
+            "契約の直前に読み上げられます。先に読む場所を絞るためのものです。"
+            "どこに何が書かれるかまでで、良し悪しは書いていません。",
+            st["note"]))
+        for where, law, why in disc:
+            story.append(Paragraph(f"□ {where}（{law}）", st["body"]))
+            story.append(Paragraph(why, st["note"]))
+            story.append(Spacer(1, 3))
+
     # ---- 根拠と免責 ----
     story.append(Paragraph("この試算の根拠", st["h2"]))
     for src in ctx.get("sources", []):

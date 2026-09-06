@@ -32,6 +32,7 @@ from src.extract import parse_listing_text, extract_from_url  # noqa: E402
 from src.citycode import CityCodeResolver  # noqa: E402
 from src import structure as structure_mod  # noqa: E402
 from src import guides  # noqa: E402
+from src import disclosure  # noqa: E402
 
 _RESOLVER = None
 
@@ -1032,6 +1033,32 @@ BRAND_BAR
   {% if d.confirm %}<h2 style="margin-top:12px">? 要確認（情報不足）</h2><ul>{% for x in d.confirm %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
   <p class="foot">{{d.comment}}</p>
  </div>
+
+  {% if disc %}
+  <div class="card" id="juyo">
+   <h2 style="margin-top:0">重要事項説明書の、どこを見るか（{{disc|length}}件）</h2>
+   <p class="only-print">{{s.address}}　{{s.ptype}}　{{price_man}}</p>
+   <p class="muted no-print" style="margin:6px 0 10px">
+    重要事項説明書は契約の直前に渡され、その場で読み上げられます。
+    <b>先に読む場所を絞っておくためのものです。</b>
+    上の診断で分かったことから、この物件で特に効く欄を並べました。
+    良し悪しは書いていません。どこに何が書かれるかまでです。
+   </p>
+   <ol class="asklist">
+    {% for p in disc %}
+    <li><label><input type="checkbox"><span><b>{{p.where}}</b>
+     <span class="muted">（{{p.law}}）</span><br>{{p.why}}</span></label></li>
+    {% endfor %}
+   </ol>
+   <p class="no-print" style="margin:14px 0 0">
+    <button type="button" class="sub" onclick="window.print()">この一覧だけ印刷する</button>
+   </p>
+   <p class="muted no-print" style="font-size:12px;margin:8px 0 0">
+    条文は e-Gov 法令検索で確かめたものです。担当者にそのまま
+    「第何号の欄を見せてください」と言えます。
+   </p>
+  </div>
+  {% endif %}
 
   {% if questions %}
   <div class="card" id="ask">
@@ -2895,6 +2922,7 @@ def _edit_carry(action: str, f, keys) -> dict:
 def _render_result(res, subject, sctx, down_yen, loan_years,
                    free_diagnosis=None, carry=None, questions=None,
                    questions_note=None, redo=None, finance_carry=None,
+                   disclosure_points=None,
                    edit=None):
     """診断結果ページを描画する。戸建とマンションで共通。
 
@@ -3096,7 +3124,9 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
                      for c in d.categories],
             "risks": [[r.severity, r.type, r.status, r.evidence]
                       for r in d.critical_risks],
-            "ask": list(questions or [])[:20]})
+            "ask": list(questions or [])[:20],
+            "disc": [[p.where, p.law, p.why]
+                     for p in (disclosure_points or [])][:30]})
 
     return render_template_string(
         RESULT, s=sctx, price_man=man(subject.price), age=age, save=save,
@@ -3106,6 +3136,7 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
         pro=pro_delta, handover=handover,
         handover_action=handover_action, handover_label=handover_label,
         handover_unknowns=handover_unknowns, questions=questions,
+        disc=disclosure_points,
         questions_note=questions_note, finance_carry=finance_carry,
         edit=edit)
 
@@ -3982,6 +4013,10 @@ def _run_pro_diagnose(f):
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           free_diagnosis=free, questions=questions,
                           questions_note=questions_note,
+                          disclosure_points=disclosure.sheet(
+                              subject, res.enrichment, subject.property_type,
+                              urbanization=(res.enrichment.urbanization
+                                            if res.enrichment else None)),
                           finance_carry=_finance_carry(
                               subject, down_yen, loan_years,
                               to_yen(f.get("income"))),
@@ -4330,6 +4365,10 @@ def _run_mansion_pro(f):
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           free_diagnosis=free, questions=questions,
                           questions_note=questions_note,
+                          disclosure_points=disclosure.sheet(
+                              subject, res.enrichment, subject.property_type,
+                              urbanization=(res.enrichment.urbanization
+                                            if res.enrichment else None)),
                           finance_carry=_finance_carry(
                               subject, down_yen, loan_years,
                               to_yen(f.get("income"))),
