@@ -407,6 +407,85 @@ def test_pdf_report_renders_japanese():
         pass  # pdfplumber が無い環境では中身の検証はスキップ
 
 
+# ---- マンションの毎月の固定費 --------------------------------------------
+#
+# 無料のマンション診断は pipeline.py で管理費・修繕積立金を返済負担率に
+# 含めている。有料の資金計画がこれを無視すると、**お金を払ったほうが甘い
+# 数字**を見ることになる。ここはその食い違いが起きないよう固定する。
+
+def test_monthly_fees_shrink_what_can_be_borrowed():
+    """管理費等がある分、返済に回せる枠は減る。"""
+    plain = affordable_loan(6_000_000, 0.0125, 35)
+    condo = affordable_loan(6_000_000, 0.0125, 35, monthly_extra=25_000)
+    assert condo.monthly_extra == 25_000
+    assert condo.max_repayment == plain.max_monthly - 25_000
+    assert condo.max_principal < plain.max_principal
+    assert "管理費" in condo.note, "差し引いたことを画面に書けること"
+
+
+def test_a_house_is_not_affected():
+    """戸建は monthly_extra を渡さない。従来の数字が動かないこと。"""
+    a = affordable_loan(6_000_000, 0.0125, 35)
+    b = affordable_loan(6_000_000, 0.0125, 35, monthly_extra=0)
+    assert (a.max_principal, a.note) == (b.max_principal, b.note)
+    assert a.monthly_extra == 0
+
+
+def test_fees_that_eat_the_whole_budget_do_not_go_negative():
+    """管理費が枠を食い切ることは実際にある。0円と出す（マイナスにしない）。"""
+    a = affordable_loan(2_000_000, 0.0125, 35, monthly_extra=90_000)
+    assert a.max_repayment == 0
+    assert a.max_principal == 0
+
+
+def test_the_paid_plan_and_the_free_diagnosis_agree_on_the_burden():
+    """借入可能額いっぱいで買ったとき、無料診断の負担率が上限を超えないこと。
+
+    数字を書き写さず、両方を実際に走らせて突き合わせる。片方だけ直したら
+    ここが落ちる。
+    """
+    from src.loan import compute_loan
+    income, rate, years, extra = 6_000_000, 0.0125, 35, 25_000
+    a = affordable_loan(income, rate, years, monthly_extra=extra)
+    r = compute_loan(a.max_principal, 0, rate, years, income,
+                     monthly_extra=extra)
+    assert r.burden_ratio is not None
+    assert r.burden_ratio <= a.burden_limit + 0.1, \
+        f"負担率 {r.burden_ratio}% が上限 {a.burden_limit}% を超えている"
+    assert r.burden_ratio > a.burden_limit - 1.0, "枠を使い切れていない"
+
+
+def test_the_diagnosis_hands_the_fees_to_the_finance_page():
+    """マンション診断から資金計画へ、管理費と修繕積立金が引き継がれること。"""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import app as webapp
+    from src.models import MansionSubject
+    subj = MansionSubject(address="東京都新宿区西新宿2-8-1", price=48_000_000,
+                          exclusive_area_m2=70.0, build_year=2010,
+                          management_fee=12_000, repair_fund=13_000)
+    carry = webapp._finance_carry(subj, 5_000_000, 35, 8_000_000)
+    assert carry["mfee"] == "12000"
+    assert carry["rfund"] == "13000"
+
+
+def test_the_finance_page_shows_the_fees_it_subtracted():
+    """入力された管理費等が、画面の内訳に出ること。"""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import app as webapp
+    c = webapp.app.test_client()
+    base = dict(price="3480", income="800", down="500", loan_years="35",
+                byear="2010", land_ratio="30")
+    house = c.post("/pro/finance", data=base).get_data(as_text=True)
+    condo = c.post("/pro/finance",
+                   data=dict(base, mfee="12000", rfund="13000")
+                   ).get_data(as_text=True)
+    assert "うち管理費・修繕積立金" not in house, "戸建には出さない"
+    assert "うち管理費・修繕積立金" in condo
+    assert "25,000円" in condo
+
+
 def test_menu_on_every_page():
     """三本線メニューが全ページの固定バーに出ること。
 

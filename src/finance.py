@@ -678,32 +678,49 @@ def loan_deduction(principal: int, annual_rate: float, years: int,
 class Affordability:
     annual_income: int
     burden_limit: float        # 返済負担率の上限(%)
-    max_monthly: int
+    max_monthly: int           # 住居費全体の上限（管理費等を含む）
     max_principal: int
     max_price: int             # 頭金を足した購入可能額
     note: str
+    monthly_extra: int = 0     # 管理費・修繕積立金（円/月）
+    max_repayment: int = 0     # そのうち返済に回せる額
 
 
 def affordable_loan(annual_income: int, annual_rate: float, years: int,
                     down_payment: int = 0,
-                    burden_limit: Optional[float] = None) -> Affordability:
+                    burden_limit: Optional[float] = None,
+                    monthly_extra: int = 0) -> Affordability:
     """年収から逆算した借入可能額。scoring.score_finance と同じ基準を使う。
 
     年収400万円以上は35%、未満は30%（既存の score_finance と揃える）。
+
+    monthly_extra はマンションの管理費・修繕積立金のような毎月の固定費。
+    住み続ける限り出ていく金額なので、負担率の枠から先に差し引く
+    （pipeline.compute_loan が負担率に含めているのと同じ扱い）。差し引くと
+    借入に回せる額はその分だけ減る。戸建は 0 のまま呼ばれる。
     """
     if burden_limit is None:
         burden_limit = 35.0 if annual_income >= 4_000_000 else 30.0
     max_annual = annual_income * burden_limit / 100.0
     max_monthly = int(max_annual / 12)
+    extra = max(0, monthly_extra or 0)
+    # 管理費等が枠を食い切ることは実際にある。借入可能額をマイナスには
+    # しないが、0円と出して「無理がある」と分かるようにする。
+    repayment = max(0, max_monthly - extra)
     n = years * 12
     r = annual_rate / 12.0
     if r == 0:
-        principal = max_monthly * n
+        principal = repayment * n
     else:
-        principal = max_monthly * (1 - (1 + r) ** (-n)) / r
+        principal = repayment * (1 - (1 + r) ** (-n)) / r
     principal = int(round(principal))
+    note = (f"返済負担率 {burden_limit:.0f}% を上限とした場合の試算です。"
+            "金融機関の審査基準・他の借入・諸費用は考慮していません。")
+    if extra:
+        note = (f"返済負担率 {burden_limit:.0f}% の枠から、管理費・修繕積立金"
+                f" 月{extra:,}円を先に差し引いた残りで計算しています。"
+                "金融機関の審査基準・他の借入・諸費用は考慮していません。")
     return Affordability(
         annual_income, burden_limit, max_monthly, principal,
-        principal + (down_payment or 0),
-        f"返済負担率 {burden_limit:.0f}% を上限とした場合の試算です。"
-        "金融機関の審査基準・他の借入・諸費用は考慮していません。")
+        principal + (down_payment or 0), note,
+        monthly_extra=extra, max_repayment=repayment)

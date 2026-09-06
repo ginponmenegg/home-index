@@ -246,9 +246,12 @@ def build_finance_pdf(ctx: dict) -> bytes:
         story.append(KeepTogether([
             Paragraph("年収からみた借入の目安", st["h2"]),
             _kv_table([("返済負担率の上限", f"{a['limit']}％"),
-                       ("月々返済の上限", a["monthly"]),
-                       ("借入可能額", a["principal"]),
-                       ("頭金を加えた購入可能額", a["price"])], st, W),
+                       ("毎月の住居費の上限", a["monthly"])]
+                      + ([("うち管理費・修繕積立金", "−" + a["extra"]),
+                          ("返済に回せる額", a["repayment"])]
+                         if a.get("extra") else [])
+                      + [("借入可能額", a["principal"]),
+                         ("頭金を加えた購入可能額", a["price"])], st, W),
             Paragraph(a["note"], st["note"])]))
 
     # ---- 根拠と免責 ----

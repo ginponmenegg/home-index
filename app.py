@@ -2821,6 +2821,12 @@ def _finance_carry(subject, down_yen, loan_years, income_yen=None):
          # 本当の境目は建築確認の日なので、境界の年は「不明」に倒す。
          "quake": ("yes" if byear and byear >= 1983 else
                    ("unknown" if byear else "unknown"))}
+    # マンションの毎月の固定費。無料診断は返済負担率に含めているので、
+    # 資金計画にも同じものを渡す（片方だけ甘い数字が出るのを防ぐ）。
+    for key, attr in (("mfee", "management_fee"), ("rfund", "repair_fund")):
+        val = getattr(subject, attr, None)
+        if val:
+            v[key] = str(int(val))
     land = getattr(subject, "land_area_m2", None)
     floor = getattr(subject, "building_area_m2", None) \
         or getattr(subject, "exclusive_area_m2", None)
@@ -5941,6 +5947,14 @@ BRAND_BAR
     <div><label>建物の床面積（㎡）</label>
      <input name="floor_area" value="{{v.floor_area}}" placeholder="例）95"></div>
    </div>
+   <div class="row">
+    <div><label>管理費（円／月・マンションのみ）</label>
+     <input name="mfee" value="{{v.mfee}}" placeholder="例）12000"></div>
+    <div><label>修繕積立金（円／月・マンションのみ）</label>
+     <input name="rfund" value="{{v.rfund}}" placeholder="例）13000"></div>
+   </div>
+   <div class="hint">住み続ける限り毎月出ていく金額なので、借入可能額の計算で
+    返済負担率の枠から先に差し引きます。戸建なら空欄のままにしてください。</div>
   </div>
 
   <div class="card">
@@ -6198,7 +6212,11 @@ BRAND_BAR
  <div class="card">
   <h2>年収からみた借入の目安</h2>
   <div class="kv"><span>返済負担率の上限</span><b>{{afford.limit}}％</b></div>
-  <div class="kv"><span>月々返済の上限</span><b>{{afford.monthly}}</b></div>
+  <div class="kv"><span>毎月の住居費の上限</span><b>{{afford.monthly}}</b></div>
+  {% if afford.extra %}
+  <div class="kv"><span>うち管理費・修繕積立金</span><b>−{{afford.extra}}</b></div>
+  <div class="kv"><span>返済に回せる額</span><b>{{afford.repayment}}</b></div>
+  {% endif %}
   <div class="kv"><span>借入可能額</span><b>{{afford.principal}}</b></div>
   <div class="kv"><span>頭金を加えた購入可能額</span><b>{{afford.price}}</b></div>
   <p class="foot">{{afford.note}}</p>
@@ -6245,7 +6263,7 @@ def _pro_defaults():
     return dict(price="", newbuild=False, land_price="", building_price="",
                 land_assessed="", building_assessed="",
                 land_ratio=(f"{ratio * 100:.0f}" if ratio else ""),
-                land_area="", floor_area="",
+                land_area="", floor_area="", mfee="", rfund="",
                 byear="", bmonth="", bday="", quake="yes",
                 down="", income="", loan_years="", rate="",
                 dx="",   # 診断からの引き継ぎ（署名済み）。無ければ空
@@ -6463,12 +6481,16 @@ def _pro_compute(f):
                 limit=man_yen(d.limit), years=d.years,
                 yearly=[man_yen(y) for y in d.yearly], notes=d.notes)
 
+    monthly_extra = (to_int(f.get("mfee")) or 0) + (to_int(f.get("rfund")) or 0)
     actx = None
     if income:
-        a = affordable_loan(income, rate, years, down)
+        a = affordable_loan(income, rate, years, down,
+                            monthly_extra=monthly_extra)
         actx = dict(limit=f"{a.burden_limit:.0f}", monthly=f"{a.max_monthly:,}円",
                     principal=man_yen(a.max_principal), price=man_yen(a.max_price),
-                    note=a.note)
+                    note=a.note, extra=(f"{a.monthly_extra:,}円"
+                                        if a.monthly_extra else None),
+                    repayment=f"{a.max_repayment:,}円")
 
     seen, sources = set(), []
     for c in costs.items:
@@ -6482,6 +6504,7 @@ def _pro_compute(f):
         s=sctx, costs=cctx, reg_total=(man_yen(reg) if reg else None),
         unknown="・".join(costs.unknown_items) if costs.unknown_items else None,
         scenarios=scen, prepay=pctx, deduction=dctx, afford=actx, sources=sources,
+        monthly_extra=(f"{monthly_extra:,}円" if monthly_extra else None),
         form={k: (f.get(k) or "") for k in _pro_defaults()})
 
 
