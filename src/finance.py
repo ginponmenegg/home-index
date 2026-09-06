@@ -397,12 +397,35 @@ def acquisition_tax(building_assessed: Optional[int] = None,
     taxable = int(round(land_assessed * half))
     land_tax = int(round(taxable * r_l))
     lr = c.get("land_reduction", {})
+    cap = lr.get("floor_area_cap_m2", 200)
+    mult = lr.get("floor_area_multiplier", 2)
+
+    # 軽減の対象なのに土地の面積が無いとき。軽減額は「1㎡単価 × 床面積×2」で
+    # 決まるので、面積が無いと 1㎡単価 が出せず、軽減額も出せない。ここで
+    # 軽減を0として課税額を出すと、**実際には0円になる物件に数十万円を積む**。
+    # マンションの土地は敷地権の持分で、この欄はまず埋まらない。
+    if eligible and not (land_area_m2 and land_area_m2 > 0):
+        target = min(floor_area_m2 * mult, cap)
+        out.append(CostItem(
+            "不動産取得税（土地）", None,
+            f"{prefix}評価額 {man_yen(land_assessed)}"
+            f"{' × 1/2（宅地）' if residential_land else ''}"
+            f" × {r_l*100:.0f}% ＝ {man_yen(land_tax)}。ただし軽減額は"
+            f"「土地1㎡あたりの評価額 × {target:.0f}㎡ × "
+            f"{lr.get('rate', r_l)*100:.0f}%」なので、"
+            "土地の面積が分からないと税額を出せません。"
+            f"土地の面積が{target:.0f}㎡以下であれば0円です。"
+            "マンションの土地は敷地権の持分で、この面積を下回ることが"
+            "多く、その場合は0円になります。販売図面の「敷地権の割合」×"
+            "「敷地面積」か、固定資産税の課税明細書の地積で確かめられます。",
+            UNKNOWN, src,
+            "土地の面積を入力すると、軽減を差し引いた税額を試算します。"))
+        return out
+
     reduction = 0
     detail = ""
     if eligible and land_area_m2 and floor_area_m2 and land_area_m2 > 0:
         unit = taxable / land_area_m2          # 1㎡単価（1/2適用後）
-        cap = lr.get("floor_area_cap_m2", 200)
-        mult = lr.get("floor_area_multiplier", 2)
         target = min(floor_area_m2 * mult, cap)
         calc = int(round(unit * target * lr.get("rate", r_l)))
         flat = int(lr.get("flat", 0))

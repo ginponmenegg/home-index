@@ -533,6 +533,66 @@ def test_the_notes_are_plain_text():
         assert "<" not in n, n
 
 
+# ---- 土地の軽減が計算できないとき -----------------------------------------
+#
+# 軽減額は「1㎡単価 × 床面積×2（上限200㎡） × 3%」で決まる。土地の面積が
+# 無いと 1㎡単価 が出せないので、軽減額も出せない。ここで軽減を0として
+# 課税額を出すと、実際には0円になる物件に数十万円を積むことになる。
+# マンションの土地は敷地権の持分なので、この欄はまず埋まらない。
+
+def _land(items):
+    return [i for i in items if i.name.startswith("不動産取得税（土地")][0]
+
+
+def _acq(land_area, floor_area):
+    return acquisition_tax(building_assessed=11_520_000,
+                           land_assessed=20_160_000,
+                           land_area_m2=land_area, floor_area_m2=floor_area,
+                           build_year=2010, build_month=6, build_day=1,
+                           quake_conforming=True)
+
+
+def test_the_land_tax_is_not_guessed_without_the_area():
+    i = _land(_acq(None, 70.0))
+    assert i.status == UNKNOWN
+    assert i.amount is None, "軽減前の金額を出さない"
+
+
+def test_the_explanation_names_the_threshold_and_where_to_look():
+    i = _land(_acq(None, 70.0))
+    assert "140㎡以下であれば0円" in i.basis, "いくつ以下なら0円かを書く"
+    assert "敷地権" in i.basis, "マンションの土地が持分であることを書く"
+    assert "課税明細書" in i.basis, "どこで確かめられるかを書く"
+
+
+def test_an_unpriced_item_is_kept_out_of_the_total():
+    """合計に混ぜない。混ぜたら「判明分」と言えなくなる。"""
+    c = purchase_costs(48_000_000, land_price=28_800_000,
+                       building_price=19_200_000, floor_area_m2=70.0,
+                       build_year=2010, quake_conforming=True)
+    assert any("不動産取得税（土地）" in u for u in c.unknown_items)
+
+
+def test_the_land_tax_is_computed_once_the_area_is_given():
+    """持分10㎡を入れれば計算できる。軽減のほうが大きいので0円。"""
+    i = _land(_acq(10.0, 70.0))
+    assert i.status == ESTIMATED
+    assert i.amount == 0
+    assert "軽減" in i.basis
+
+
+def test_a_house_with_its_area_is_unaffected():
+    i = _land(_acq(120.0, 95.0))
+    assert i.status == ESTIMATED and i.amount == 0
+
+
+def test_a_flat_too_small_for_the_relief_is_still_taxed():
+    """床面積40㎡未満は軽減の対象外。ここは計算できるので金額を出す。"""
+    i = _land(_acq(None, 35.0))
+    assert i.status == ESTIMATED
+    assert i.amount and i.amount > 0
+
+
 def test_menu_on_every_page():
     """三本線メニューが全ページの固定バーに出ること。
 
