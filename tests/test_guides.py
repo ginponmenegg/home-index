@@ -401,6 +401,58 @@ def test_the_article_does_not_repeat_the_older_one():
     assert 'href="/guide/shin-taishin-kenchiku-kakunin"' in body
 
 
+# ---- 住宅ローン控除 -------------------------------------------------------
+#
+# 記事の金額は finance_config.json そのもの。設定を直したら、この記事も
+# 直さないと落ちる。税制は毎年変わるので、片方だけ古くなるのが怖い。
+
+def test_the_deduction_article_matches_the_config():
+    from src.finance import FCONFIG
+    body = guides.by_slug("jutaku-loan-koujo-1982").body
+    c = FCONFIG["loan_deduction"]
+
+    assert f"{c['rate'] * 100:.1f}%" in body, "控除率"
+    assert f"{c['income_limit'] // 10000:,}万円" in body, "所得の上限"
+    assert f"{c['floor_area_min']}㎡以上" in body, "床面積の下限"
+
+    def man(v):
+        return f"{v // 10000:,}万円"
+
+    for name, band in c["existing"].items():
+        if name.startswith("_"):
+            continue
+        assert man(band["limit"]) in body, f"{name} の限度額"
+        assert f"{band['years']}年" in body, f"{name} の控除期間"
+        if band.get("limit_kosodate"):
+            assert man(band["limit_kosodate"]) in body, f"{name} の上乗せ"
+    # 買取再販は本文で1つだけ触れている。いちばん高い区分。
+    top = c["resale"]["長期優良・低炭素"]
+    assert man(top["limit"]) in body and man(top["limit_kosodate"]) in body
+
+
+def test_the_deduction_article_lists_all_three_certificates():
+    """耐震基準適合証明書だけが道だと思われている。3つ全部書く。"""
+    body = guides.by_slug("jutaku-loan-koujo-1982").body
+    for doc in ("耐震基準適合証明書", "建設住宅性能評価書",
+                "既存住宅売買瑕疵担保付保険証明書"):
+        assert doc in body, doc
+    assert "1982年1月1日" in body
+
+
+def test_the_deduction_article_says_the_ceiling_is_not_the_refund():
+    """出しているのは制度上の上限。戻ってくる額ではない。"""
+    body = guides.by_slug("jutaku-loan-koujo-1982").body
+    assert "制度上の上限" in body
+    assert "所得税" in body and "住民税" in body
+
+
+def test_the_deduction_article_separates_the_two_dates():
+    """1981年6月（耐震基準）と1982年1月1日（税制）は別物。"""
+    body = guides.by_slug("jutaku-loan-koujo-1982").body
+    assert "1981年6月1日" in body
+    assert 'href="/guide/shin-taishin-kenchiku-kakunin"' in body
+
+
 def test_the_repair_fund_article_matches_the_guideline():
     body = guides.by_slug("shuzen-tsumitatekin-meyasu").body
     g = CONFIG["mansion_repair_fund_guideline"]
