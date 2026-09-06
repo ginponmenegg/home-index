@@ -175,9 +175,11 @@ def build_finance_pdf(ctx: dict) -> bytes:
     data = [[Paragraph("項目", st["cellsub"]), Paragraph("金額", st["num"]),
              Paragraph("区分", st["cellsub"])]]
     for c in ctx["costs"]:
+        extra = (f"<br/><font size=7 color='#6b7280'>※ {c['note']}</font>"
+                 if c.get("note") else "")
         name = Paragraph(
-            f"{c['name']}<br/><font size=7 color='#6b7280'>{c['basis']}</font>",
-            st["cell"])
+            f"{c['name']}<br/><font size=7 color='#6b7280'>{c['basis']}</font>"
+            + extra, st["cell"])
         data.append([name, Paragraph(c["amount"], st["num"]),
                      Paragraph(c["status_ja"], st["cellsub"])])
     t = Table(data, colWidths=[W * 0.60, W * 0.25, W * 0.15], repeatRows=1)
@@ -191,6 +193,29 @@ def build_finance_pdf(ctx: dict) -> bytes:
             f"算出していない項目：{ctx['unknown']}　"
             "情報が足りないため金額を出していません。合計にも含めていません。",
             st["note"]))
+
+    # ---- 引渡日の精算（諸費用とは別。売主に払う）----
+    pr = ctx.get("proration")
+    if pr:
+        story.append(Paragraph("引渡日の精算", st["h2"]))
+        story.append(Paragraph(
+            f"{pr['handover']}に引き渡す場合。起算日は{pr['start']}です。"
+            "諸費用とは別に、決済当日に売主へ払います。", st["body"]))
+        rows = [[Paragraph("項目", st["cellsub"]), Paragraph("金額", st["num"])]]
+        for i in pr["rows"]:
+            rows.append([
+                Paragraph(f"{i['name']}<br/><font size=7 color='#6b7280'>"
+                          f"{i['basis']}</font>", st["cell"]),
+                Paragraph(i["amount"], st["num"])])
+        story.append(_header_style(
+            Table(rows, colWidths=[W * 0.72, W * 0.28], repeatRows=1), 2))
+        if pr.get("total"):
+            story.append(Spacer(1, 4))
+            story.append(Paragraph(
+                f"決済当日に必要な現金（精算金）：{pr['total']}", st["body"]))
+        story.append(Paragraph(
+            "起算日、引渡日をどちらの負担にするか、うるう年の数え方は、"
+            "いずれも売買契約書の定めが優先します。", st["note"]))
 
     # ---- 金利シナリオ ----
     story.append(Paragraph("金利が上がったら", st["h2"]))

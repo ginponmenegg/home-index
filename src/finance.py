@@ -737,6 +737,117 @@ class Affordability:
     max_repayment: int = 0     # そのうち返済に回せる額
 
 
+# ---------------- 引渡日の精算 ----------------
+#
+# 固定資産税の納税義務者は、その年の1月1日時点の所有者（地方税法第343条・
+# 第359条）。買主に納税義務は無い。だから精算金は**税金ではなく、売買代金の
+# 一部として売主に払うお金**で、法律ではなく契約の取り決めになる。
+#
+# そのため慣行に幅がある。起算日（関東1月1日・関西4月1日）、引渡日を
+# どちらの負担にするか、うるう年の扱い。どれも売買契約書の定めが優先する。
+# ここで出すのは目安であって、確定額ではない。
+#
+# 諸費用の合計（PurchaseCosts.total）には足さない。あれは借入額の反復計算に
+# 入っているので、売主に払う精算金を混ぜると借入額が膨らむ。決済当日に要る
+# 現金として、別に出す。
+
+PRORATION_STARTS = {
+    "0101": ("1月1日", 1, 1),      # 関東で一般的
+    "0401": ("4月1日", 4, 1),      # 関西で一般的
+}
+
+
+@dataclass
+class Proration:
+    """引渡日の精算。売主に払うので、諸費用とは別に持つ。"""
+    items: List[CostItem] = field(default_factory=list)
+    total: int = 0
+    handover: Optional[str] = None
+    start_label: str = ""
+
+    @property
+    def has_any(self) -> bool:
+        return bool(self.items)
+
+
+def _last_day(year: int, month: int) -> int:
+    import calendar
+    return calendar.monthrange(year, month)[1]
+
+
+def _tax_year_span(day, start_month: int, start_day: int):
+    """起算日で区切った1年の、始まりと終わり。"""
+    import datetime
+    start = datetime.date(day.year, start_month, start_day)
+    if day < start:
+        start = datetime.date(day.year - 1, start_month, start_day)
+    end = datetime.date(start.year + 1, start_month, start_day) - \
+        datetime.timedelta(days=1)
+    return start, end
+
+
+def proration(handover: Optional[str], start_key: str = "0101",
+              tax_yearly: Optional[int] = None,
+              monthly_fees: int = 0) -> Proration:
+    """引渡日でぶつ切りにした、買主が売主に払う分。
+
+    handover は "YYYY-MM-DD"。引渡日当日は買主の負担として数える
+    （これも契約書による。根拠欄にそう書く）。
+    """
+    import datetime
+    out = Proration(handover=handover)
+    if not handover:
+        return out
+    try:
+        day = datetime.date.fromisoformat(handover.strip())
+    except (ValueError, AttributeError):
+        return out
+
+    label, sm, sd = PRORATION_STARTS.get(start_key,
+                                         PRORATION_STARTS["0101"])
+    out.start_label = label
+
+    # ---- 固定資産税・都市計画税 ----
+    if tax_yearly and tax_yearly > 0:
+        start, end = _tax_year_span(day, sm, sd)
+        days_total = (end - start).days + 1
+        days_buyer = (end - day).days + 1
+        amount = int(round(tax_yearly * days_buyer / days_total))
+        out.items.append(CostItem(
+            "固定資産税・都市計画税の精算", amount,
+            f"年税額 {man_yen(tax_yearly)} × {days_buyer}日 ÷ {days_total}日"
+            f"（起算日 {label}／{start.isoformat()}〜{end.isoformat()}）。"
+            "引渡日当日を買主の負担として計算しています。",
+            ESTIMATED, None,
+            "起算日も、引渡日をどちらの負担にするかも、売買契約書の"
+            "定めが優先します。関東では1月1日、関西では4月1日を起算日と"
+            "することが多く、どちらかで金額が変わります。"))
+    elif tax_yearly is not None:
+        out.items.append(CostItem(
+            "固定資産税・都市計画税の精算", None,
+            "年税額が未入力のため計算していません。売主の課税明細書"
+            "（納税通知書）に載っています。仲介会社が精算のために"
+            "取り寄せるものなので、見せてもらえます。",
+            UNKNOWN))
+
+    # ---- 管理費・修繕積立金（引渡月の分）----
+    fees = max(0, monthly_fees or 0)
+    if fees:
+        last = _last_day(day.year, day.month)
+        days_buyer = last - day.day + 1
+        amount = int(round(fees * days_buyer / last))
+        out.items.append(CostItem(
+            "管理費・修繕積立金の精算（引渡月）", amount,
+            f"月額 {fees:,}円 × {days_buyer}日 ÷ {last}日"
+            f"（{day.year}年{day.month}月）。翌月分からは買主が直接支払います。",
+            ESTIMATED, None,
+            "前払いされている場合の精算です。管理組合の徴収月が"
+            "ずれていると、金額も変わります。"))
+
+    out.total = sum(i.amount for i in out.items if i.amount)
+    return out
+
+
 def affordable_loan(annual_income: int, annual_rate: float, years: int,
                     down_payment: int = 0,
                     burden_limit: Optional[float] = None,

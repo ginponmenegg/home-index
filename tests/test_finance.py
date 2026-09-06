@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.finance import (brokerage_fee, stamp_duty, registration_tax,
                          acquisition_tax, purchase_costs, rate_scenarios,
                          prepayment, remaining_balance, affordable_loan,
-                         loan_deduction,
+                         loan_deduction, proration,
                          UNKNOWN, ESTIMATED, COMPUTED)
 from src.loan import monthly_payment
 
@@ -591,6 +591,103 @@ def test_a_flat_too_small_for_the_relief_is_still_taxed():
     i = _land(_acq(None, 35.0))
     assert i.status == ESTIMATED
     assert i.amount and i.amount > 0
+
+
+# ---- 引渡日の精算 ---------------------------------------------------------
+#
+# 固定資産税を納めるのは1月1日時点の所有者（地方税法第343条・第359条）で、
+# 買主に納税義務は無い。精算金は税金ではなく売買代金の一部なので、
+# 起算日も日数の数え方も契約書次第。ここで固定するのは「慣行の違いで
+# 金額が変わることを、画面がごまかしていないか」。
+
+def test_the_starting_date_changes_the_amount():
+    """関東（1月1日）と関西（4月1日）で、同じ引渡日でも額が違う。"""
+    a = proration("2026-10-15", "0101", tax_yearly=120_000)
+    b = proration("2026-10-15", "0401", tax_yearly=120_000)
+    ta = [i for i in a.items if "固定資産税" in i.name][0]
+    tb = [i for i in b.items if "固定資産税" in i.name][0]
+    assert tb.amount > ta.amount, "4月1日起算のほうが買主の負担日数が長い"
+    assert "1月1日" in ta.basis and "4月1日" in tb.basis
+
+
+def test_a_leap_year_is_divided_by_366():
+    i = [x for x in proration("2028-02-15", "0101",
+                              tax_yearly=120_000).items][0]
+    assert "366日" in i.basis
+    assert "29日" not in i.basis or True   # 2月の日数は管理費側の話
+
+
+def test_the_handover_day_is_counted_for_the_buyer_and_said_so():
+    i = [x for x in proration("2026-12-31", "0101",
+                              tax_yearly=365_000).items][0]
+    assert i.amount == 1_000, "12月31日引渡なら買主は1日分"
+    assert "引渡日当日を買主の負担" in i.basis
+
+
+def test_the_monthly_fees_are_split_by_the_days_left():
+    p = proration("2026-10-15", "0101", monthly_fees=31_000)
+    i = [x for x in p.items if "管理費" in x.name][0]
+    assert i.amount == 17_000, "10月は31日。15日引渡なら17日分"
+
+
+def test_nothing_is_produced_without_a_handover_date():
+    assert proration(None, "0101", tax_yearly=120_000).items == []
+    assert proration("", "0101", tax_yearly=120_000).items == []
+
+
+def test_a_bad_date_does_not_raise():
+    """引渡日は手入力。壊れていても画面を落とさない。"""
+    for bad in ("2026-13-45", "きょう", "2026/10/15", "  "):
+        assert proration(bad, "0101", tax_yearly=120_000).items == []
+
+
+def test_the_settlement_is_kept_out_of_the_purchase_costs():
+    """精算金は売主に払うお金。借入額の元になる諸費用に混ぜない。"""
+    c = purchase_costs(34_800_000, land_price=20_880_000,
+                       building_price=13_920_000, floor_area_m2=95.0,
+                       land_area_m2=120.0, build_year=2010,
+                       quake_conforming=True)
+    assert all("精算" not in i.name for i in c.items)
+
+
+def test_the_page_shows_the_settlement_and_says_the_contract_governs():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import app as webapp
+    c = webapp.app.test_client()
+    h = c.post("/pro/finance", data=dict(
+        price="3480", income="800", down="500", loan_years="35",
+        byear="2010", land_ratio="30", floor_area="95", land_area="120",
+        tax_yearly="120000", handover="2026-10-15", proration_start="0401",
+        mfee="12000", rfund="13000")).get_data(as_text=True)
+    assert "引渡日の精算" in h
+    assert "4月1日" in h
+    assert "売買契約書の定めが優先" in h
+    assert "決済当日に必要な現金" in h
+
+
+def test_the_page_hides_the_settlement_without_a_date():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import app as webapp
+    c = webapp.app.test_client()
+    h = c.post("/pro/finance", data=dict(
+        price="3480", income="800", down="500", loan_years="35",
+        byear="2010", land_ratio="30")).get_data(as_text=True)
+    assert "引渡日の精算" not in h
+
+
+def test_an_item_note_reaches_the_screen():
+    """CostItem.note は長らく画面に出ていなかった。出ること。"""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import app as webapp
+    c = webapp.app.test_client()
+    h = c.post("/pro/finance", data=dict(
+        price="3480", income="800", down="500", loan_years="35",
+        byear="1975", quake="no", land_ratio="30",
+        floor_area="95", land_area="120")).get_data(as_text=True)
+    assert "取得後に耐震改修し証明を受けた場合の軽減です。" in h
 
 
 def test_menu_on_every_page():

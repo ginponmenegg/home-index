@@ -6021,15 +6021,25 @@ BRAND_BAR
    </div>
    <div class="hint">内訳は登録免許税と不動産取得税の計算に使います。割合による推定であることは根拠欄に明記されます。</div>
    <div class="row">
-    <div><label>土地の固定資産税評価額（万円・任意）</label>
+    <div><label>土地の固定資産税評価額（万円）</label>
      <input name="land_assessed" value="{{v.land_assessed}}" placeholder="分かれば入力"></div>
-    <div><label>建物の固定資産税評価額（万円・任意）</label>
+    <div><label>建物の固定資産税評価額（万円）</label>
      <input name="building_assessed" value="{{v.building_assessed}}" placeholder="分かれば入力"></div>
    </div>
-   <div class="hint">課税明細書があれば入力してください。未入力なら上の内訳から推定し、その旨を根拠に明記します。</div>
    <div class="row">
+    <div><label>固定資産税・都市計画税の年税額（円）</label>
+     <input name="tax_yearly" value="{{v.tax_yearly}}" placeholder="例）120000"></div>
     <div><label>土地面積（㎡）</label>
      <input name="land_area" value="{{v.land_area}}" placeholder="例）120"></div>
+   </div>
+   <div class="hint"><b>この3つは、売主の「固定資産税の課税明細書（納税通知書）」に
+    まとめて載っています。</b>仲介会社が日割精算のために取り寄せる書類なので、
+    見せてもらえます。入れると、登録免許税と不動産取得税が推定から実額に変わり、
+    引渡日の精算も出せます。<br>
+    <b>マンションの場合</b>、課税明細書の評価額と地積は、すでに敷地権の持分ぶんです。
+    自分で割合を掛ける必要はありません。販売図面から出すなら
+    「敷地権の割合 × 敷地面積」が土地面積です。</div>
+   <div class="row">
     <div><label>建物の床面積（㎡）</label>
      <input name="floor_area" value="{{v.floor_area}}" placeholder="例）95"></div>
    </div>
@@ -6105,6 +6115,25 @@ BRAND_BAR
      </select>
      <div class="hint">19歳未満の扶養親族がいる、または夫婦のいずれかが40歳未満</div></div>
    </div>
+  </div>
+
+  <div class="card">
+   <h2>引渡日の精算（任意）</h2>
+   <p class="h2sub">決済当日、売主に払うお金です。諸費用とは別に要ります</p>
+   <div class="row">
+    <div><label>引渡日</label>
+     <input type="date" name="handover" value="{{v.handover}}"></div>
+    <div><label>起算日</label>
+     <select name="proration_start">
+      <option value="0101" {{'selected' if v.proration_start!='0401' else ''}}>1月1日（関東で一般的）</option>
+      <option value="0401" {{'selected' if v.proration_start=='0401' else ''}}>4月1日（関西で一般的）</option>
+     </select></div>
+   </div>
+   <div class="hint">固定資産税を納めるのは、その年の<b>1月1日時点の所有者</b>です
+    （地方税法第343条・第359条）。買主に納税義務はありません。だから精算金は
+    税金ではなく、<b>売買代金の一部として売主に払うお金</b>で、法律ではなく
+    契約の取り決めです。<b>起算日をどちらにするかで金額が変わります。</b>
+    売買契約書の定めが優先します。</div>
   </div>
 
   <div class="card">
@@ -6248,7 +6277,8 @@ BRAND_BAR
   <div class="tablewrap">
   <table><tr><th>項目</th><th style="text-align:right">金額</th><th>区分</th></tr>
   {% for c in costs %}
-   <tr><td>{{c.name}}<div class="basis">{{c.basis}}</div></td>
+   <tr><td>{{c.name}}<div class="basis">{{c.basis}}</div>
+    {% if c.note %}<div class="basis">※ {{c.note}}</div>{% endif %}</td>
     <td class="num">{{c.amount}}</td>
     <td><span class="st st-{{c.status}}">{{c.status_ja}}</span></td></tr>
   {% endfor %}
@@ -6293,6 +6323,29 @@ BRAND_BAR
   {% endif %}
   {% for n in deduction.notes %}<p class="foot">・{{n}}</p>{% endfor %}
  </div>
+
+ {% if proration %}
+ <div class="card">
+  <h2>引渡日の精算</h2>
+  <p class="sub">{{proration.handover}}に引き渡す場合。起算日は{{proration.start}}です。
+   <b>諸費用とは別に、決済当日に売主へ払います。</b></p>
+  <div class="tablewrap">
+  <table><tr><th>項目</th><th style="text-align:right">金額</th></tr>
+  {% for i in proration.rows %}
+   <tr><td>{{i.name}}<div class="basis">{{i.basis}}</div>
+    {% if i.note %}<div class="basis">※ {{i.note}}</div>{% endif %}</td>
+    <td class="num">{{i.amount}}</td></tr>
+  {% endfor %}
+  </table></div>
+  {% if proration.total %}
+  <div class="kv" style="margin-top:10px"><span>決済当日に必要な現金（精算金）</span>
+   <b>{{proration.total}}</b></div>
+  {% endif %}
+  <div class="warn" style="margin-top:10px">これは<b>目安</b>です。起算日、引渡日を
+   どちらの負担にするか、うるう年の数え方は、いずれも<b>売買契約書の定めが優先</b>
+   します。金額は契約前に必ず確かめてください。</div>
+ </div>
+ {% endif %}
 
  {% if afford %}
  <div class="card">
@@ -6350,6 +6403,7 @@ def _pro_defaults():
                 land_assessed="", building_assessed="",
                 land_ratio=(f"{ratio * 100:.0f}" if ratio else ""),
                 land_area="", floor_area="", mfee="", rfund="",
+                tax_yearly="", handover="", proration_start="0101",
                 byear="", bmonth="", bday="", quake="yes",
                 down="", income="", loan_years="", rate="",
                 dx="",   # 診断からの引き継ぎ（署名済み）。無ければ空
@@ -6461,7 +6515,7 @@ def _pro_compute(f):
     """フォーム値から試算結果のコンテキストを作る。HTMLとPDFで共用する。"""
     from src.finance import (purchase_costs, registration_cost_total,
                              rate_scenarios, prepayment, loan_deduction,
-                             affordable_loan, man_yen, FCONFIG)
+                             affordable_loan, proration, man_yen, FCONFIG)
     from src.loan import compute_loan
 
     v = {k: (f.get(k) or "") for k in _pro_defaults()}
@@ -6534,7 +6588,7 @@ def _pro_compute(f):
                 years=years, newbuild=v["newbuild"])
 
     cctx = [dict(name=c.name, amount=man_yen(c.amount),
-                 basis=c.basis, status=c.status,
+                 basis=c.basis, status=c.status, note=c.note,
                  status_ja=_STATUS_JA.get(c.status, c.status))
             for c in costs.items]
     reg = registration_cost_total(costs)
@@ -6568,6 +6622,22 @@ def _pro_compute(f):
                 yearly=[man_yen(y) for y in d.yearly], notes=d.notes)
 
     monthly_extra = (to_int(f.get("mfee")) or 0) + (to_int(f.get("rfund")) or 0)
+    # 精算金は売主に払うもの。諸費用の合計（＝借入額の反復計算の元）には
+    # 足さない。決済当日に要る現金として別に出す。
+    pr = proration(f.get("handover"), f.get("proration_start") or "0101",
+                   tax_yearly=to_int(f.get("tax_yearly")),
+                   monthly_fees=monthly_extra)
+    prctx = None
+    if pr.has_any:
+        prctx = dict(
+            start=pr.start_label, handover=pr.handover,
+            total=man_yen(pr.total) if pr.total else None,
+            # Jinjaで proration.items と書くと辞書の .items メソッドに
+            # 解決されてしまう。名前を変えて避ける。
+            rows=[dict(name=i.name,
+                        amount=(man_yen(i.amount) if i.amount is not None
+                                else "—"),
+                        basis=i.basis, note=i.note) for i in pr.items])
     actx = None
     if income:
         a = affordable_loan(income, rate, years, down,
@@ -6589,7 +6659,8 @@ def _pro_compute(f):
     return dict(
         s=sctx, costs=cctx, reg_total=(man_yen(reg) if reg else None),
         unknown="・".join(costs.unknown_items) if costs.unknown_items else None,
-        scenarios=scen, prepay=pctx, deduction=dctx, afford=actx, sources=sources,
+        scenarios=scen, prepay=pctx, deduction=dctx, afford=actx,
+        proration=prctx, sources=sources,
         monthly_extra=(f"{monthly_extra:,}円" if monthly_extra else None),
         form={k: (f.get(k) or "") for k in _pro_defaults()})
 
