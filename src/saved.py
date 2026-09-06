@@ -133,7 +133,8 @@ def delete(user_id, sid) -> None:
 
 # ---- 比較用の整形 ---------------------------------------------------------
 
-def snapshot(res, subject, sctx, kind: str, enr=None, redo=None) -> dict:
+def snapshot(res, subject, sctx, kind: str, enr=None, redo=None,
+             fin=None) -> dict:
     """診断結果から、保存と読み返しに要る分を抜き出す。
 
     画面が持っている値をまるごと写すのではなく、あとから見て意味のある
@@ -146,6 +147,10 @@ def snapshot(res, subject, sctx, kind: str, enr=None, redo=None) -> dict:
 
     redo は再診断のときにフォームへ戻す入力。キーは入力フォームの
     name にそろえてある。NEVER_SAVE の項目はここで落とす。
+
+    fin は資金計画のフォームへ渡す値。redo と別に持つのは、聞いている
+    項目が違うため（資金計画は按分や築月日を使い、駅徒歩は使わない）。
+    こちらも NEVER_SAVE を落とす。
     """
     d = res.diagnosis
     p = getattr(res, "price", None)
@@ -173,6 +178,9 @@ def snapshot(res, subject, sctx, kind: str, enr=None, redo=None) -> dict:
         # 再診断のときにフォームへ戻す値。家計の入力は落とす。
         out["redo"] = {k: v for k, v in redo.items()
                        if k not in NEVER_SAVE and v not in (None, "")}
+    if fin:
+        out["fin"] = {k: v for k, v in fin.items()
+                      if k not in NEVER_SAVE and v not in (None, "")}
     if p and p.verdict != "判定不可":
         out["price"] = {"verdict": p.verdict, "dev": p.deviation_pct,
                         "mid": p.estimate_mid, "count": p.comparable_count,

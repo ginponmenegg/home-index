@@ -3038,8 +3038,10 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
                 kind=kind, title=title, address=sctx.get("address"),
                 price=getattr(subject, "price", None),
                 total=d.total_score, grade=d.grade,
-                payload=saved.snapshot(res, subject, sctx, kind, enr,
-                                       redo)))
+                payload=saved.snapshot(
+                    res, subject, sctx, kind, enr, redo,
+                    # 頭金と年収は渡さない（保存しないと明言している）。
+                    fin=_finance_carry(subject, 0, loan_years))))
 
     if finance_carry is not None:
         # 資金計画のPDFに診断を載せるため、点数とリスクを署名して持ち回す。
@@ -4737,6 +4739,34 @@ SAVED_DETAIL = """
 </div>
 {% endif %}
 
+{% if p.fin or p.redo %}
+<div class="card" style="margin-top:14px">
+ <h2 style="margin-top:0">この物件で先に進む</h2>
+ {% if p.redo %}
+ <p class="lead">保存した入力を引き継いで、そのまま次へ進めます。</p>
+ <form method="post" action="{{ '/pro/mansion_start' if is_mansion else '/pro/start' }}"
+   style="display:inline-block;margin-right:10px">
+  {% for k, val in p.redo.items() %}<input type="hidden" name="{{k}}" value="{{val}}">{% endfor %}
+  <button class="btn" type="submit">詳細診断に進む（PRO）</button>
+ </form>
+ {% else %}
+ <p class="lead">この物件は詳細診断（PRO）で保存されています。
+  <b>次は資金計画です。</b></p>
+ {% endif %}
+ {% if p.fin %}
+ <form method="post" action="/pro/finance_start" style="display:inline">
+  {% for k, val in p.fin.items() %}<input type="hidden" name="{{k}}" value="{{val}}">{% endfor %}
+  {% if dx %}<input type="hidden" name="dx" value="{{dx}}">{% endif %}
+  <button class="btn{{ ' ghost' if p.redo else '' }}" type="submit">詳細な資金計画に進む（PRO）</button>
+ </form>
+ {% endif %}
+ <p class="sub" style="margin-top:10px">
+  物件の条件は引き継がれますが、<b>世帯年収と頭金はお預かりしていないため
+  空欄</b>です。入れ直してください。{% if dx %}<br>
+  資金計画のPDFには、この診断の点数・カテゴリ別の評価・重大リスクも入ります。{% endif %}</p>
+</div>
+{% endif %}
+
 <div class="card" style="margin-top:14px">
  <p class="sub" style="margin:0">{{ it.created_at[:10] }}に診断した時点の結果です。
   公的データも配点も時間とともに変わるため、開くたびに計算し直すことはしていません。
@@ -4767,9 +4797,24 @@ def saved_detail(sid):
                 '<p class="lead">削除されたか、別のアカウントの保存です。</p>'
                 '<a class="btn" href="/mypage">保存した物件へ</a></div>')
         return _account_page("保存した診断", body), 404
+    p = it["payload"] or {}
+    # 資金計画のPDFに、この診断をそのまま載せるための署名付きの持ち回し。
+    # 作り直すと外部APIを二度叩くうえ、保存した時点の数字と変わり得る。
+    dx = ""
+    if p.get("fin"):
+        dx = sign_snapshot({
+            "title": (p.get("spec") or {}).get("address") or it["title"],
+            "total": p.get("total"), "grade": p.get("grade"),
+            "suff": p.get("sufficiency"),
+            "cats": [[c.get("name"), c.get("points"), c.get("weight"),
+                      c.get("reason")] for c in (p.get("categories") or [])],
+            "risks": [[r.get("sev"), r.get("type"), r.get("status"),
+                       r.get("ev")] for r in (p.get("risks") or [])],
+            "ask": list(p.get("confirm") or [])[:20]})
     body = render_template_string(
-        SAVED_DETAIL, it=it, p=it["payload"], man=man, kindja=_kindja,
+        SAVED_DETAIL, it=it, p=p, man=man, kindja=_kindja,
         catcolor=_catcolor, short=short_label(it),
+        is_mansion=("mansion" in (p.get("kind") or "")), dx=dx,
         note_max=saved.NOTE_MAX)
     return _account_page("保存した診断", body)
 

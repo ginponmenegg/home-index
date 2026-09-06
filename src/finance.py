@@ -608,6 +608,27 @@ class LoanDeduction:
     notes: List[str] = field(default_factory=list)
 
 
+def _floor_area_notes(floor_area_m2: Optional[float],
+                      fmin: Optional[float]) -> List[str]:
+    """床面積の但し書き。入力が無ければ何も言わない。
+
+    言うのは3つ。判定は登記簿の面積で行うこと、マンションの登記簿面積は
+    内法なので販売図面の壁芯面積より小さいこと、登記簿の面積が分かるなら
+    それを入れ直してほしいこと。
+    """
+    if floor_area_m2 is None or not fmin:
+        return []
+    return [
+        f"床面積が{fmin}㎡以上という要件は、登記事項証明書に記載された面積で"
+        "判定されます。この試算は、入力された面積のまま計算しています。",
+        "マンションの専有面積は、登記簿では内法（壁の内側）で測ります。"
+        "販売図面やチラシに載っている専有面積は壁芯（壁の中心線）である"
+        "ことが多く、登記簿の面積はそれより小さくなります。",
+        "登記事項証明書が手元にあれば、その面積を入れて試算し直して"
+        "ください。境目に近い場合、対象かどうかが入れ替わることがあります。",
+    ]
+
+
 def loan_deduction(principal: int, annual_rate: float, years: int,
                    category: str = "その他",
                    is_resale: bool = False,
@@ -642,9 +663,16 @@ def loan_deduction(principal: int, annual_rate: float, years: int,
     if annual_income is not None and c.get("high_income_threshold") and \
             annual_income > c["high_income_threshold"]:
         fmin = c.get("floor_area_min_high_income", fmin)
+    # 判定に使うのは登記簿の面積。マンションの専有部分は登記簿では内法
+    # （壁の内側）で測るので、販売図面の壁芯面積より小さくなる。ここは
+    # 入力された面積のまま計算し、差があることを但し書きで伝える。
+    area_notes = _floor_area_notes(floor_area_m2, fmin)
     if floor_area_m2 is not None and fmin and floor_area_m2 < fmin:
         return LoanDeduction(category, None, None, [], 0, UNKNOWN,
-                             f"床面積が{fmin}㎡未満のため対象外", src)
+                             f"床面積が{fmin}㎡未満のため対象外", src,
+                             notes=area_notes)
+
+    notes.extend(area_notes)
 
     cert_before = _ymd(c.get("quake_cert_required_before"))
     if build_year and cert_before and build_year <= cert_before[0]:

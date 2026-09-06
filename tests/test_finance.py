@@ -486,6 +486,53 @@ def test_the_finance_page_shows_the_fees_it_subtracted():
     assert "25,000円" in condo
 
 
+# ---- 内法と壁芯 -----------------------------------------------------------
+#
+# 販売図面の専有面積は壁芯。控除の要件は登記簿（マンションは内法）で
+# 判定するので、40㎡・50㎡の境目では対象・対象外が入れ替わる。計算は
+# 入力された面積のままにして、差があることを但し書きで伝えている。
+
+def test_the_deduction_warns_that_the_registry_area_decides_it():
+    d = loan_deduction(30_000_000, 0.0125, 35, category="その他",
+                       floor_area_m2=75.0, build_year=2010)
+    joined = "".join(d.notes)
+    assert "登記事項証明書" in joined, "判定に使う面積を書く"
+    assert "内法" in joined and "壁芯" in joined, "差があることを書く"
+    assert "入れて試算し直して" in joined, "入れ直すよう促す"
+
+
+def test_the_warning_also_shows_when_the_area_falls_short():
+    """対象外と出たときこそ、面積の測り方の話が要る。"""
+    d = loan_deduction(30_000_000, 0.0125, 35, category="その他",
+                       floor_area_m2=35.0, build_year=2010)
+    assert d.status == UNKNOWN and "対象外" in d.basis
+    assert any("内法" in n for n in d.notes)
+
+
+def test_no_warning_without_an_area():
+    """面積を聞いていないのに、面積の話をしない。"""
+    d = loan_deduction(30_000_000, 0.0125, 35, category="その他",
+                       build_year=2010)
+    assert not any("内法" in n for n in d.notes)
+
+
+def test_the_area_is_not_silently_adjusted():
+    """但し書きを足しただけ。壁芯の入力で計算が変わっていないこと。"""
+    a = loan_deduction(30_000_000, 0.0125, 35, category="その他",
+                       floor_area_m2=50.0)
+    b = loan_deduction(30_000_000, 0.0125, 35, category="その他",
+                       floor_area_m2=75.0)
+    assert a.total == b.total > 0, "面積は控除額そのものを動かさない"
+
+
+def test_the_notes_are_plain_text():
+    """画面はエスケープする。タグを書くと、そのまま文字で出てしまう。"""
+    d = loan_deduction(30_000_000, 0.0125, 35, category="その他",
+                       floor_area_m2=75.0)
+    for n in d.notes:
+        assert "<" not in n, n
+
+
 def test_menu_on_every_page():
     """三本線メニューが全ページの固定バーに出ること。
 
