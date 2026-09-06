@@ -3,9 +3,13 @@
 
 ■何を残さないか
 個人も物件も一切残さない。行に入るのは「日付・イベント名・件数」の3つだけで、
-IPアドレス、住所、価格、会員ID、参照元は入れない。プライバシーポリシーに
+IPアドレス、住所、価格、会員IDは入れない。プライバシーポリシーに
 「診断のために不要な情報は取得しません」と書いてあるので、数えるために
 新しく取る情報を増やさない。
+
+リンク元は、ホスト名を5つの枠（X・Threads・検索・その他・なし）の
+どれかに丸めて、その枠の件数を1増やすだけ。URLもホスト名も残らない。
+「Xから3件」までしか復元できない。
 
 数えているのは、利用者ひとりを追いかけるためではなく、
 「今日は診断が何件走ったか」だけを知るため。個人を復元する手がかりは
@@ -47,7 +51,48 @@ EVENTS = {
     "plan_view":    "プランの画面を見た",
     "pro_start":    "PROの契約が始まった",
     "pro_cancel":   "PROを解約した",
+    # 実際にブラウザで開かれた回数。HTMLを取るだけの巡回とは別に数える。
+    "browser":      "トップをブラウザで開いた",
+    # どこから来たか。ホスト名は残さず、この5つのどれかを1増やすだけ。
+    "ref_x":        "Xから来た",
+    "ref_threads":  "Threadsから来た",
+    "ref_search":   "検索から来た",
+    "ref_other":    "他のサイトから来た",
+    "ref_none":     "リンク元なし（直接・アプリ内・巡回）",
 }
+
+
+# リンク元のホスト名を、この枠に丸める。部分一致で見るので
+# 「t.co」は「x.com」と同じ枠に入る（Xの短縮URL）。
+REF_BUCKETS = (
+    ("ref_x",       ("x.com", "twitter.com", "t.co")),
+    ("ref_threads", ("threads.net", "threads.com", "instagram.com")),
+    ("ref_search",  ("google.", "yahoo.co.jp", "bing.com", "duckduckgo.com")),
+)
+
+
+def ref_bucket(referrer: str, own_host: str) -> str | None:
+    """リンク元を枠の名前にする。同じサイト内の移動なら None。
+
+    None を返すのは「来訪ではない」という意味。トップ→診断のような
+    内部移動まで数えると、どこから来た人かが分からなくなる。
+    """
+    ref = (referrer or "").strip()
+    if not ref:
+        return "ref_none"
+    try:
+        from urllib.parse import urlsplit
+        host = (urlsplit(ref).hostname or "").lower()
+    except ValueError:
+        return "ref_other"
+    if not host:
+        return "ref_other"
+    if own_host and host == (own_host or "").lower().split(":")[0]:
+        return None
+    for name, needles in REF_BUCKETS:
+        if any(nd in host for nd in needles):
+            return name
+    return "ref_other"
 
 
 def today() -> datetime.date:

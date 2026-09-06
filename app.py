@@ -7,6 +7,7 @@ http://127.0.0.1:5000 を開いて使う。金額は万円で入力。
 """
 import os
 import sys
+import base64
 import time
 import json
 import html
@@ -484,9 +485,34 @@ def _looks_like_a_bot() -> bool:
 
 
 def _seen(name: str) -> None:
-    """画面が見られたことを数える（人だけ）。"""
+    """画面が見られたことを数える（人だけ）。
+
+    あわせて、どこから来たかを数える。内部の移動（トップ→診断）は
+    数えない。数えたいのは「外から入ってきた回数」なので。
+    """
+    if _looks_like_a_bot():
+        return
+    metrics.bump(name)
+    bucket = metrics.ref_bucket(request.headers.get("Referer") or "",
+                               request.host or "")
+    if bucket:
+        metrics.bump(bucket)
+
+
+# 1×1の透明GIF。トップに置いて、JavaScriptで読ませる。
+# HTMLを取るだけの巡回はここに来ないので、実際にブラウザで開かれた
+# 回数が分かる。Cookieは置かないし、何も記録しない。件数が1増えるだけ。
+_PIXEL = base64.b64decode(
+    "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
+
+
+@app.route("/_h.gif")
+def _heartbeat_pixel():
+    from flask import Response
     if not _looks_like_a_bot():
-        metrics.bump(name)
+        metrics.bump("browser")
+    return Response(_PIXEL, mimetype="image/gif", headers={
+        "Cache-Control": "no-store, max-age=0"})
 
 
 def _client_ip():
@@ -2036,6 +2062,12 @@ LP_MENU_PLACEHOLDER
   Array.prototype.forEach.call(els, function(e){ io.observe(e); });
 })();
 </script>
+<script>
+/* 1×1の画像を読むだけ。Cookieも識別子も無く、件数が1増えるだけ。
+   HTMLを取るだけの巡回はここまで来ないので、実際にブラウザで
+   開かれた回数と、取りに来られただけの回数を分けて見られる。 */
+(function(){ try { new Image().src = "/_h.gif?" + Date.now(); } catch (e) {} })();
+</script>
 </body></html>
 """
 
@@ -2657,6 +2689,15 @@ def metrics_page():
  <h1>数字（直近{days}日）</h1>
  <p class="lead">日付は日本時間。個人も物件も記録していません。
   件数だけです。</p>
+ <div class="note" style="margin:14px 0">
+  <b>トップ　{tot["view_lp"]}件のうち、ブラウザで開かれた {tot["browser"]}件</b>
+  （{rate("browser", "view_lp")}）<br>
+  <span class="sub">差は、HTMLを取りに来ただけのものです。名乗らない巡回や
+   調査スキャンは弾けないため、ここで見分けます。</span><br>
+  <b>どこから来たか</b>　X {tot["ref_x"]}／Threads {tot["ref_threads"]}／
+  検索 {tot["ref_search"]}／その他 {tot["ref_other"]}／
+  リンク元なし {tot["ref_none"]}
+ </div>
  <div class="note" style="margin:14px 0">
   <b>入力画面 → 診断</b>　{rate("diag_kodate", "view_buy")}（戸建）／
   {rate("diag_mansion", "view_mansion")}（マンション）<br>

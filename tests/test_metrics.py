@@ -115,6 +115,91 @@ def test_signing_up_is_counted_once_not_on_every_login(env):
 
 # ---- 見る画面 -------------------------------------------------------------
 
+# ---- どこから来たか -------------------------------------------------------
+#
+# UA判定では、Chromeを名乗るスキャナを弾けない。公開ドメインは常時
+# スキャンされるので、「トップを見た」の大半がそれということが起こる。
+# リンク元とブラウザ判定は、それを見分けるために足した。
+
+def test_the_referrer_is_reduced_to_one_of_five_buckets(env):
+    """URLもホスト名も残さない。5つの枠のどれかに丸める。"""
+    b = env.metrics.ref_bucket
+    assert b("https://t.co/abc123", "homeindex.jp") == "ref_x"
+    assert b("https://x.com/someone/status/1", "homeindex.jp") == "ref_x"
+    assert b("https://www.threads.net/@someone", "homeindex.jp") == "ref_threads"
+    assert b("https://www.google.com/", "homeindex.jp") == "ref_search"
+    assert b("https://note.com/someone", "homeindex.jp") == "ref_other"
+    assert b("", "homeindex.jp") == "ref_none"
+
+
+def test_moving_inside_the_site_is_not_an_arrival(env):
+    """トップ→診断まで数えると、どこから来た人かが分からなくなる。"""
+    b = env.metrics.ref_bucket
+    assert b("https://homeindex.jp/", "homeindex.jp") is None
+    assert b("https://homeindex.jp/guide", "homeindex.jp:443") is None
+
+
+def test_a_broken_referrer_does_not_raise(env):
+    """リンク元は外から来る文字列。壊れていても落とさない。"""
+    b = env.metrics.ref_bucket
+    for bad in ("://", "not a url", "http://", "javascript:alert(1)"):
+        assert b(bad, "homeindex.jp") in ("ref_other", "ref_none")
+
+
+def test_the_arrival_is_counted_with_the_page(env):
+    c = env.app.app.test_client()
+    _human(c, "/buy")   # リンク元なしで来訪
+    c.get("/", headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)",
+                        "Referer": "https://t.co/abc"})
+    t = env.metrics.totals(30)
+    assert t["ref_none"] == 1
+    assert t["ref_x"] == 1
+
+
+def test_a_crawler_arrival_is_not_counted(env):
+    c = env.app.app.test_client()
+    c.get("/", headers={"User-Agent": "Googlebot/2.1",
+                        "Referer": "https://t.co/abc"})
+    assert env.metrics.totals(30)["ref_x"] == 0
+
+
+# ---- 実際にブラウザで開かれたか -------------------------------------------
+
+def test_the_pixel_counts_a_real_browser(env):
+    c = env.app.app.test_client()
+    r = c.get("/_h.gif", headers={"User-Agent":
+                                  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)"})
+    assert r.status_code == 200
+    assert r.mimetype == "image/gif"
+    assert r.headers["Cache-Control"].startswith("no-store")
+    assert env.metrics.totals(30)["browser"] == 1
+
+
+def test_fetching_the_html_alone_does_not_count_as_a_browser(env):
+    """スキャナはHTMLを取るだけ。画像までは取りに来ない。"""
+    c = env.app.app.test_client()
+    c.get("/", headers={"User-Agent":
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"})
+    t = env.metrics.totals(30)
+    assert t["view_lp"] == 1, "UAでは弾けないので、閲覧としては数える"
+    assert t["browser"] == 0, "実際に開かれた数には入らない"
+
+
+def test_the_landing_page_asks_for_the_pixel(env):
+    c = env.app.app.test_client()
+    h = c.get("/").get_data(as_text=True)
+    assert "/_h.gif" in h
+
+
+def test_the_pixel_sets_no_cookie(env):
+    """識別子は置かない。数えるのは件数だけ。"""
+    c = env.app.app.test_client()
+    r = c.get("/_h.gif", headers={"User-Agent":
+                                  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)"})
+    assert "Set-Cookie" not in r.headers
+
+
 def test_the_page_is_closed_without_the_key(env):
     c = env.app.app.test_client()
     assert c.get("/metrics").status_code == 404
