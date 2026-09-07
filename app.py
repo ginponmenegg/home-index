@@ -5341,10 +5341,29 @@ PLAN_PAGE = """
    <tr><th class="rowlbl">保存した物件の比較</th><td>○</td><td>○</td></tr>
    <tr><th class="rowlbl">詳細診断（PRO）</th><td>—</td><td>○</td></tr>
    <tr><th class="rowlbl">仲介業者に聞くことの一覧</th><td>—</td><td>○</td></tr>
-   <tr><th class="rowlbl">重要事項説明書で確認すること</th><td>—</td><td>○</td></tr>
+   <tr><th class="rowlbl">重要事項説明書で確認すること<span class="sub"
+     style="display:block;font-weight:400"><a href="#juyo">中身を見る</a></span></th>
+    <td>—</td><td>○</td></tr>
    <tr><th class="rowlbl">資金計画のPDF</th><td>—</td><td>○</td></tr>
   </tbody>
  </table></div>
+
+ <div class="card" id="juyo" style="margin-top:14px">
+  <h2 style="margin-top:0">「重要事項説明書で確認すること」の中身</h2>
+  <p class="lead">重要事項説明書は契約の直前に渡され、その場で読み上げられます。
+   30ページ近いものを初めて見て、聞きながら判断するのは無理があります。
+   <b>診断で分かったことから、この物件で効く欄を、根拠の条文つきで先に並べます。</b></p>
+  {% for group, items in juyo %}
+  <p style="margin:14px 0 4px"><b>{{ group }}</b></p>
+  <ul style="margin:0;padding-left:1.2em">
+   {% for it in items %}<li>{{ it }}</li>{% endfor %}
+  </ul>
+  {% endfor %}
+  <p class="sub" style="margin-top:14px">
+   該当しない区域の欄は出しません。並べる意味が無くなるためです。
+   <b>良し悪しは書きません。</b>どこに何が書かれるかまでです。
+   条文は e-Gov 法令検索で確かめています。</p>
+ </div>
 
 {% if not billing %}
  <div class="note warn" style="margin-top:14px">
@@ -5544,7 +5563,8 @@ def plan_page():
         normal_label=PRICE_LABEL,
         price_label=price_now()[1],
         expires=(u or {}).get("plan_expires_at"),
-        free_limit=saved.FREE_LIMIT, pro_limit=saved.PRO_LIMIT)
+        free_limit=saved.FREE_LIMIT, pro_limit=saved.PRO_LIMIT,
+        juyo=disclosure.catalogue())
     return _account_page(
         "プラン", body, chip="プラン", indexable=True,
         desc="HOME INDEXの料金です。購入診断・診断結果の保存・物件の比較は"

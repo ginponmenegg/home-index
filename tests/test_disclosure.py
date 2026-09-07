@@ -168,10 +168,41 @@ def test_every_place_that_describes_pro_mentions_the_sheet():
 def test_the_plan_table_lists_it_as_a_pro_only_row():
     """比較表では、無料は「—」でPROが「○」。"""
     import app as webapp
-    row = [ln for ln in webapp.PLAN_PAGE.splitlines()
-           if "重要事項説明書で確認すること" in ln]
-    assert len(row) == 1, row
-    assert "<td>—</td><td>○</td>" in row[0]
+    rows = [r for r in re.findall(r"<tr>.*?</tr>", webapp.PLAN_PAGE, re.S)
+            if "重要事項説明書で確認すること" in r]
+    assert len(rows) == 1, rows
+    assert "<td>—</td>" in rows[0] and "<td>○</td>" in rows[0]
+
+
+def test_the_plan_page_shows_what_the_sheet_covers(env_free=None):
+    """「○」だけでは、何が出てくるのか分からない。中身を並べる。"""
+    from src import disclosure
+    import app as webapp
+    groups = disclosure.catalogue()
+    assert len(groups) == 3
+    assert 'id="juyo"' in webapp.PLAN_PAGE, "飛び先のアンカー"
+    assert "{% for group, items in juyo %}" in webapp.PLAN_PAGE
+
+
+def test_the_catalogue_cannot_drift_from_the_sheet():
+    """料金表に並べた欄が、実際に出てくること。手で書き写さない。
+
+    条件を全部立てた物件で sheet() を作り、目録の見出しがすべてそこに
+    現れることを見る。片方だけ直したら落ちる。
+    """
+    from src import disclosure
+    everything = disclosure.sheet(
+        _condo(build_year=1975),
+        _enr(sediment="特別警戒区域", flood_rank=4, tsunami=True,
+             steep_slope=True, embankment="谷埋め型"),
+        "chuko_mansion", urbanization="市街化調整区域")
+    produced = {p.where for p in everything}
+    # 戸建でしか出ない欄は、戸建の側で拾う
+    produced |= {p.where for p in disclosure.sheet(
+        _house(), _enr(), "chuko_kodate")}
+    for _group, items in disclosure.catalogue():
+        for it in items:
+            assert it in produced, it
 
 
 def test_the_pdf_description_lists_what_the_pdf_holds():
