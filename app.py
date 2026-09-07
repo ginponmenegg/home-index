@@ -2354,9 +2354,7 @@ _TOKUSHO_BODY = ("""
 <p class="sub">本表記は、有料プラン（PRO）の提供に関するものです。
  無料でご利用いただける範囲には課金は発生しません。</p>
 <h2>販売事業者</h2>
-<p>HOME INDEX（""" + OPERATOR + """）<br>
-<span class="sub">個人事業として運営しています。屋号のみでは足りないため、
- 氏名を併記しています。</span></p>
+<p>HOME INDEX（""" + OPERATOR + """）</p>
 <h2>運営責任者</h2>
 <p>""" + OPERATOR + """</p>
 <h2>所在地</h2>
