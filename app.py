@@ -636,6 +636,11 @@ BRAND_BAR
    <b>販売図面のPDFをお持ちの場合も、PDFを開いて文字を選択・コピーし、この欄に貼り付けてください。</b>文字が選択できないPDF（スキャン画像）からは読み取れません。<br>
    <b><a href="/copy-guide">スマホアプリで文字がコピーできない場合はこちら</a></b></div></form>
 
+ <div class="card fixrow" style="margin-bottom:14px">
+  <a class="btn sub" href="/sample" style="width:auto">見本の物件で結果を見る</a>
+  <span class="muted">物件がまだ決まっていない方へ。採点の中身と出典を、そのまま見られます</span>
+ </div>
+
  <form class="card" method="post" action="/diagnose">
   <label>② 内容を確認・修正して診断</label>
   <label>物件の所在地</label>
@@ -728,6 +733,18 @@ BRAND_BAR
 </script>
 </div></body></html>
 """
+
+
+# 見本の物件。丁目までの住所にしてあるのは、採点が座標由来の公的データで
+# 成り立つ一方、番地まで書くと実在する誰かの家を指してしまうため。
+# 価格・面積・築年は、この住所の実物ではなく、説明のための数字。
+SAMPLE_HOUSE = {
+    "address": "千葉県船橋市前原西2丁目",
+    "price": "3180", "byear": "1998", "land": "110", "building": "95",
+    "station": "12", "ptype": "chuko_kodate", "structure": "wood",
+    "loan_years": "35", "income": "600", "down": "500",
+    "sample": "1",
+}
 
 
 def _example_v():
@@ -860,6 +877,17 @@ FONT_LINK_PLACEHOLDER
 BRAND_BAR
 <div class="wrap" id="report">
  <a class="back" href="/">← 別の物件を診断</a>
+
+ {% if sample %}
+ <div class="card no-print" style="border-color:#111;background:#fffbea">
+  <h2 style="margin-top:0">これは見本の物件です</h2>
+  <p class="muted" style="margin:6px 0 10px">
+   実在の住所（丁目まで）で公的データを引いていますが、<b>価格・面積・築年は
+   説明のための数字</b>で、実際に売られている物件ではありません。
+   採点の中身と出典の見え方を、そのままご覧いただくためのものです。</p>
+  <p style="margin:0"><a class="btn" href="/buy">自分の物件で診断する</a></p>
+ </div>
+ {% endif %}
 
  <div class="card hero">
   BRAND_LOCKUP
@@ -1105,6 +1133,8 @@ BRAND_BAR
   掲載データは取得時点のもので、最新性・正確性を保証しません。
  </div>
  <p class="foot" style="text-align:center">HOME INDEX｜購入診断 — 全国対応。周辺施設・建物内部状態など一部は今後拡充</p>
+ <p class="foot" style="text-align:center;font-weight:700;color:#111;font-size:13px">
+  homeindex.jp　住まいを100点で採点します</p>
 </div>
 <div class="wrap" style="padding-top:0">
 <div class="card" style="text-align:center">
@@ -1131,7 +1161,9 @@ async function shareReport(){
     const blob=await makeReportImage();
     const file=new File([blob],'HOME INDEX_診断結果.png',{type:'image/png'});
     if(navigator.canShare&&navigator.canShare({files:[file]})){
-      await navigator.share({files:[file],title:'HOME INDEX 診断結果'});
+      await navigator.share({files:[file],title:'HOME INDEX 診断結果',
+        text:'住まいを100点で採点しました。',
+        url:'https://homeindex.jp/?from=share'});
     }else{
       await saveReport();
       alert('この端末は共有に未対応のため、画像を保存しました。');
@@ -1615,6 +1647,8 @@ LP_MENU_PLACEHOLDER
     <!-- 本文から「物件は売りません」を外したぶん、ここで拾う。中立性は
          このサービスの一番の武器なので、ファーストビューから消せない。 -->
     <p class="micro">会員登録なし ／ 料金なし ／ 売り込みなし ／ 約3分</p>
+    <p class="micro" style="margin-top:14px">
+     <a href="/sample" style="color:inherit">物件がまだ無い方は、見本の結果を見る →</a></p>
   </div>
   <div class="howto">
     <div class="wrap">
@@ -2846,6 +2880,41 @@ def mansion_edit():
         directions=DIRECTIONS, listing="", banner=_EDIT_BANNER)
 
 
+# 見本の結果は毎回同じなので、作ったものを持っておく。外部APIを叩き直す
+# 意味がないうえ、SNSから来た人が最初に開く画面をいちばん速くしたい。
+_SAMPLE_CACHE = {"html": None, "at": 0.0}
+_SAMPLE_TTL = 6 * 60 * 60
+# 外部APIが一時的に落ちているときの結果を、6時間固定してしまわないための印。
+# SNSから来た人が最初に開く画面なので、痩せた結果を焼き付けると影響が長い。
+# 画面に出している文言そのものを使う（変えたら tests/test_sample.py が落ちる）。
+_PRICE_FAILED = "類似成約が不足し価格評価できませんでした"
+
+
+@app.route("/sample")
+def sample():
+    """見本の物件を1件、そのまま採点して見せる。
+
+    物件を持っていない人が、採点の中身と出典の見え方を確かめるための入口。
+    URLで開けるようにしてあるのは、SNSに貼れるようにするため。
+    """
+    _seen("view_sample")
+    now = time.time()
+    if _SAMPLE_CACHE["html"] and now - _SAMPLE_CACHE["at"] < _SAMPLE_TTL:
+        return _SAMPLE_CACHE["html"]
+    from werkzeug.datastructures import ImmutableMultiDict
+    import datetime
+    if not _SEM.acquire(timeout=25):
+        return redirect("/buy")
+    try:
+        html_ = _run_diagnose(ImmutableMultiDict(SAMPLE_HOUSE), datetime)
+    finally:
+        _SEM.release()
+    # 価格が出ていない結果は残さない。次に開かれたときに採り直す。
+    if isinstance(html_, str) and _PRICE_FAILED not in html_:
+        _SAMPLE_CACHE.update(html=html_, at=now)
+    return html_
+
+
 @app.route("/diagnose", methods=["POST"])
 def diagnose():
     f = request.form
@@ -2926,7 +2995,7 @@ def _edit_carry(action: str, f, keys) -> dict:
 def _render_result(res, subject, sctx, down_yen, loan_years,
                    free_diagnosis=None, carry=None, questions=None,
                    questions_note=None, redo=None, finance_carry=None,
-                   disclosure_points=None,
+                   disclosure_points=None, sample=False,
                    edit=None):
     """診断結果ページを描画する。戸建とマンションで共通。
 
@@ -3134,6 +3203,7 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
 
     return render_template_string(
         RESULT, s=sctx, price_man=man(subject.price), age=age, save=save,
+        sample=bool(sample),
         p=price_ctx, cats=cats, d=dctx, loan=loan, warnings=res.warnings,
         enr=enr, ring_circ=round(circ, 1), ring_off=ring_off,
         grade_color=grade_color, grade_comment=grade_comment,
@@ -3228,7 +3298,7 @@ def _run_diagnose(f, datetime):
     metrics.bump("diag_kodate")
     return _render_result(res, subject, sctx,
                           to_yen(f.get("down")) or 0, loan_years, carry=carry,
-                          redo=redo,
+                          redo=redo, sample=bool(f.get("sample")),
                           edit=_edit_carry("/buy/edit", f, _example_v()))
 
 

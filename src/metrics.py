@@ -43,6 +43,7 @@ EVENTS = {
     "view_buy":     "戸建の入力画面を見た",
     "view_mansion": "マンションの入力画面を見た",
     "view_guide":   "解説記事を見た",
+    "view_sample":  "見本の結果を見た",
     "diag_kodate":  "戸建の診断が出た",
     "diag_mansion": "マンションの診断が出た",
     "pro_diag":     "PROの詳細診断が出た",
