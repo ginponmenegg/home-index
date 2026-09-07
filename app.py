@@ -4529,12 +4529,21 @@ def _require_pro():
     return _account_page("PROプランの機能です", _PRO_LOCKED_BODY, chip="PRO")
 
 
-def _account_page(title, body, chip="マイページ"):
-    """アカウント系ページの共通の枠。フォームと同じ見た目にそろえる。"""
+def _account_page(title, body, chip="マイページ", indexable=False, desc=None):
+    """アカウント系ページの共通の枠。フォームと同じ見た目にそろえる。
+
+    既定は noindex。ログイン後の画面（マイページ・保存・比較）は、本人しか
+    意味を持たない上に、検索から直接来ても何も見えない。
+
+    ただし料金表（/plan）は別。誰でも見られる公開ページで、料金を調べる人が
+    検索から辿り着く先でもある。ここまで noindex にすると、**売っているものの
+    値段が検索に一切出ない**ことになる。indexable=True で外す。
+    """
     return ('<!doctype html><html lang="ja"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
-            '<meta name="robots" content="noindex">'
-            f'{FONT_LINK}{ICON_LINKS}'
+            + ('' if indexable else '<meta name="robots" content="noindex">')
+            + (f'<meta name="description" content="{desc}">' if desc else '')
+            + f'{FONT_LINK}{ICON_LINKS}'
             f'<title>{title}｜HOME INDEX</title>'
             f'<style>{_FORM_CSS}{_ACCOUNT_CSS}</style></head><body>'
             + brand_bar(chip)
@@ -5532,7 +5541,11 @@ def plan_page():
         price_label=price_now()[1],
         expires=(u or {}).get("plan_expires_at"),
         free_limit=saved.FREE_LIMIT, pro_limit=saved.PRO_LIMIT)
-    return _account_page("プラン", body, chip="プラン")
+    return _account_page(
+        "プラン", body, chip="プラン", indexable=True,
+        desc="HOME INDEXの料金です。購入診断・診断結果の保存・物件の比較は"
+             "無料。PROでは詳細診断、仲介業者に聞くことの一覧、重要事項説明書で"
+             "確認することの一覧、詳細な資金計画のPDFをご利用いただけます。")
 
 
 @app.route("/plan/confirm")
