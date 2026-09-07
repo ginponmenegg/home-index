@@ -2667,6 +2667,10 @@ if not billing_on():
 if operator_named():
     # 誰が作ったかは検索エンジンにも見せる（YMYLではここが効く）
     SITEMAP_PATHS.insert(3, "/about")
+if billing_on():
+    # 料金表。課金しているときだけ意味を持つ（していなければ試験公開の
+    # 案内が出るだけ）。値段を調べる人が検索から辿り着く先なので載せる。
+    SITEMAP_PATHS.append("/plan")
 SITEMAP_PATHS += guides.paths()
 
 

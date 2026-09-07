@@ -383,17 +383,24 @@ def test_plan_page(env):
 
 
 def test_account_pages_are_noindex(env):
-    """個人のページは検索結果に出さない。"""
+    """本人にしか意味を持たないページは、検索結果に出さない。
+
+    料金表（/plan）はここに入れない。誰でも見られる公開ページで、
+    値段を調べる人が検索から辿り着く先でもある。tests/test_indexable.py
+    がそちらを見ている。
+    """
     c = env.app.app.test_client()
     _login(c, env, "noindex@example.com")
-    for path in ["/mypage", "/plan", "/login"]:
+    for path in ["/mypage", "/login"]:
         h = c.get(path).get_data(as_text=True)
         assert 'name="robots" content="noindex"' in h, path
+    assert 'name="robots" content="noindex"' not in         c.get("/plan").get_data(as_text=True), "料金表は検索に出す"
 
 
 def test_sitemap_has_no_account_pages(env):
+    """ログインが要るページは載せない。開けないURLを出しても仕方がない。"""
     h = env.app.app.test_client().get("/sitemap.xml").get_data(as_text=True)
-    for p in ["/mypage", "/login", "/compare", "/plan"]:
+    for p in ["/mypage", "/login", "/compare", "/saved"]:
         assert p not in h, p
 
 
