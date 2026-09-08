@@ -808,6 +808,9 @@ def proration(handover: Optional[str], start_key: str = "0101",
     except (ValueError, AttributeError):
         return out
 
+    # 画面とPDFにそのまま出る。ISOのままだと日本語の文の中で浮く。
+    out.handover = f"{day.year}年{day.month}月{day.day}日"
+
     label, sm, sd = PRORATION_STARTS.get(start_key,
                                          PRORATION_STARTS["0101"])
     out.start_label = label

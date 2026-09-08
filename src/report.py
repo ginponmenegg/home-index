@@ -156,6 +156,14 @@ def build_finance_pdf(ctx: dict) -> bytes:
         f"作成日 {today}　／　物件価格 {s['price']}　"
         f"（{'新築建売' if s['newbuild'] else '中古'}）", st["sub"]))
 
+    # 見本のPDFは、ページから切り離されて出回る。ここに書いておかないと、
+    # 受け取った人が自分の物件の試算だと思って持ち歩くことになる。
+    if ctx.get("sample"):
+        story.append(Paragraph(
+            "これは見本です。実在の売り出し物件ではありません。"
+            "評価額・年税額など前提に置いた数字は、末尾に記載しています。",
+            st["sub"]))
+
     # ---- 資金の全体像 ----
     story.append(Paragraph("資金の全体像", st["h2"]))
     rows = [("物件価格", s["price"]), ("諸費用（判明分）", s["costs"]),
@@ -291,6 +299,16 @@ def build_finance_pdf(ctx: dict) -> bytes:
             story.append(Paragraph(f"□ {where}（{law}）", st["body"]))
             story.append(Paragraph(why, st["note"]))
             story.append(Spacer(1, 3))
+
+    # ---- 見本の前提 ----
+    given = ctx.get("sample_given") or []
+    if given:
+        story.append(Paragraph("この見本の前提", st["h2"]))
+        story.append(Paragraph(
+            "実在の物件ではありません。上の金額は、すべて次の数字から"
+            "計算しています。", st["note"]))
+        for k, val in given:
+            story.append(Paragraph(f"・{k}：{val}", st["note"]))
 
     # ---- 根拠と免責 ----
     story.append(Paragraph("この試算の根拠", st["h2"]))

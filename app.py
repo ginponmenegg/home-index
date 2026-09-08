@@ -293,8 +293,13 @@ MENU_ITEMS = [("/", "トップ"),
               ("/privacy", "プライバシーポリシー")]
 
 if db.enabled():
+    # 料金表（/plan）は、無料とPROの違いを並べた唯一のページ。ここに入れるまで、
+    # マイページとPROロック画面からしか辿り着けなかった。つまり「まだ払って
+    # いない人」には見えないところに、払う理由が置かれていた。
+    # ラベルを「料金」にしないのは、違いを知りたい人は料金を探さないため。
+    MENU_ITEMS.insert(3, ("/plan", "無料とPROのちがい"))
     # 未ログインで開けばログイン画面に回るので、1項目で足りる。
-    MENU_ITEMS.insert(3, ("/mypage", "マイページ"))
+    MENU_ITEMS.insert(4, ("/mypage", "マイページ"))
 
 
 def lp_menu_links():
@@ -445,11 +450,23 @@ TRIAL_NOTE = ('' if billing_on() else
               '現在は無料でお使いいただけますが、将来は有料（月額）に'
               'なる予定です。会員登録はまだ不要です。</p>')
 
-PRO_LINKS = (f'<a href="/pro" style="color:#111">'
-             f'{"PRO" if billing_on() else "PRO（試験公開中）"}</a>：'
-             '<a href="/pro/diagnose" style="color:#111">購入診断（戸建）</a>　・　'
-             '<a href="/pro/mansion" style="color:#111">購入診断（マンション）</a>　・　'
-             '<a href="/pro/finance" style="color:#111">詳細な資金計画</a>')
+# フッターのPRO。ここは長らく /pro/diagnose などへ直リンクしていたが、
+# 課金を始めた以上、非会員が押すとロック画面に落ちる。買っていない人にとって
+# 最初の接触が「買ってください」の壁になるのは、案内として損をしている。
+# 誰でも読める案内（/pro）と、違いを並べた料金表（/plan）へ向ける。
+if billing_on():
+    PRO_LINKS = ('<a href="/pro" style="color:#111">PROでできること</a>'
+                 + ('　・　<a href="/plan" style="color:#111">無料とPROのちがい</a>'
+                    if accounts_on() else '')
+                 + '　・　<a href="/sample/finance" style="color:#111">'
+                   '資金計画の見本</a>')
+else:
+    # 試験公開中は誰でも使えるので、各フォームへそのまま入れてよい。
+    PRO_LINKS = ('<a href="/pro" style="color:#111">PRO（試験公開中）</a>：'
+                 '<a href="/pro/diagnose" style="color:#111">購入診断（戸建）</a>　・　'
+                 '<a href="/pro/mansion" style="color:#111">購入診断（マンション）</a>　・　'
+                 '<a href="/pro/finance" style="color:#111">詳細な資金計画</a>　・　'
+                 '<a href="/sample/finance" style="color:#111">資金計画の見本</a>')
 
 FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#6b7280;line-height:1.9">'
           '<a href="/guide" style="color:#111">解説</a><br>'
@@ -844,6 +861,13 @@ FONT_LINK_PLACEHOLDER
  .hz-warn{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
  .hz-muted{background:#f3f4f6;color:#6b7280}
  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+ table.pc{table-layout:fixed}
+ table.pc th{font-weight:600;color:var(--ink);white-space:normal}
+ table.pc thead th{color:var(--sub);font-weight:600;font-size:12px;
+   text-align:center;width:23%}
+ table.pc thead th:first-child{width:54%}
+ table.pc td{text-align:center;font-size:13px;white-space:normal}
+ table.pc td.free{color:var(--sub)}
  ul.seen{list-style:none;padding:0;margin:6px 0 0}
  ul.seen li{display:flex;gap:10px;font-size:13px;line-height:1.75;margin:0;
   padding:8px 0;border-top:1px solid var(--line)}
@@ -1002,16 +1026,44 @@ BRAND_BAR
 
  <div class="card">
   {% if handover %}
-  <div class="card" style="border-color:#111">
+  <div class="card" data-html2canvas-ignore style="border-color:#111">
+   <h2 style="margin-top:0">無料でここまで／PROでここまで</h2>
+   <div class="tablewrap">
+    <table class="pc">
+     <thead><tr><th></th><th>無料</th><th>PRO</th></tr></thead>
+     <tbody>
+      <tr><th>100点の採点・推定価格レンジ</th>
+       <td class="free">○</td><td>○</td></tr>
+      <tr><th>情報充足度</th>
+       <td class="free">{{d.suff}}%</td><td>上がる</td></tr>
+      <tr><th>仲介業者に聞くこと</th><td class="free">—</td><td>○</td></tr>
+      <tr><th>重要事項説明書の、どこを見るか</th>
+       <td class="free">—</td><td>○</td></tr>
+      <tr><th>諸費用まで含めた資金計画（PDF）</th>
+       <td class="free">—</td><td>○</td></tr>
+     </tbody>
+    </table>
+   </div>
+   <p class="muted" style="margin:10px 0 0">
+    「無料」の列は、いまのこの診断で実際に出ている数字です。<b>情報充足度</b>は、
+    上で「未確認」として点数に入れていない項目に答えた分だけ上がります。<br>
+    <b>資金計画</b>は、仲介手数料・印紙税・登録免許税・不動産取得税・司法書士報酬・
+    火災保険を積み上げ、金利が上がった場合の返済額、繰上返済の効果、住宅ローン控除、
+    引渡日に売主へ払う精算金まで出します。<br>
+    <b>重要事項説明書</b>は、この物件で効く欄を根拠の条文つきで並べます。<br>
+    推定価格レンジの計算は無料もPROも同じで、PROで価格が動くことはありません。
+   </p>
+   PLAN_LINKS_PLACEHOLDER
+  </div>
+
+  <div class="card" data-html2canvas-ignore style="border-color:#111">
    <h2 style="margin-top:0">このまま詳細診断に進む（PRO）</h2>
    <p class="muted" style="margin:6px 0 10px">
     いまの診断は、{{handover_unknowns}}を
     「未確認」として点数に入れていません。情報充足度は
     <b>{{d.suff}}%</b> です。これらに答えると、その分だけ評価に反映されます。
-    <b>入力済みの内容はそのまま引き継がれます。</b><br>
-    答えられなかった項目は「仲介業者に聞くこと」に、診断で分かったことは
-    <b>「重要事項説明書の、どこを見るか」</b>になって出ます。<br>
-    推定価格レンジは無料診断と同じ計算で、PROでも変わりません。
+    <b>入力済みの内容はそのまま引き継がれます。</b>
+    答えられなかった項目は消えるのではなく、「仲介業者に聞くこと」になります。
    </p>
    <form method="post" action="{{handover_action}}">
     {% for k, val in handover.items() %}
@@ -1023,13 +1075,14 @@ BRAND_BAR
   {% endif %}
 
   {% if finance_carry %}
-  <div class="card" style="border-color:#111">
+  <div class="card" data-html2canvas-ignore style="border-color:#111">
    <h2 style="margin-top:0">諸費用まで含めて資金を見る（PRO）</h2>
    <p class="muted" style="margin:6px 0 10px">
     上のローン試算は月々の返済額までです。仲介手数料・印紙税・登録免許税・
     不動産取得税・司法書士報酬・火災保険までを積み上げ、金利が上がった場合や
     繰上返済をした場合、住宅ローン控除まで含めて試算します。<br>
-    <b>この物件の価格・面積・築年・借入条件は引き継がれます。</b>
+    <b>この物件の価格・面積・築年・借入条件は引き継がれます。</b><br>
+    <a href="/sample/finance">どんな内容になるか、見本で見る</a>
    </p>
    <form method="post" action="/pro/finance_start">
     {% for k, val in finance_carry.items() %}
@@ -1217,12 +1270,20 @@ async function shareReport(){
 </div></body></html>
 """
 
+# 比較表の下に置くリンク。料金表（/plan）はアカウント機能が無いと「準備中」に
+# なるので、そのときは出さない。資金計画の見本は会員でなくても見られる。
+_PLAN_LINKS = ('<p style="margin:12px 0 0">'
+               + ('<a href="/plan">無料とPROのちがいを詳しく見る</a>　・　'
+                  if accounts_on() else '')
+               + '<a href="/sample/finance">資金計画の見本を見る</a></p>')
+
 # ブランドのCSS/ヘッダー・フッターをテンプレートへ差し込む
 FORM = (FORM.replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
         .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
         .replace("BRAND_BAR", brand_bar())
         .replace("</div></body></html>", FOOTER + "</div></body></html>"))
 RESULT = (RESULT.replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
+          .replace("PLAN_LINKS_PLACEHOLDER", _PLAN_LINKS)
           .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
           .replace("BRAND_BAR", brand_bar())
           .replace("BRAND_LOCKUP", brand_lockup())
@@ -2706,11 +2767,18 @@ def guide_page(slug):
 # サイトマップに載せるのはGETで開けるページだけ。
 # 診断結果はPOSTでしか生成されず、固有のURLを持たないのでクロール対象にならない。
 SITEMAP_PATHS = ["/", "/buy", "/mansion", "/copy-guide", "/pro",
+                 # 資金計画の見本。会員でなくても開ける固定のページで、
+                 # 外部APIを叩かないので、巡回されても負荷にならない。
+                 # 諸費用の内訳を根拠つきで並べた実質的な内容ページでもある。
+                 "/sample/finance",
                  "/terms", "/privacy"]
 if not billing_on():
     # 課金中は会員しか開けない。開けないURLを検索エンジンに出すと、
     # 来た人が案内ページに突き当たるだけになる。/pro は案内なので残す。
-    SITEMAP_PATHS[5:5] = ["/pro/diagnose", "/pro/mansion", "/pro/finance"]
+    # 位置は「/terms の手前」。数字で書くと、上の一覧に1つ足しただけで
+    # 意図しない場所に入る（実際にずれた）。
+    _i = SITEMAP_PATHS.index("/terms")
+    SITEMAP_PATHS[_i:_i] = ["/pro/diagnose", "/pro/mansion", "/pro/finance"]
 if operator_named():
     # 誰が作ったかは検索エンジンにも見せる（YMYLではここが効く）
     SITEMAP_PATHS.insert(3, "/about")
@@ -5439,7 +5507,9 @@ PLAN_PAGE = """
    <tr><th class="rowlbl">重要事項説明書で確認すること<span class="sub"
      style="display:block;font-weight:400"><a href="#juyo">中身を見る</a></span></th>
     <td>—</td><td>○</td></tr>
-   <tr><th class="rowlbl">資金計画のPDF</th><td>—</td><td>○</td></tr>
+   <tr><th class="rowlbl">詳細な資金計画（PDF）<span class="sub"
+     style="display:block;font-weight:400"><a href="/sample/finance">見本を見る</a></span></th>
+    <td>—</td><td>○</td></tr>
   </tbody>
  </table></div>
 
@@ -6384,7 +6454,9 @@ PRO_FINANCE_RESULT = """
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
-<title>資金計画の結果｜HOME INDEX PRO</title>
+{% if sample %}<title>詳細な資金計画の見本（諸費用の内訳つき）｜HOME INDEX</title>
+<meta name="description" content="中古戸建3,180万円を例に、仲介手数料・印紙税・登録免許税・不動産取得税・司法書士報酬・火災保険の内訳、金利が上がった場合の返済額、繰上返済の効果、住宅ローン控除、引渡日の精算金までを試算した見本です。根拠と出典つき。">
+{% else %}<title>資金計画の結果｜HOME INDEX PRO</title>{% endif %}
 <style>
  :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#6b7280;--acc:#111111;--line:#e5e5e5}
  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
@@ -6425,6 +6497,18 @@ FONT_LINK_PLACEHOLDER
 </style></head><body>
 BRAND_BAR
 <div class="wrap">
+ {% if sample %}
+ <div class="card" style="border-color:#111;background:#fffbea">
+  <h1 style="margin:0 0 4px">詳細な資金計画（見本）</h1>
+  <p class="sub" style="margin:0 0 10px">PROの「詳細な資金計画」が、どんな内容で
+   出るかをそのままご覧いただくものです。<b>中身は隠していません。</b>
+   実在の売り出し物件ではなく、{{sample_note}}を例にした試算です。
+   前提に置いた数字は、このページの下にすべて書いています。</p>
+  <p style="margin:0">
+   <a href="/sample/finance.pdf">この内容をPDFで見る</a>　・　
+   <a href="/buy">自分の物件を無料で診断する</a>SAMPLE_PLAN_LINK</p>
+ </div>
+ {% else %}
  <form method="post" action="/pro/finance_start" class="backform">
   {% for k, val in form.items() %}<input type="hidden" name="{{k}}" value="{{val}}">{% endfor %}
   <input type="hidden" name="edit" value="1">
@@ -6438,6 +6522,7 @@ BRAND_BAR
    この試算結果を1つのPDFにまとめます。住宅ローンの相談や家族との共有にお使いください。{% if form.dx %}<br>
    <b>診断の結果から進んだので、点数・カテゴリ別の評価・重大リスク・仲介業者に聞くこと・重要事項説明書で確認することも同じPDFに入ります。</b>{% endif %}</p>
  </form>
+ {% endif %}
 
  <div class="card">
   <h2>資金の全体像</h2>
@@ -6543,6 +6628,20 @@ BRAND_BAR
  </div>
  {% endif %}
 
+ {% if sample %}
+ <div class="card" style="border-color:#111">
+  <h2>この見本の前提</h2>
+  <p class="sub">実在の物件ではありません。上の金額は、すべて次の数字から
+   計算しています。ご自身の物件では、これらを入力していただきます。</p>
+  <div class="tablewrap"><table>
+   {% for k, val in sample_given %}<tr><th>{{k}}</th><td>{{val}}</td></tr>{% endfor %}
+  </table></div>
+  <p class="foot">固定資産税評価額・年税額は、この価格帯・築年でよくある水準を
+   置いたものです。実際の額は、売主が持っている固定資産税の課税明細書か、
+   市区町村の名寄帳で確かめられます。仲介業者に頼めば取り寄せてもらえます。</p>
+ </div>
+ {% endif %}
+
  <div class="card">
   <h2>この試算の根拠</h2>
   {% for s in sources %}<p class="foot">・{{s}}</p>{% endfor %}
@@ -6564,6 +6663,9 @@ PRO_FINANCE_FORM = (PRO_FINANCE_FORM
                     .replace("</div></body></html>",
                              FOOTER + "</div></body></html>"))
 PRO_FINANCE_RESULT = (PRO_FINANCE_RESULT
+                      .replace("SAMPLE_PLAN_LINK",
+                               '　・　<a href="/plan">無料とPROのちがい</a>'
+                               if accounts_on() else '')
                       .replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
                       .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
                       .replace("BRAND_BAR", brand_bar("PRO"))
@@ -6623,7 +6725,10 @@ _PRO_HUB_BODY = ("""
 <h2>2. 詳細な資金計画</h2>
 <p>仲介手数料・印紙税・登録免許税・不動産取得税・司法書士報酬・火災保険を
 積み上げ、金利が上がったときの返済額、繰上返済の効果、住宅ローン控除の
-見込みまで試算します。結果はPDFで保存できます。</p>
+見込みまで試算します。引渡日の精算金（決済当日に売主へ払う現金）も出します。
+結果はPDFで保存できます。</p>
+<p><b><a href="/sample/finance">どんな内容になるか、見本をそのまま見る</a></b>
+ — 中古戸建3,180万円を例に、諸費用の内訳から根拠まで全部載せています。</p>
 <p><a href="/pro/finance">資金計画を試算する</a></p>
 <p class="sub">購入診断の結果画面から進むと、価格・面積・築年・借入の条件は
 そのまま引き継がれます。入力し直す必要はありません。</p>
@@ -6869,6 +6974,94 @@ def pro_finance_pdf():
     return Response(pdf, mimetype="application/pdf", headers={
         "Content-Disposition": ("attachment; filename=\"finance-plan.pdf\"; "
                                 f"filename*=UTF-8''{quoted}")})
+
+
+# ---- 資金計画の見本（会員でなくても見られる）--------------------------
+# PROの3つのうち、入力したその場で価値が完結するのはこれだけ。中身を見せずに
+# 売ろうとすると、買う理由が言葉の説明しか残らない。
+#
+# この計算は外部APIを一切使わない（src.finance の純計算）。/sample の診断は
+# 不動産情報ライブラリに依存するので落ちることがあるが、こちらは必ず出る。
+# だから見本を丸ごと公開でき、キャッシュも要らない。
+#
+# 数字は実在の売り出し物件ではない。評価額と年税額は「この価格帯・築年でよく
+# ある水準」を置いたもので、そのことをページ下部に全部書く。書かずに出すと、
+# 見た人が自分の物件の額として持ち帰ってしまう。
+SAMPLE_FINANCE = {
+    "price": "3180",            # 万円。/sample の見本物件と同じ価格
+    "land_price": "2280", "building_price": "900",     # 万円
+    "land_assessed": "1500", "building_assessed": "500",  # 万円
+    "land_area": "110", "floor_area": "95",            # ㎡
+    "byear": "1998", "bmonth": "6", "bday": "15",
+    "quake": "yes",             # 1998年築なので新耐震
+    "tax_yearly": "130000",     # 円／年（固定資産税＋都市計画税）
+    "down": "500", "income": "600", "loan_years": "35", "rate": "1.25",
+    "proration_start": "0101",
+    "prepay": "300", "prepay_after": "10", "prepay_kind": "期間短縮型",
+    "deduction_cat": "その他",
+    "newbuild": "0", "quake_ins": "1", "option_cost": "0",
+    "resale": "0", "kosodate": "0",
+}
+SAMPLE_FINANCE_NOTE = "千葉県船橋市の築28年・木造の中古戸建"
+
+
+def _sample_finance_ctx():
+    """見本の試算コンテキスト。引渡日だけは、いつ開いても先の日付にする。
+
+    固定の日付を書くと、そのうち「過去の日付で精算している」見本になる。
+    """
+    import datetime
+    from werkzeug.datastructures import ImmutableMultiDict
+    f = dict(SAMPLE_FINANCE)
+    t = datetime.date.today()
+    m, y = t.month + 2, t.year
+    if m > 12:
+        m, y = m - 12, y + 1
+    f["handover"] = f"{y:04d}-{m:02d}-01"
+    ctx = _pro_compute(ImmutableMultiDict(f))
+    ctx["sample"] = True
+    ctx["sample_note"] = SAMPLE_FINANCE_NOTE
+    ctx["sample_given"] = [
+        ("物件", f"{SAMPLE_FINANCE_NOTE}（見本）"),
+        ("売出価格", "3,180万円"),
+        ("価格の内訳", "土地 2,280万円 ／ 建物 900万円（按分の仮定）"),
+        ("面積", "土地 110㎡ ／ 延床 95㎡"),
+        ("築年", "1998年6月（新耐震）"),
+        ("固定資産税評価額", "土地 1,500万円 ／ 建物 500万円（仮定）"),
+        ("固定資産税・都市計画税", "年 130,000円（仮定）"),
+        ("頭金", "500万円"),
+        ("借入", "35年 ／ 金利 年1.25％ ／ 元利均等"),
+        ("世帯年収", "600万円"),
+        ("地震保険", "付ける"),
+        ("引渡日", f"{y}年{m}月1日（起算日 1月1日）"),
+        ("繰上返済", "10年後に300万円（期間短縮型）"),
+        ("住宅ローン控除の区分", "その他（省エネ基準に適合しない中古）"),
+    ]
+    return ctx
+
+
+@app.route("/sample/finance")
+def sample_finance():
+    _seen("view_sample_finance")
+    return render_template_string(PRO_FINANCE_RESULT, **_sample_finance_ctx())
+
+
+@app.route("/sample/finance.pdf")
+def sample_finance_pdf():
+    """見本のPDF。ダウンロードではなく、その場で開く。
+
+    スマホでPDFをダウンロードさせると別アプリに移る。見本は「中身を見せる」
+    ためのものなので、そこで離脱させたくない。inline で渡す。
+    """
+    from flask import Response
+    from src.report import build_finance_pdf
+    ctx = _sample_finance_ctx()
+    ctx["diag"] = None      # 見本に診断の節は付けない
+    quoted = urllib.parse.quote("HOME INDEX_資金計画の見本.pdf")
+    return Response(build_finance_pdf(ctx), mimetype="application/pdf",
+                    headers={"Content-Disposition":
+                             ("inline; filename=\"finance-plan-sample.pdf\"; "
+                              f"filename*=UTF-8''{quoted}")})
 
 
 # ローカル起動のポート。5000が別のプロセスに使われているときは
