@@ -641,6 +641,9 @@ BRAND_BAR
  <form class="card" method="post" action="/diagnose">
   <label>物件の所在地 <span class="req">必須</span></label>
   <input name="address" value="{{v.address}}" placeholder="例）〇〇県〇〇市〇〇町1-2-3" required>
+  <div class="hint"><b>番地まで入れると、判定が正確になります。</b>ハザードや用途地域は
+   座標がその区域に入るかで見ているためです。丁目までだと、その付近の代表的な地点で
+   判定します。</div>
   <div class="row">
    <div><label>売出価格（万円） <span class="req">必須</span></label>
     <input name="price" value="{{v.price}}" placeholder="例）3500" required></div>
@@ -3357,9 +3360,11 @@ BRAND_BAR
  </div>
 
  <form class="card" method="post" action="/mansion_diagnose">
-  <label>所在地（必須）</label>
+  <label>所在地 <span class="req">必須</span></label>
   <input name="address" value="{{v.address}}" placeholder="例）〇〇県〇〇市〇〇町2-3-4" required>
-  <div class="hint">住所を入れると市区町村コードを自動で判定します</div>
+  <div class="hint"><b>番地まで入れると、判定が正確になります。</b>ハザードや用途地域は
+   座標がその区域に入るかで見ているためです。丁目までだと、その付近の代表的な地点で
+   判定します。市区町村コードは住所から自動で判定します。</div>
 
   <div class="row">
    <div><label>売出価格（万円） <span class="req">必須</span></label>

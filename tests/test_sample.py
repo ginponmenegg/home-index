@@ -102,6 +102,18 @@ def test_a_thin_result_is_not_frozen_for_six_hours():
         assert webapp._SAMPLE_CACHE["html"], "揃った結果は残す"
 
 
+def test_both_forms_ask_for_the_street_number():
+    """番地まで入れると座標が正確になり、区域の判定が変わる。
+
+    ハザードも用途地域も、座標がポリゴンの中に入るかで見ている。丁目まで
+    だと付近の代表値に落ちるので、そのことを入力欄の横で伝える。
+    """
+    c = _client()
+    for path in ("/buy", "/mansion"):
+        h = c.get(path).get_data(as_text=True)
+        assert "番地まで入れると、判定が正確になります" in h, path
+
+
 # ---- 共有の輪 -------------------------------------------------------------
 
 def test_the_shared_image_carries_the_domain():
