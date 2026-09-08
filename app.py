@@ -3384,6 +3384,9 @@ def _run_diagnose(f, datetime):
     return _render_result(res, subject, sctx,
                           to_yen(f.get("down")) or 0, loan_years, carry=carry,
                           redo=redo, sample=bool(f.get("sample")),
+                          finance_carry=_finance_carry(
+                              subject, to_yen(f.get("down")) or 0, loan_years,
+                              to_yen(f.get("income"))),
                           edit=_edit_carry("/buy/edit", f, _example_v()))
 
 
@@ -3779,6 +3782,9 @@ def _run_mansion_diagnose(f):
     metrics.bump("diag_mansion")
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           carry=carry, redo=redo,
+                          finance_carry=_finance_carry(
+                              subject, down_yen, loan_years,
+                              to_yen(f.get("income"))),
                           edit=_edit_carry("/mansion/edit", f,
                                            _mansion_example_v()))
 
@@ -6987,14 +6993,23 @@ def pro_finance_pdf():
 # 数字は実在の売り出し物件ではない。評価額と年税額は「この価格帯・築年でよく
 # ある水準」を置いたもので、そのことをページ下部に全部書く。書かずに出すと、
 # 見た人が自分の物件の額として持ち帰ってしまう。
+# 数字は積み上げで整合させてある。適当に置くと、実務を知っている人には
+# すぐ分かるし、見た人が持ち帰る額も狂う。
+#
+#  土地 評価額1,700万／実勢2,680万 ＝ 63%。固定資産税評価額は公示価格の
+#  7割が目安で、公示価格は実勢のやや下。この比率になる。
+#  建物 評価額300万。再建築価格 95㎡×16万円 ≒ 1,520万に、木造28年の
+#  経年減点補正の下限0.2をかけた水準。
+#  年税額 110,000円。土地は小規模住宅用地で1/6（都計税は1/3）、
+#  建物はそのまま。1.4%＋0.3%で積むと、この額になる。
 SAMPLE_FINANCE = {
     "price": "3180",            # 万円。/sample の見本物件と同じ価格
-    "land_price": "2280", "building_price": "900",     # 万円
-    "land_assessed": "1500", "building_assessed": "500",  # 万円
+    "land_price": "2680", "building_price": "500",       # 万円
+    "land_assessed": "1700", "building_assessed": "300",  # 万円
     "land_area": "110", "floor_area": "95",            # ㎡
     "byear": "1998", "bmonth": "6", "bday": "15",
     "quake": "yes",             # 1998年築なので新耐震
-    "tax_yearly": "130000",     # 円／年（固定資産税＋都市計画税）
+    "tax_yearly": "110000",     # 円／年（固定資産税＋都市計画税）
     "down": "500", "income": "600", "loan_years": "35", "rate": "1.25",
     "proration_start": "0101",
     "prepay": "300", "prepay_after": "10", "prepay_kind": "期間短縮型",
@@ -7005,35 +7020,42 @@ SAMPLE_FINANCE = {
 SAMPLE_FINANCE_NOTE = "千葉県船橋市の築28年・木造の中古戸建"
 
 
-def _sample_finance_ctx():
-    """見本の試算コンテキスト。引渡日だけは、いつ開いても先の日付にする。
+def _next_march_first():
+    """次に来る3月1日。引渡しがいちばん多い時期に合わせる。
 
     固定の日付を書くと、そのうち「過去の日付で精算している」見本になる。
+    月をずらすだけだと、秋に開いたときの精算金が1〜2万円になり、
+    「決済当日に別途現金が要る」という話がいちばん伝わらない額で出る。
+    起算日1月1日なら、3月引渡しで年税額の8割強を買主が負担する。
     """
     import datetime
+    t = datetime.date.today()
+    y = t.year if (t.month, t.day) < (3, 1) else t.year + 1
+    return datetime.date(y, 3, 1)
+
+
+def _sample_finance_ctx():
+    """見本の試算コンテキスト。"""
     from werkzeug.datastructures import ImmutableMultiDict
     f = dict(SAMPLE_FINANCE)
-    t = datetime.date.today()
-    m, y = t.month + 2, t.year
-    if m > 12:
-        m, y = m - 12, y + 1
-    f["handover"] = f"{y:04d}-{m:02d}-01"
+    day = _next_march_first()
+    f["handover"] = day.isoformat()
     ctx = _pro_compute(ImmutableMultiDict(f))
     ctx["sample"] = True
     ctx["sample_note"] = SAMPLE_FINANCE_NOTE
     ctx["sample_given"] = [
         ("物件", f"{SAMPLE_FINANCE_NOTE}（見本）"),
         ("売出価格", "3,180万円"),
-        ("価格の内訳", "土地 2,280万円 ／ 建物 900万円（按分の仮定）"),
+        ("価格の内訳", "土地 2,680万円 ／ 建物 500万円（按分の仮定）"),
         ("面積", "土地 110㎡ ／ 延床 95㎡"),
         ("築年", "1998年6月（新耐震）"),
-        ("固定資産税評価額", "土地 1,500万円 ／ 建物 500万円（仮定）"),
-        ("固定資産税・都市計画税", "年 130,000円（仮定）"),
+        ("固定資産税評価額", "土地 1,700万円 ／ 建物 300万円（仮定）"),
+        ("固定資産税・都市計画税", "年 110,000円（仮定）"),
         ("頭金", "500万円"),
         ("借入", "35年 ／ 金利 年1.25％ ／ 元利均等"),
         ("世帯年収", "600万円"),
         ("地震保険", "付ける"),
-        ("引渡日", f"{y}年{m}月1日（起算日 1月1日）"),
+        ("引渡日", f"{day.year}年3月1日（起算日 1月1日）"),
         ("繰上返済", "10年後に300万円（期間短縮型）"),
         ("住宅ローン控除の区分", "その他（省エネ基準に適合しない中古）"),
     ]

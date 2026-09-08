@@ -120,3 +120,52 @@ def test_the_sample_is_linked_from_every_page_footer():
     """課金の有無で消えないこと。誰でも見られる公開ページなので。"""
     h = _client().get("/").get_data(as_text=True)
     assert "/sample/finance" in h
+
+
+def test_the_free_result_can_go_straight_to_the_finance_plan():
+    """無料 → PRO診断 → 資金計画 の一本道だと、いちばん見せたいものに
+    無料から辿り着けない。finance_carry は長らくPRO側にしか渡していなかった。
+    """
+    h = _client().post("/diagnose", data=FREE_INPUT).data.decode("utf-8")
+    assert 'action="/pro/finance_start"' in h
+    i = h.find('action="/pro/finance_start"')
+    seg = h[i:i + 2000]
+    for k in ("price", "byear", "down", "income", "loan_years", "land_area"):
+        assert f'name="{k}"' in seg, k
+
+
+def test_the_mansion_result_can_too():
+    h = _client().post("/mansion_diagnose", data=dict(
+        address="東京都新宿区西新宿2丁目", price="5000", area="70",
+        byear="2010", income="700", loan_years="35")).data.decode("utf-8")
+    assert 'action="/pro/finance_start"' in h
+
+
+def test_the_sample_numbers_hang_together():
+    """評価額と年税額を適当に置くと、実務を知っている人にはすぐ分かる。
+
+    ・土地の評価額は実勢の6割前後（公示価格の7割が目安のため）
+    ・年税額は、小規模住宅用地1/6・都計税1/3で積んだ額に近いこと
+    """
+    import app
+    S = app.SAMPLE_FINANCE
+    land_price = int(S["land_price"]) * 10000
+    land_assessed = int(S["land_assessed"]) * 10000
+    ratio = land_assessed / land_price
+    assert 0.55 <= ratio <= 0.72, ratio
+
+    la, ba = land_assessed, int(S["building_assessed"]) * 10000
+    tax = (la / 6 * 0.014 + la / 3 * 0.003) + (ba * 0.014 + ba * 0.003)
+    got = int(S["tax_yearly"])
+    assert abs(got - tax) / tax < 0.12, (got, tax)
+
+
+def test_the_sample_settlement_is_worth_showing():
+    """秋に月をずらすだけだと精算金が1万円台になり、「決済当日に別途現金が
+    要る」という話がいちばん伝わらない額で出る。3月引渡しに固定した。
+    """
+    import app
+    d = app._next_march_first()
+    import datetime
+    assert (d.month, d.day) == (3, 1)
+    assert d > datetime.date.today()
