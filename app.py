@@ -614,6 +614,15 @@ FONT_LINK_PLACEHOLDER
  .banner{background:#fafafa;border:1px solid #e5e5e5;color:#374151;border-radius:10px;
   padding:12px 14px;font-size:14px;margin-bottom:16px}
  .banner b{color:#111}
+ details.more{border:1px solid var(--line);border-radius:10px;padding:0 14px;
+   margin-top:14px;background:#fafbfc}
+ details.more>summary{cursor:pointer;padding:13px 0;font-size:14px;
+   font-weight:600;color:var(--ink);list-style:none}
+ details.more>summary::-webkit-details-marker{display:none}
+ details.more>summary::before{content:"＋ ";color:var(--sub)}
+ details.more[open]>summary::before{content:"− "}
+ details.more[open]{padding-bottom:14px}
+ .req{color:#b91c1c;font-weight:700}
  BRAND_CSS_PLACEHOLDER
  @media (max-width:560px){
   .wrap{padding:16px 12px} h1{font-size:19px} .card{padding:16px}
@@ -624,81 +633,84 @@ BRAND_BAR
 <div class="wrap">
  <h1>住まいを100点で採点します</h1>
  <p class="aim">「この価格は妥当か」「災害リスクはないか」「無理なく返せるか」。住まい選びで迷う点を<b>公的データ</b>から集め、ルール計算で100点に換算します。</p>
- <p class="lead">物件説明を貼り付けると自動で項目を埋めます。内容を確認・修正して診断してください。金額は<b>万円</b>。物件の評価 × ご自身の属性で、あなたに合っている物件かを診断します。<br><a href="/mansion">マンションの診断はこちら</a></p>
+ <p class="lead"><b>住所と売出価格だけで診断できます。</b>分かる項目を足すほど、点の
+  確からしさ（情報充足度）が上がります。金額は<b>万円</b>。<br><a href="/mansion">マンションの診断はこちら</a></p>
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
 
- <form class="card" method="post" action="/parse">
-  <label>① 物件説明を貼り付け（SUUMO等の物件ページの<b>説明文</b>をコピペ）</label>
-  <textarea name="listing" placeholder="例）中古一戸建て 〇〇県〇〇市〇〇町1-2-3 価格3,500万円 土地面積120.00㎡ 建物面積95.00㎡ 4LDK 築2010年 〇〇駅 徒歩12分">{{listing or ''}}</textarea>
-  <button class="sub" type="submit">貼り付けから自動入力する</button>
-  <div class="hint">※ <b>URLではなく、物件ページの文章</b>（価格・所在地・面積・築年・駅など）を選択してコピーしてください。ご自身がコピーした情報を解析します（私的利用）。抽出後、下で確認・修正できます。<br>
-   <b>販売図面のPDFをお持ちの場合も、PDFを開いて文字を選択・コピーし、この欄に貼り付けてください。</b>文字が選択できないPDF（スキャン画像）からは読み取れません。<br>
-   <b><a href="/copy-guide">スマホアプリで文字がコピーできない場合はこちら</a></b></div></form>
-
- <div class="card fixrow" style="margin-bottom:14px">
-  <a class="btn sub" href="/sample" style="width:auto">見本の物件で結果を見る</a>
-  <span class="muted">物件がまだ決まっていない方へ。採点の中身と出典を、そのまま見られます</span>
- </div>
-
  <form class="card" method="post" action="/diagnose">
-  <label>② 内容を確認・修正して診断</label>
-  <label>物件の所在地</label>
-  <input name="address" value="{{v.address}}" required>
+  <label>物件の所在地 <span class="req">必須</span></label>
+  <input name="address" value="{{v.address}}" placeholder="例）〇〇県〇〇市〇〇町1-2-3" required>
   <div class="row">
-   <div><label>売出価格（万円）</label><input name="price" value="{{v.price}}" placeholder="例）3500" required></div>
-   <div><label>築年（西暦）</label><input name="byear" value="{{v.byear}}" placeholder="例）2010"></div>
-  </div>
-  <div class="row">
-   <div><label>土地面積（㎡）</label><input name="land" value="{{v.land}}" placeholder="例）120"></div>
-   <div><label>建物面積（㎡）</label><input name="building" value="{{v.building}}" placeholder="例）95"></div>
-  </div>
-  <div class="row">
-   <div><label>市区町村コード</label><input name="city" value="{{v.city}}" placeholder="住所から自動判定"></div>
-   <div><label>町名</label><input name="district" value="{{v.district}}" placeholder="住所から自動判定"></div>
-  </div>
-  <div class="row">
-   <div><label>駅/バス停まで徒歩（分）</label><input name="station" value="{{v.station}}" placeholder="例）12"></div>
-   <div><label>駅までバス（分・バス便のみ）</label><input name="bus" value="{{v.bus}}">
-     <div class="hint">バス便のときだけ入力</div></div>
-  </div>
-  <div class="row">
+   <div><label>売出価格（万円） <span class="req">必須</span></label>
+    <input name="price" value="{{v.price}}" placeholder="例）3500" required></div>
    <div><label>種別</label>
     <select name="ptype">
      <option value="chuko_kodate" {{'selected' if v.ptype=='chuko_kodate' else ''}}>中古戸建</option>
      <option value="shinchiku_kodate" {{'selected' if v.ptype=='shinchiku_kodate' else ''}}>新築戸建</option>
     </select></div>
-   <div><label>リフォーム</label>
-    <select name="reno">
-     <option value="0" {{'selected' if not v.reno else ''}}>リフォームなし／不明</option>
-     <option value="1" {{'selected' if v.reno else ''}}>リフォーム済み</option>
-    </select>
-    <div class="hint">築古でも「リフォーム済み」なら価格・建物評価を調整します</div></div>
-  </div>
-  <div class="row">
-   <div><label>構造</label>
-    <select name="structure">
-     {% for val, lbl in structures %}
-      <option value="{{val}}" {{'selected' if v.structure==val else ''}}>{{lbl}}</option>
-     {% endfor %}
-    </select>
-    <div class="hint">同じ築年数でも、構造によって建物の残り時間が違います。
-     国税庁の耐用年数（木造22年・RC47年など）を目安に、木造を基準として換算します。
-     不明なら選ばなくて構いません（木造として計算します）。</div></div>
-   <div></div>
   </div>
   <div class="row">
    <div><label>世帯年収（万円・任意）</label><input name="income" value="{{v.income}}" placeholder="例）800"></div>
-   <div><label>頭金（万円・任意）</label><input name="down" value="{{v.down}}" placeholder="例）500"></div>
-  </div>
-  <div class="row">
    <div><label>借入年数（年）</label><input name="loan_years" value="{{v.loan_years}}">
-     <div class="hint">住宅ローンの返済年数（未入力は35年）</div></div>
-   <div></div>
+     <div class="hint">未入力は35年</div></div>
   </div>
+
+  <details class="more">
+   <summary>分かる項目を足す（築年・面積・駅徒歩・構造・頭金）</summary>
+   <div class="row">
+    <div><label>築年（西暦）</label><input name="byear" value="{{v.byear}}" placeholder="例）2010"></div>
+    <div><label>駅/バス停まで徒歩（分）</label><input name="station" value="{{v.station}}" placeholder="例）12"></div>
+   </div>
+   <div class="row">
+    <div><label>土地面積（㎡）</label><input name="land" value="{{v.land}}" placeholder="例）120"></div>
+    <div><label>建物面積（㎡）</label><input name="building" value="{{v.building}}" placeholder="例）95"></div>
+   </div>
+   <div class="row">
+    <div><label>構造</label>
+     <select name="structure">
+      {% for val, lbl in structures %}
+       <option value="{{val}}" {{'selected' if v.structure==val else ''}}>{{lbl}}</option>
+      {% endfor %}
+     </select>
+     <div class="hint">同じ築年数でも、構造によって建物の残り時間が違います。国税庁の
+      耐用年数（木造22年・RC47年など）を目安に、木造を基準として換算します。
+      不明なら選ばなくて構いません（木造として計算します）。</div></div>
+    <div><label>リフォーム</label>
+     <select name="reno">
+      <option value="0" {{'selected' if not v.reno else ''}}>リフォームなし／不明</option>
+      <option value="1" {{'selected' if v.reno else ''}}>リフォーム済み</option>
+     </select>
+     <div class="hint">築古でも「リフォーム済み」なら価格・建物評価を調整します</div></div>
+   </div>
+   <div class="row">
+    <div><label>頭金（万円・任意）</label><input name="down" value="{{v.down}}" placeholder="例）500"></div>
+    <div><label>駅までバス（分・バス便のみ）</label><input name="bus" value="{{v.bus}}">
+      <div class="hint">バス便のときだけ入力</div></div>
+   </div>
+   <div class="row">
+    <div><label>市区町村コード</label><input name="city" value="{{v.city}}" placeholder="住所から自動判定"></div>
+    <div><label>町名</label><input name="district" value="{{v.district}}" placeholder="住所から自動判定"></div>
+   </div>
+  </details>
+
   <button type="submit">この物件を診断する</button>
   <div class="hint" style="text-align:center;margin-top:8px">※物件解析・情報収集に数分程度かかる場合があります</div>
  </form>
+
+ <form class="card" method="post" action="/parse">
+  <label>SUUMO等の文章から、まとめて入力する</label>
+  <textarea name="listing" placeholder="例）中古一戸建て 〇〇県〇〇市〇〇町1-2-3 価格3,500万円 土地面積120.00㎡ 建物面積95.00㎡ 4LDK 築2010年 〇〇駅 徒歩12分">{{listing or ''}}</textarea>
+  <button class="sub" type="submit">貼り付けから自動入力する</button>
+  <div class="hint">URLではなく<b>物件ページの文章</b>を選択してコピーしてください。
+   読み取った内容は上の欄に入るので、確認して直せます。<br>
+   <a href="/copy-guide">スマホアプリで文字がコピーできない場合</a></div>
+ </form>
+
+ <div class="card fixrow">
+  <a class="btn sub" href="/sample" style="width:auto">見本の物件で結果を見る</a>
+  <span class="muted">物件がまだ決まっていない方へ。採点の中身と出典を、そのまま見られます</span>
+ </div>
  <p class="hint" style="text-align:center">
   ※ 本診断は確認できた公的データ範囲のルール計算です。最終判断は現地・専門家確認を前提としてください。</p>
 <script>
@@ -2818,6 +2830,8 @@ def resolve_city():
 @app.route("/parse", methods=["POST"])
 def parse():
     text = request.form.get("listing", "")
+    if text.strip():
+        metrics.bump("paste_used")
     if not text.strip():
         return render_template_string(FORM, v=_example_v(), listing="",
                                       banner="貼り付け欄が空です。物件説明を貼り付けてください。")
@@ -3318,20 +3332,22 @@ BRAND_BAR
  <h1>マンションを100点で採点します</h1>
  <p class="aim">「この価格は妥当か」「資産価値は保てるか」「無理なく返せるか」。
   近隣の<b>マンションの成約事例</b>から専有面積あたりの単価を出して、100点に換算します。</p>
- <p class="lead">物件説明を貼り付けると自動で項目を埋めます。内容を確認・修正して診断してください。
+ <p class="lead"><b>所在地・売出価格・専有面積の3つで診断できます。</b>分かる項目を
+  足すほど、点の確からしさ（情報充足度）が上がります。
   金額は<b>万円</b>（管理費・修繕積立金は<b>円</b>）。
   <a href="/buy">戸建の診断はこちら</a></p>
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
 
  <form class="card" method="post" action="/mansion_parse">
-  <label>① 物件説明を貼り付け（SUUMO等の物件ページの<b>説明文</b>をコピペ）</label>
+  <label>SUUMO等の文章から、まとめて入力する</label>
   <textarea name="listing" placeholder="例）中古マンション 〇〇県〇〇市〇〇町2-3-4 〇〇マンション 価格3,480万円 専有面積70.00㎡ 3LDK 5階/10階建 築2010年 南向き 管理費12,000円 修繕積立金13,000円 〇〇駅 徒歩8分">{{listing or ''}}</textarea>
   <button class="sub" type="submit">貼り付けから自動入力する</button>
   <div class="hint">※ <b>URLではなく、物件ページの文章</b>をコピーしてください。ご自身がコピーした情報を解析します（私的利用）。
    <b><a href="/copy-guide">スマホアプリで文字がコピーできない場合はこちら</a></b>。
    マンション名は自動では取れないため、手で入力してください。抽出後、下で確認・修正できます。<br>
-   <b>販売図面のPDFをお持ちの場合も、PDFを開いて文字を選択・コピーし、この欄に貼り付けてください。</b>文字が選択できないPDF（スキャン画像）からは読み取れません。</div>
+   読み取った内容は下の欄に入るので、確認して直せます。<br>
+   <a href="/copy-guide">スマホアプリで文字がコピーできない場合</a></div>
  </form>
 
  <div class="banner">
@@ -3345,74 +3361,78 @@ BRAND_BAR
   <input name="address" value="{{v.address}}" placeholder="例）〇〇県〇〇市〇〇町2-3-4" required>
   <div class="hint">住所を入れると市区町村コードを自動で判定します</div>
 
-  <label>マンション名</label>
-  <input name="name" value="{{v.name}}" placeholder="例）〇〇マンション">
-  <div class="hint">建物の位置を正確に取るために使います。<b>成約事例を名前で検索することはできません</b>（取引価格情報は匿名化されていて建物名を含まないため）。同じ町名・同じ築年の成約を「同じ建物の可能性がある事例」として別枠で表示します。</div>
-
   <div class="row">
-   <div><label>売出価格（万円・必須）</label>
+   <div><label>売出価格（万円） <span class="req">必須</span></label>
     <input name="price" value="{{v.price}}" placeholder="例）3480" required></div>
-   <div><label>専有面積（㎡・必須）</label>
+   <div><label>専有面積（㎡） <span class="req">必須</span></label>
     <input name="area" value="{{v.area}}" placeholder="例）70" required>
     <div class="hint">バルコニーは含めません</div></div>
   </div>
 
-  <div class="row">
-   <div><label>築年（西暦）</label>
-    <input name="byear" value="{{v.byear}}" placeholder="例）2010"></div>
-   <div><label>駅/バス停まで徒歩（分）</label>
-    <input name="station" value="{{v.station}}" placeholder="例）8"></div>
-   <div><label>駅までバス（分・バス便のみ）</label>
-    <input name="bus" value="{{v.bus}}">
-    <div class="hint">バス便のときだけ入力</div></div>
-  </div>
+  <details class="more">
+   <summary>分かる項目を足す（マンション名・築年・階数・管理費など）</summary>
+   <label>マンション名</label>
+   <input name="name" value="{{v.name}}" placeholder="例）〇〇マンション">
+   <div class="hint">建物の位置を正確に取るために使います。<b>成約事例を名前で検索することはできません</b>（取引価格情報は匿名化されていて建物名を含まないため）。同じ町名・同じ築年の成約を「同じ建物の可能性がある事例」として別枠で表示します。</div>
+
+   <div class="row">
+    <div><label>築年（西暦）</label>
+     <input name="byear" value="{{v.byear}}" placeholder="例）2010"></div>
+    <div><label>駅/バス停まで徒歩（分）</label>
+     <input name="station" value="{{v.station}}" placeholder="例）8"></div>
+    <div><label>駅までバス（分・バス便のみ）</label>
+     <input name="bus" value="{{v.bus}}">
+     <div class="hint">バス便のときだけ入力</div></div>
+   </div>
+
+   <div class="row">
+    <div><label>所在階</label>
+     <input name="floor" value="{{v.floor}}" placeholder="例）5"></div>
+    <div><label>総階数</label>
+     <input name="total_floors" value="{{v.total_floors}}" placeholder="例）10"></div>
+    <div><label>向き</label>
+     <select name="direction">
+      {% for d in directions %}
+      <option value="{{d}}" {{'selected' if v.direction==d else ''}}>{{d}}</option>
+      {% endfor %}
+     </select></div>
+   </div>
+
+   <div class="row">
+    <div><label>管理費（円／月）</label>
+     <input name="mfee" value="{{v.mfee}}" placeholder="例）12000">
+     <div class="hint">万円ではなく<b>円</b>で入力</div></div>
+    <div><label>修繕積立金（円／月）</label>
+     <input name="rfund" value="{{v.rfund}}" placeholder="例）13000">
+     <div class="hint">専有面積あたりの月額に直して、国土交通省「マンションの修繕積立金に関するガイドライン」（令和6年6月改定）の目安と比べます</div></div>
+   </div>
+
+   <div class="row">
+    <div><label>リフォーム</label>
+     <select name="reno">
+      <option value="0" {{'selected' if not v.reno else ''}}>リフォームなし／不明</option>
+      <option value="1" {{'selected' if v.reno else ''}}>リフォーム済み</option>
+     </select>
+     <div class="hint">築15年以上のリフォーム済みは、推定価格と資産性を調整します（内容は見ていません）</div></div>
+    <div><label>頭金（万円・任意）</label>
+     <input name="down" value="{{v.down}}" placeholder="例）500"></div>
+   </div>
+
+   <div class="row">
+    <div><label>市区町村コード</label>
+     <input name="city" value="{{v.city}}" placeholder="住所から自動判定"></div>
+    <div><label>町名</label>
+     <input name="district" value="{{v.district}}" placeholder="住所から自動判定"></div>
+   </div>
+  </details>
 
   <div class="row">
-   <div><label>所在階</label>
-    <input name="floor" value="{{v.floor}}" placeholder="例）5"></div>
-   <div><label>総階数</label>
-    <input name="total_floors" value="{{v.total_floors}}" placeholder="例）10"></div>
-   <div><label>向き</label>
-    <select name="direction">
-     {% for d in directions %}
-     <option value="{{d}}" {{'selected' if v.direction==d else ''}}>{{d}}</option>
-     {% endfor %}
-    </select></div>
-  </div>
-
   <div class="row">
-   <div><label>リフォーム</label>
-    <select name="reno">
-     <option value="0" {{'selected' if not v.reno else ''}}>リフォームなし／不明</option>
-     <option value="1" {{'selected' if v.reno else ''}}>リフォーム済み</option>
-    </select>
-    <div class="hint">築15年以上のリフォーム済みは、推定価格と資産性を調整します（内容は見ていません）</div></div>
-  </div>
-
-  <div class="row">
-   <div><label>管理費（円／月）</label>
-    <input name="mfee" value="{{v.mfee}}" placeholder="例）12000">
-    <div class="hint">万円ではなく<b>円</b>で入力</div></div>
-   <div><label>修繕積立金（円／月）</label>
-    <input name="rfund" value="{{v.rfund}}" placeholder="例）13000">
-    <div class="hint">専有面積あたりの月額に直して、国土交通省「マンションの修繕積立金に関するガイドライン」（令和6年6月改定）の目安と比べます</div></div>
-  </div>
-
-  <div class="row">
-   <div><label>市区町村コード</label>
-    <input name="city" value="{{v.city}}" placeholder="住所から自動判定"></div>
-   <div><label>町名</label>
-    <input name="district" value="{{v.district}}" placeholder="住所から自動判定"></div>
-  </div>
-
-  <h2>あなたの条件（返済の無理がないかを見ます）</h2>
-  <div class="row">
-   <div><label>世帯年収（万円）</label>
+   <div><label>世帯年収（万円・任意）</label>
     <input name="income" value="{{v.income}}" placeholder="例）800"></div>
-   <div><label>頭金（万円）</label>
-    <input name="down" value="{{v.down}}" placeholder="例）500"></div>
    <div><label>借入年数（年）</label>
-    <input name="loan_years" value="{{v.loan_years}}" placeholder="35"></div>
+    <input name="loan_years" value="{{v.loan_years}}" placeholder="35">
+    <div class="hint">未入力は35年</div></div>
   </div>
 
   <button type="submit">このマンションを診断する</button>
@@ -3530,6 +3550,8 @@ def mansion_parse():
     """貼り付けたテキストから項目を埋める。戸建の /parse と同じ役割。"""
     from src.extract import parse_mansion_text
     text = request.form.get("listing", "")
+    if text.strip():
+        metrics.bump("paste_used")
     if not text.strip():
         return render_template_string(
             MANSION_FORM, v=_mansion_example_v(), directions=DIRECTIONS,
