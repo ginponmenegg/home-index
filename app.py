@@ -3422,17 +3422,6 @@ BRAND_BAR
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
 
- <form class="card" method="post" action="/mansion_parse">
-  <label>SUUMO等の文章から、まとめて入力する</label>
-  <textarea name="listing" placeholder="例）中古マンション 〇〇県〇〇市〇〇町2-3-4 〇〇マンション 価格3,480万円 専有面積70.00㎡ 3LDK 5階/10階建 築2010年 南向き 管理費12,000円 修繕積立金13,000円 〇〇駅 徒歩8分">{{listing or ''}}</textarea>
-  <button class="sub" type="submit">貼り付けから自動入力する</button>
-  <div class="hint">※ <b>URLではなく、物件ページの文章</b>をコピーしてください。ご自身がコピーした情報を解析します（私的利用）。
-   <b><a href="/copy-guide">スマホアプリで文字がコピーできない場合はこちら</a></b>。
-   マンション名は自動では取れないため、手で入力してください。抽出後、下で確認・修正できます。<br>
-   読み取った内容は下の欄に入るので、確認して直せます。<br>
-   <a href="/copy-guide">スマホアプリで文字がコピーできない場合</a></div>
- </form>
-
  <div class="banner">
   <b>この診断に含まれないもの：</b>修繕積立金の<b>残高</b>、大規模修繕の履歴、管理形態、
   滞納の有無。いずれもマンションの価値を左右しますが、公的データからは取得できません。
@@ -3512,7 +3501,6 @@ BRAND_BAR
   </details>
 
   <div class="row">
-  <div class="row">
    <div><label>世帯年収（万円・任意）</label>
     <input name="income" value="{{v.income}}" placeholder="例）800"></div>
    <div><label>借入年数（年）</label>
@@ -3523,7 +3511,16 @@ BRAND_BAR
   <button type="submit">このマンションを診断する</button>
   <div class="hint">診断結果は公的データにもとづく推定です。契約の判断は専門家の確認を前提としてください。</div>
  </form>
-</div>
+
+ <form class="card" method="post" action="/mansion_parse">
+  <label>SUUMO等の文章から、まとめて入力する</label>
+  <textarea name="listing" placeholder="例）中古マンション 〇〇県〇〇市〇〇町2-3-4 〇〇マンション 価格3,480万円 専有面積70.00㎡ 3LDK 5階/10階建 築2010年 南向き 管理費12,000円 修繕積立金13,000円 〇〇駅 徒歩8分">{{listing or ''}}</textarea>
+  <button class="sub" type="submit">貼り付けから自動入力する</button>
+  <div class="hint">URLではなく<b>物件ページの文章</b>を選択してコピーしてください。
+   読み取った内容は上の欄に入るので、確認して直せます。マンション名だけは
+   自動で取れないので、手で入れてください。<br>
+   <a href="/copy-guide">スマホアプリで文字がコピーできない場合</a></div>
+ </form>
 <script>
 (function(){
   var form = document.querySelector('form[action="/mansion_diagnose"]');

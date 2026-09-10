@@ -137,3 +137,75 @@ def test_the_share_sheet_carries_a_link_back():
     call = h[h.find("navigator.share("):][:300]
     assert "url:" in call, "共有シートにURLが入っていない"
     assert "homeindex.jp" in call
+
+
+def test_the_paste_box_sits_below_the_form_on_both_pages():
+    """手で入力する人が先。貼り付けは「もっと楽もできます」の位置。
+
+    戸建だけ組み替えて、マンションは貼り付けがトップに残っていた。
+    入口でいちばん目立つ場所に、大半の人が使わない機能が置かれていた。
+    """
+    c = _client()
+    for path, form, paste in (("/buy", "/diagnose", "/parse"),
+                              ("/mansion", "/mansion_diagnose", "/mansion_parse")):
+        h = c.get(path).get_data(as_text=True)
+        i = h.find('action="%s"' % form)
+        j = h.find('action="%s"' % paste)
+        assert i > 0 and j > 0, path
+        assert j > i, f"{path}: 貼り付けが診断フォームより上にある"
+
+
+def test_the_copy_guide_is_linked_once_per_page():
+    """組み替えの途中で、同じ案内が2回出ていた。"""
+    c = _client()
+    for path in ("/buy", "/mansion"):
+        h = c.get(path).get_data(as_text=True)
+        assert h.count("/copy-guide") == 1, path
+
+
+def _unbalanced(html_text):
+    """閉じ忘れ・閉じすぎを拾う。ブラウザは黙って直すので気づけない。"""
+    from html.parser import HTMLParser
+    void = {"area", "base", "br", "col", "embed", "hr", "img", "input",
+            "link", "meta", "param", "source", "track", "wbr"}
+
+    class P(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.stack, self.errors = [], []
+
+        def handle_starttag(self, tag, attrs):
+            if tag not in void:
+                self.stack.append(tag)
+
+        def handle_endtag(self, tag):
+            if tag in void:
+                return
+            if not self.stack:
+                self.errors.append("余分な </%s>" % tag)
+                return
+            if self.stack[-1] != tag:
+                self.errors.append("</%s> のところで <%s> が開いたまま"
+                                   % (tag, self.stack[-1]))
+                for i in range(len(self.stack) - 1, -1, -1):
+                    if self.stack[i] == tag:
+                        del self.stack[i:]
+                        return
+                return
+            self.stack.pop()
+
+    p = P()
+    p.feed(html_text)
+    return p.errors + ["閉じ忘れ <%s>" % t for t in p.stack
+                       if t not in ("html", "body")]
+
+
+def test_the_pages_are_not_missing_or_extra_closing_tags():
+    """マンションのフォームに </div> が1つ余っていて、フッターが .wrap の
+    外に出ていた。幅も余白も他のページと違っていたが、見ただけでは
+    気づきにくい。
+    """
+    c = _client()
+    for path in ("/", "/buy", "/mansion", "/plan", "/pro", "/sample/finance"):
+        bad = _unbalanced(c.get(path).get_data(as_text=True))
+        assert not bad, f"{path}: {bad[:3]}"
