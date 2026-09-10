@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Optional, Any, List, Dict
+from typing import Optional, List, Dict
 import datetime
 
 
@@ -95,7 +95,12 @@ class Transaction:
     latitude: Optional[float] = None      # 町名ジオコーディング結果（中心）
     longitude: Optional[float] = None
     distance_m: Optional[float] = None    # 対象物件からの距離(m)
-    raw: Dict[str, Any] = field(default_factory=dict)
+    # 生レコード（raw）はここに持たない。誰も読んでいないのに、1市区町村・
+    # 1年分でメモリが 1.6MB → 5.1MB になっていた（実測・船橋市2024年 2,320件）。
+    # 取引データはプロセス内にキャッシュするので、この差がそのまま効く。
+    # 新しいフィールドが要るときは、raw を戻すのではなく、ここに名前を付けて
+    # 足すこと（PricePerUnit・UnitPrice・Use・Purpose・Direction・Frontage・
+    # CoverageRatio・FloorAreaRatio・Renovation・Remarks・DistrictCode がある）。
 
 
 @dataclass

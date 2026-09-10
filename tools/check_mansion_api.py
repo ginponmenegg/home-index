@@ -71,7 +71,11 @@ def main():
               f"    {t.district_name} / 面積か価格が欠損")
 
     print("\n[4] 生レコードのキー一覧（1件目）")
-    print("   ", sorted(mans[0].raw.keys()))
+    # Transaction は生レコードを持たなくなった（メモリのため）。フィールド名を
+    # 見たいのはこの確認スクリプトだけなので、ここで1回だけ生で取りに行く。
+    body = ReinfolibClient(key)._get("XIT001", {"year": 2024, "city": city})
+    recs = body.get("data", []) if isinstance(body, dict) else []
+    print("   ", sorted(recs[0].keys()) if recs else "（0件）")
     return 0
 
 

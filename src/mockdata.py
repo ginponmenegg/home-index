@@ -15,8 +15,7 @@ def sample_transactions():
             municipality_code="14206", district_name=district,
             land_area_m2=land, building_area_m2=bldg, build_year=year,
             period_year=py, period_quarter=pq, city_planning=cp,
-            structure=structure, layout="4LDK",
-            raw={"mock": True})
+            structure=structure, layout="4LDK")
     return [
         T(34000000, 115, 98, 2006, 2024, 3, "南町"),
         T(33500000, 108, 95, 2004, 2024, 1, "南町"),
