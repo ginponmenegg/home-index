@@ -479,7 +479,16 @@ FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#6
 # ---- 負荷・不正対策（プロセス内・簡易） ----
 _RATE: dict = {}
 _RATE_LIMIT = int(os.environ.get("RATE_LIMIT_PER_DAY", "40"))
-_SEM = threading.Semaphore(int(os.environ.get("MAX_CONCURRENT", "4")))
+# 同時に走らせる診断の数。gunicorn の --threads より小さくないと意味がない。
+# 既定は長らく4だったが、起動は --threads 4 なので同時リクエストが最大4件。
+# つまり「4件まで許す」セマフォは一度も発動していなかった。安全装置のつもりの
+# ものが素通しになっていた、ということ。
+#
+# 診断1件は外部APIを20本以上並列で叩き、マンションは10年分＝20MB近いJSONを
+# 解く。無料プランは512MBなので、ここはピークを抑える弁として効かせる。
+# なお、これを下げても /healthz のためにスレッドが空くわけではない。待つ側も
+# スレッドを握ったままなので、そこは --threads を増やさないと変わらない。
+_SEM = threading.Semaphore(int(os.environ.get("MAX_CONCURRENT", "2")))
 
 
 # 自ら名乗っているものと、ブラウザではないクライアント。完全ではないが、

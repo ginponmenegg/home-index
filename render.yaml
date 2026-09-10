@@ -7,6 +7,11 @@ services:
     runtime: python
     plan: free                # 無料枠（一定時間アクセスが無いとスリープ／初回アクセスは起動待ち）
     buildCommand: pip install -r requirements.txt
+    # 実際に使われるのは Render のダッシュボードの Start Command。ここと Procfile は
+    # 作り直したときの元になるだけなので、3つを必ず同じにしておくこと。
+    # 一度 Procfile だけが --workers 2 のまま残っていた。無料プラン(512MB)で
+    # workerを2つにすると、Pythonもreportlabも2つ載り、TXN_CACHE_MB もプロセス
+    # ごとに効くので枠が倍になる。
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 300
     healthCheckPath: /healthz
     envVars:
@@ -49,3 +54,9 @@ services:
       # メモリが苦しくなったら、まずここを下げる（取り直すだけで壊れはしない）。
       - key: TXN_CACHE_MB
         value: "96"
+      # 同時に走らせる診断の数。gunicorn の --threads より小さくないと、
+      # 制限として働かない（スレッドが4本なら同時リクエストは最大4件なので、
+      # 4を許すセマフォは一度も発動しない）。診断1件は外部APIを20本以上
+      # 並列で叩き、マンションは20MB近いJSONを解く。ピークを抑える弁。
+      - key: MAX_CONCURRENT
+        value: "2"
