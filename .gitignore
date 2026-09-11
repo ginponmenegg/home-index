@@ -13,8 +13,11 @@ citycode_cache.json
 # 生成物
 *.pdf
 
-# ローカルのプレビュー設定
-.claude/
+# ローカルのプレビュー設定（launch.json・worktrees）。環境ごとに違うので管理しない。
+.claude/*
+# ただし調査部隊の定義は共有する。バージョン管理しないと環境が変わると消える。
+# 本体のコードには一切影響しない（Flaskも pytest も requirements.txt も読まない）。
+!.claude/agents/
 
 # ローカル確認用のSQLite（本番はNeon）
 *.db
