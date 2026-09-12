@@ -17,17 +17,26 @@
  "kinri-joushou-5nen-rule": {
   "title": "5年ルールが止めるのは返済額だけです。金利が1%上がったときの返済を試算しました"
  },
+ "kodate-mansion-haiten": {
+  "title": "戸建とマンションで、100点の配り方を変えています。価格は20点と30点です"
+ },
  "kouzui-shinsui-fukasa": {
   "title": "洪水ハザードの浸水深は6段階。0.5mと3mでは意味が違います"
  },
  "kyu-taishin-mansion": {
   "title": "旧耐震のマンションは資産性を0.6倍にしています。戻せるのは管理組合だけ"
  },
+ "mansion-kanri-15ten": {
+  "title": "マンションの100点中15点は管理です。ただし見ているのは積立金の水準だけです"
+ },
  "shigaika-chosei-kuiki": {
   "title": "市街化調整区域は建てられないのか。原則、許可が要ります"
  },
  "shin-taishin-kenchiku-kakunin": {
   "title": "新耐震かどうかは築年では決まりません。境目は1981年6月の建築確認"
+ },
+ "shoene-kijun-tekigou": {
+  "title": "「省エネ基準に適合」は2025年4月から義務です。加点材料ではなくなりました"
  },
  "shorai-suikei-jinko-mesh": {
   "title": "2050年の人口は250mメッシュで見ています。市区町村の平均では分からない"
