@@ -741,3 +741,86 @@ def test_a_stale_customer_id_does_not_block_signing_up():
     assert len(calls) == 2, "顧客IDを外して1度だけやり直すこと"
     assert "customer" not in calls[1]
     assert calls[1]["customer_email"] == "a@example.com"
+
+
+# ---- 会員が自分の道具に辿り着けること ---------------------------------------
+# 課金を始めたとき、非会員がロック画面に落ちるのを嫌って /pro/diagnose などへの
+# 直リンクをフッターから外した。そこまでは正しかったが、会員向けの導線を用意
+# しないまま外したので、サイト全体で /pro/finance へのリンクが0件になった。
+# 払っている人が /pro というハブ1枚を見つけない限り、何も使えない状態だった。
+
+_TOOLS = ("/pro/diagnose", "/pro/mansion", "/pro/finance")
+
+
+def _tool_links(html, after_menu=False):
+    part = html[html.find("</nav>"):] if after_menu else html
+    return [p for p in _TOOLS if f'href="{p}"' in part]
+
+
+def test_a_paying_member_sees_the_tools_in_the_menu(billing):
+    c, uid = _login(billing, "member@example.com")
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, None)
+    h = c.get("/buy").get_data(as_text=True)
+    nav = h[h.find('<nav class="hi-menu"'):h.find("</nav>")]
+    assert sorted(_tool_links(nav)) == sorted(_TOOLS), "メニューに3つ揃っていない"
+    # 無料の診断のすぐ下に入れる。末尾だと利用規約より下になって埋もれる。
+    assert nav.find('href="/pro/diagnose"') < nav.find('href="/plan"')
+
+
+def test_a_paying_member_sees_the_tools_in_the_footer(billing):
+    c, uid = _login(billing, "footer@example.com")
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, None)
+    h = c.get("/buy").get_data(as_text=True)
+    assert sorted(_tool_links(h, after_menu=True)) == sorted(_TOOLS)
+
+
+def test_someone_who_has_not_paid_is_not_sent_to_the_lock_screen(billing):
+    """非会員には、押しても壁に当たるリンクを出さない。"""
+    c = billing.app.app.test_client()
+    h = c.get("/buy").get_data(as_text=True)
+    assert _tool_links(h) == [], "非会員に直リンクが出ている"
+    assert 'href="/pro"' in h and 'href="/sample/finance"' in h
+
+
+def test_a_free_member_does_not_get_them_either(billing):
+    c, _uid = _login(billing, "free@example.com")
+    assert _tool_links(c.get("/buy").get_data(as_text=True)) == []
+
+
+def test_an_expired_plan_loses_the_links(billing):
+    c, uid = _login(billing, "expired@example.com")
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, None)
+    assert _tool_links(c.get("/buy").get_data(as_text=True))
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO,
+                              "2020-01-01T00:00:00+00:00")
+    assert _tool_links(c.get("/buy").get_data(as_text=True)) == []
+
+
+def test_the_marker_is_invisible_to_everyone_else(billing):
+    """差し替えの印が、非会員の画面に文字として出ていないこと。"""
+    h = billing.app.app.test_client().get("/buy").get_data(as_text=True)
+    assert billing.app._PRO_MENU_MARK in h, "印そのものは残っていてよい"
+    import re
+    visible = re.sub(r"<!--.*?-->", "", h, flags=re.S)
+    assert "HI_PRO_MENU" not in visible
+
+
+def test_a_visitor_who_is_not_logged_in_never_wakes_the_database(billing):
+    """Neonは起動していた時間で課金され、5分アイドルで止まる。
+    巡回のたびに起こすと、月の枠を簡単に超える。
+    """
+    calls = []
+    real = billing.accounts.get_user
+    billing.accounts.get_user = lambda uid: (calls.append(uid), real(uid))[1]
+    try:
+        billing.app.app.test_client().get("/buy")
+        assert calls == [], f"未ログインなのにDBを引いている: {calls}"
+    finally:
+        billing.accounts.get_user = real
+
+
+def test_a_pdf_is_not_rewritten(billing):
+    """HTML以外には触らない。PDFを文字列として書き換えたら壊れる。"""
+    r = billing.app.app.test_client().get("/sample/finance.pdf")
+    assert r.mimetype == "application/pdf"
+    assert r.data[:4] == b"%PDF"

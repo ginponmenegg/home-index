@@ -302,6 +302,36 @@ if db.enabled():
     MENU_ITEMS.insert(4, ("/mypage", "マイページ"))
 
 
+# ---- 会員にだけ見せるリンク -------------------------------------------
+# メニューもフッターも、起動時にテンプレートへ文字列として焼き込んでいる。
+# そのままでは人によって変えられないので、印だけ焼いておき、HTMLを返す
+# 直前に差し替える（_show_pro_links）。
+#
+# 印は非会員のページにもHTMLコメントとして残るが、見えないし害もない。
+# 16か所のテンプレートを毎リクエスト組み立て直すより、こちらが安い。
+_PRO_MENU_MARK = "<!--HI_PRO_MENU-->"
+_PRO_MENU_HTML = (
+    '<a href="/pro/diagnose">PRO　購入診断（戸建）</a>'
+    '<a href="/pro/mansion">PRO　購入診断（マンション）</a>'
+    '<a href="/pro/finance">PRO　詳細な資金計画</a>')
+
+
+def _menu_links() -> str:
+    """メニューのリンク。無料の診断のすぐ下に、会員用の印を挟む。
+
+    末尾に置くと利用規約より下になって埋もれる。診断の並びの直後が、
+    探しに来た人の目が行く場所。
+    """
+    out = []
+    for href, label in MENU_ITEMS:
+        out.append(f'<a href="{href}">{label}</a>')
+        if href == "/mansion":
+            out.append(_PRO_MENU_MARK)
+    if _PRO_MENU_MARK not in out:   # /mansion を消しても印は必ず残す
+        out.append(_PRO_MENU_MARK)
+    return "".join(out)
+
+
 def lp_menu_links():
     """LPのメニュー。MENU_ITEMS から作る。
 
@@ -325,7 +355,7 @@ def brand_bar(chip="購入診断"):
     右端の三本線からページを切り替えられる。開閉のスクリプトはバー自身に
     同梱しているので、テンプレート側で用意する必要はない。
     """
-    links = "".join(f'<a href="{href}">{label}</a>' for href, label in MENU_ITEMS)
+    links = _menu_links()
     return ('<div class="hi-bar"><div class="hi-bar-in">'
             f'<a class="hi-lock" href="/">{symbol_small()}{WORDMARK}</a>'
             '<div class="hi-right">'
@@ -450,10 +480,17 @@ TRIAL_NOTE = ('' if billing_on() else
               '現在は無料でお使いいただけますが、将来は有料（月額）に'
               'なる予定です。会員登録はまだ不要です。</p>')
 
-# フッターのPRO。ここは長らく /pro/diagnose などへ直リンクしていたが、
-# 課金を始めた以上、非会員が押すとロック画面に落ちる。買っていない人にとって
-# 最初の接触が「買ってください」の壁になるのは、案内として損をしている。
-# 誰でも読める案内（/pro）と、違いを並べた料金表（/plan）へ向ける。
+# フッターのPRO。課金を始めたとき、非会員が押すとロック画面に落ちるのを嫌って
+# /pro/diagnose などへの直リンクを外した。そこまでは正しかったが、会員向けの
+# 導線を用意しないまま外したので、払っている人が自分の道具に辿り着けなくなった
+# （サイト全体で /pro/finance へのリンクが0件になっていた）。
+#
+# 非会員には案内（/pro）と料金表（/plan）を、会員には3つの直リンクを出す。
+# 出し分けは _show_pro_links がリクエストごとに行う。
+_PRO_LINKS_MEMBER = ('<a href="/pro" style="color:#111">PRO</a>：'
+                     '<a href="/pro/diagnose" style="color:#111">購入診断（戸建）</a>　・　'
+                     '<a href="/pro/mansion" style="color:#111">購入診断（マンション）</a>　・　'
+                     '<a href="/pro/finance" style="color:#111">詳細な資金計画</a>')
 if billing_on():
     PRO_LINKS = ('<a href="/pro" style="color:#111">PROでできること</a>'
                  + ('　・　<a href="/plan" style="color:#111">無料とPROのちがい</a>'
@@ -475,6 +512,44 @@ FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#6
           '出典：国土交通省 不動産情報ライブラリ／国土地理院<br>'
           '商業施設：© OpenStreetMap contributors（ODbL）<br>'
           '© HOME INDEX</div>')
+
+
+@app.after_request
+def _show_pro_links(resp):
+    """PRO会員のページにだけ、PROの道具へのリンクを出す。
+
+    ■なぜ後から差し替えるのか
+    メニューとフッターは、起動時に16か所のテンプレートへ文字列として
+    焼き込んでいる。人によって中身を変えるには、毎リクエスト組み立て
+    直すか、後から差し替えるかのどちらか。後者のほうが差分が小さく、
+    テンプレートの組み立て順に依存しない。
+
+    ■DBを起こさない
+    未ログインならセッションを見た時点で終わり、DBには触らない。Neonは
+    起動していた時間で課金され、5分アイドルで止まる。巡回のたびに
+    起こすわけにいかない（src/db.py の冒頭に同じ理由が書いてある）。
+    ログイン済みなら、その画面はどのみちDBに触っている。
+
+    ■/sample のキャッシュを汚さない
+    見本の結果は6時間ぶんをプロセス内に持っているが、あれはビューの中で
+    作られる。ここはその後に走るので、会員向けのメニューがキャッシュに
+    焼き付くことはない。
+    """
+    try:
+        if (resp.direct_passthrough or resp.mimetype != "text/html"
+                or not session.get("uid")
+                or not accounts.is_pro(current_user())):
+            return resp
+        body = resp.get_data(as_text=True)
+        out = body.replace(_PRO_MENU_MARK, _PRO_MENU_HTML)
+        out = out.replace(PRO_LINKS, _PRO_LINKS_MEMBER)
+        if out != body:
+            resp.set_data(out)
+    except Exception as e:        # pragma: no cover - 接続先依存
+        # ここで落ちても、出るのは会員向けのリンクが無いページだけ。
+        # 画面ごと500にするほうが害が大きい。
+        print(f"[pro-links] 差し替えに失敗: {e}")
+    return resp
 
 # ---- 負荷・不正対策（プロセス内・簡易） ----
 _RATE: dict = {}
