@@ -546,3 +546,21 @@ if __name__ == "__main__":
         passed += 1
         print(f"[OK] {fn.__name__}")
     print(f"\n{passed}/{len(fns)} tests passed")
+
+
+def test_management_is_dead_weight_without_the_repair_fund():
+    """修繕積立金が無いと、管理の15点は全物件で同じ点になる。
+
+    フォームでこの欄を畳んではいけない理由が、この数字。
+    tests/test_sample.py の test_the_mansion_fees_are_not_folded_away と対。
+    """
+    from src.mansion_scoring import score_mansion_management
+    blank = score_mansion_management(_subject())
+    other = score_mansion_management(_subject(area=95.0, build_year=1985))
+    assert blank.raw == other.raw == 0.5, "未入力なのに物件ごとに差がついている"
+    assert blank.sufficiency <= 0.1
+
+    filled = score_mansion_management(
+        _subject(repair_fund=13000, management_fee=12000))
+    assert filled.raw != 0.5, "入力しても点が動いていない"
+    assert filled.sufficiency > blank.sufficiency

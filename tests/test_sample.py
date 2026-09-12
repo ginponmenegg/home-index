@@ -209,3 +209,21 @@ def test_the_pages_are_not_missing_or_extra_closing_tags():
     for path in ("/", "/buy", "/mansion", "/plan", "/pro", "/sample/finance"):
         bad = _unbalanced(c.get(path).get_data(as_text=True))
         assert not bad, f"{path}: {bad[:3]}"
+
+
+def test_the_mansion_fees_are_not_folded_away():
+    """管理費と修繕積立金は、折りたたみの外に置く。
+
+    管理はマンションの100点のうち15点。ところが修繕積立金が未入力だと
+    raw 0.50・充足度 0.10 の固定値になり、全物件が一律7.5点になる。
+    物件間の差が一切つかないうえ、情報充足度をいちばん強く押し下げる。
+    畳んでいる限り、その15点は働かない。
+    返済負担率にも足しているので、資金の側にも効く。
+    """
+    import re
+    h = _client().get("/mansion").get_data(as_text=True)
+    form = h[h.find('action="/mansion_diagnose"'):h.find('action="/mansion_parse"')]
+    folded = form[form.find("<details"):form.find("</details>")]
+    for name in ("mfee", "rfund"):
+        assert f'name="{name}"' in form, name
+        assert f'name="{name}"' not in folded, f"{name} が畳まれている"

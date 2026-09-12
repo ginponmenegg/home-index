@@ -3518,8 +3518,18 @@ BRAND_BAR
     <div class="hint">バルコニーは含めません</div></div>
   </div>
 
+  <div class="row">
+   <div><label>管理費（円／月）</label>
+    <input name="mfee" value="{{v.mfee}}" placeholder="例）12000"></div>
+   <div><label>修繕積立金（円／月）</label>
+    <input name="rfund" value="{{v.rfund}}" placeholder="例）13000"></div>
+  </div>
+  <div class="hint">万円ではなく<b>円</b>で入力してください。物件ページに必ず
+   載っています。<b>入れると「管理」の15点が実際に採点され</b>、返済負担率にも
+   反映されます。<a href="/guide/shuzen-tsumitatekin-meyasu">修繕積立金の目安の見方</a></div>
+
   <details class="more">
-   <summary>分かる項目を足す（マンション名・築年・階数・管理費など）</summary>
+   <summary>分かる項目を足す（マンション名・築年・階数・向きなど）</summary>
    <label>マンション名</label>
    <input name="name" value="{{v.name}}" placeholder="例）〇〇マンション">
    <div class="hint">建物の位置を正確に取るために使います。<b>成約事例を名前で検索することはできません</b>（取引価格情報は匿名化されていて建物名を含まないため）。同じ町名・同じ築年の成約を「同じ建物の可能性がある事例」として別枠で表示します。</div>
@@ -3545,15 +3555,6 @@ BRAND_BAR
       <option value="{{d}}" {{'selected' if v.direction==d else ''}}>{{d}}</option>
       {% endfor %}
      </select></div>
-   </div>
-
-   <div class="row">
-    <div><label>管理費（円／月）</label>
-     <input name="mfee" value="{{v.mfee}}" placeholder="例）12000">
-     <div class="hint">万円ではなく<b>円</b>で入力</div></div>
-    <div><label>修繕積立金（円／月）</label>
-     <input name="rfund" value="{{v.rfund}}" placeholder="例）13000">
-     <div class="hint">専有面積あたりの月額に直して、国土交通省「マンションの修繕積立金に関するガイドライン」（令和6年6月改定）の目安と比べます</div></div>
    </div>
 
    <div class="row">
