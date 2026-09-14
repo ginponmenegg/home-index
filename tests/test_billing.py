@@ -549,12 +549,45 @@ _PRO_POSTS = ["/pro/start", "/pro/mansion_start", "/pro/finance_start",
 
 
 def test_pro_is_closed_to_visitors_while_charging(billing):
-    """未ログインではPROの画面に入れない。"""
+    """未ログインにPROのフォームは出さない。
+
+    以前は302で /login に飛ばしていたが、それだと結果画面から運んできた
+    入力がPOSTごと消えていた。いまは案内の画面を返して止める。
+    """
     c = billing.app.app.test_client()
-    for p in _PRO_PAGES:
-        assert c.get(p).status_code in (301, 302), p
-    for p in _PRO_POSTS:
-        assert c.post(p, data={}).status_code in (301, 302), p
+    for p in _PRO_PAGES + _PRO_POSTS:
+        r = c.post(p, data={}) if p in _PRO_POSTS else c.get(p)
+        assert r.status_code == 200, p
+        h = r.get_data(as_text=True)
+        assert "ここから先はPROです" in h, p
+        assert 'name="leak"' not in h, f"{p} にPROの入力欄が出ている"
+
+
+def test_the_gate_keeps_what_the_visitor_already_typed(billing):
+    """結果画面から運んできた入力を、入口で捨てない。
+
+    ここは長らく redirect("/login") だった。結果画面のボタンはPOSTで
+    住所・価格・築年・面積・年収など13項目を運んでいるので、302を返した
+    時点で中身が消え、ログインしても戻る先も無く、診断のやり直しになって
+    いた。保存ボタンと同じく、ログインは別タブで開いてこの画面を残す。
+    """
+    import re
+    c = billing.app.app.test_client()
+    carried = {"address": "神奈川県小田原市城山1-2-3", "price": "3880",
+               "byear": "2005", "land": "147", "income": "600"}
+    h = c.post("/pro/start", data=carried).get_data(as_text=True)
+    kept = dict(re.findall(r'name="(\w+)" value="([^"]*)"', h))
+    for k, v in carried.items():
+        assert kept.get(k) == v, f"{k} が残っていない（{kept.get(k)!r}）"
+    assert 'action="/pro/start"' in h, "押し直す先が無い"
+
+
+def test_the_gate_says_the_price_and_that_login_is_needed(billing):
+    """押す前に分からなかったことを、止めた画面で先に出す。"""
+    h = billing.app.app.test_client().get("/pro/finance").get_data(as_text=True)
+    assert "月額" in h, "料金が書かれていない"
+    assert "ログイン" in h, "ログインが要ることが書かれていない"
+    assert "/sample/finance" in h, "中身を見られる場所を出していない"
 
 
 def test_a_free_member_is_shown_the_plan_instead(billing):
@@ -566,10 +599,10 @@ def test_a_free_member_is_shown_the_plan_instead(billing):
     c, _uid = _login(billing, "freemember@example.com")
     for p in _PRO_PAGES:
         h = c.get(p).get_data(as_text=True)
-        assert "PROプランの機能です" in h, p
-        assert "<form" not in h.split("PROプランの機能です")[1][:2000], p
+        assert "ここから先はPROです" in h, p
+        assert 'name="leak"' not in h, f"{p} にPROの入力欄が出ている"
     for p in _PRO_POSTS:
-        assert "PROプランの機能です" in c.post(p, data={}).get_data(as_text=True), p
+        assert "ここから先はPROです" in c.post(p, data={}).get_data(as_text=True), p
 
 
 def test_a_subscriber_can_use_pro(billing):
@@ -577,7 +610,7 @@ def test_a_subscriber_can_use_pro(billing):
     billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, None)
     for p in _PRO_PAGES:
         h = c.get(p).get_data(as_text=True)
-        assert "PROプランの機能です" not in h, p
+        assert "ここから先はPROです" not in h, p
         assert "<form" in h, p
 
 

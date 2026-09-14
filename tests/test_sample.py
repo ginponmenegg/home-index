@@ -227,3 +227,48 @@ def test_the_mansion_fees_are_not_folded_away():
     for name in ("mfee", "rfund"):
         assert f'name="{name}"' in form, name
         assert f'name="{name}"' not in folded, f"{name} が畳まれている"
+
+
+def test_the_sufficiency_is_not_mistaken_for_a_score():
+    """情報充足度を点数と読み違えられた実績がある。
+
+    円の中に「71 点/100」、すぐ横に「情報充足度 48%」。外部のレビューで
+    48を点数として報告された。名前だけでは足りないので、点数ではないと
+    明記する。
+    """
+    h = _client().post("/diagnose", data=dict(
+        address="神奈川県小田原市城山1-2-3", price="3880",
+        ptype="chuko_kodate", loan_years="35")).get_data(as_text=True)
+    i = h.find("情報充足度")
+    assert i > 0
+    assert "点数ではありません" in h[i:i + 400]
+
+
+def test_the_pro_pitch_comes_after_the_breakdown():
+    """結論より先に売り込みを置かない。
+
+    比較表とPROの案内は、もともとスコア内訳より前にあった。無料の結果を
+    読み切る前に有料の話が挟まる形になっていた。
+    """
+    h = _client().post("/diagnose", data=dict(
+        address="神奈川県小田原市城山1-2-3", price="3880",
+        ptype="chuko_kodate", income="600", loan_years="35")).get_data(as_text=True)
+    breakdown = h.find("スコア内訳")
+    pitch = h.find("無料でここまで／PROでここまで")
+    assert breakdown > 0 and pitch > 0
+    assert breakdown < pitch, "内訳より前にPROの案内が出ている"
+
+
+def test_the_internal_codes_are_tucked_away():
+    """市区町村コードと町名は住所から自動で埋まる内部の値。
+
+    任意項目の一覧に並べると「入れるべきか分からない欄」に見える。
+    自動判定が外れたときだけ触ればよいので、もう一段畳む。
+    """
+    c = _client()
+    for path in ("/buy", "/mansion"):
+        h = c.get(path).get_data(as_text=True)
+        i = h.find('name="city"')
+        assert i > 0, path
+        # city の手前に「自動で判定できないとき」の折りたたみがあること
+        assert "住所から自動で判定できないとき" in h[:i], path

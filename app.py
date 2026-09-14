@@ -275,7 +275,7 @@ BRAND_CSS = (
     '.hi-menu a{display:block;padding:11px 2px;font-size:14px;color:#111;'
     'text-decoration:none;border-bottom:1px solid #f0f0f0}'
     '.hi-menu a:last-child{border-bottom:0}'
-    '.hi-menu a:hover{color:#6b7280}'
+    '.hi-menu a:hover{color:#5f6773}'
     # --- 結果画像用の小ロックアップ ---
     '.hi-lock-sm{margin-bottom:10px}'
     '.hi-lock-sm .hi-sym{width:22px;height:22px}'
@@ -505,7 +505,7 @@ else:
                  '<a href="/pro/finance" style="color:#111">詳細な資金計画</a>　・　'
                  '<a href="/sample/finance" style="color:#111">資金計画の見本</a>')
 
-FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#6b7280;line-height:1.9">'
+FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#5f6773;line-height:1.9">'
           '<a href="/guide" style="color:#111">解説</a><br>'
           + PRO_LINKS + '<br>'
           + LEGAL_LINKS + '<br>'
@@ -644,7 +644,7 @@ def _legal_page(title, body):
             '.wrap{max-width:720px;margin:0 auto;padding:24px 16px}'
             '.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:22px}'
             'h1{font-size:20px;margin:0 0 6px}h2{font-size:15px;margin:20px 0 6px;color:#111}'
-            'p,li{font-size:14px;line-height:1.8}a{color:#111}.sub{color:#6b7280;font-size:12px}.logo-img{height:64px;width:auto;max-width:100%;display:block}'
+            'p,li{font-size:14px;line-height:1.8}a{color:#111}.sub{color:#5f6773;font-size:12px}.logo-img{height:64px;width:auto;max-width:100%;display:block}'
             + BRAND_CSS +
             '</style></head><body>'
             + brand_bar() +
@@ -692,7 +692,7 @@ FORM = """
 FONT_LINK_PLACEHOLDER
 <title>HOME INDEX｜購入診断</title>
 <style>
- :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#6b7280;--acc:#111111;--line:#e5e5e5}
+ :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#5f6773;--acc:#111111;--line:#e5e5e5}
  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
   font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
  .wrap{max-width:720px;margin:0 auto;padding:24px 16px}
@@ -792,14 +792,19 @@ BRAND_BAR
     <div><label>駅までバス（分・バス便のみ）</label><input name="bus" value="{{v.bus}}">
       <div class="hint">バス便のときだけ入力</div></div>
    </div>
-   <div class="row">
-    <div><label>市区町村コード</label><input name="city" value="{{v.city}}" placeholder="住所から自動判定"></div>
-    <div><label>町名</label><input name="district" value="{{v.district}}" placeholder="住所から自動判定"></div>
-   </div>
+   <details class="more" style="margin-top:10px">
+    <summary>住所から自動で判定できないとき</summary>
+    <div class="hint">通常は入力不要です。住所を入れると自動で埋まります。
+     空のまま診断しても構いません（その場合、成約事例の絞り込みが粗くなります）。</div>
+    <div class="row">
+     <div><label>市区町村コード</label><input name="city" value="{{v.city}}" placeholder="住所から自動判定"></div>
+     <div><label>町名</label><input name="district" value="{{v.district}}" placeholder="住所から自動判定"></div>
+    </div>
+   </details>
   </details>
 
   <button type="submit">この物件を診断する</button>
-  <div class="hint" style="text-align:center;margin-top:8px">※物件解析・情報収集に数分程度かかる場合があります</div>
+  <div class="hint" style="text-align:center;margin-top:8px">押したあと、公的データを集めるのに10〜30秒ほどかかります（混み合うときは1分ほど）</div>
  </form>
 
  <form class="card" method="post" action="/parse">
@@ -906,7 +911,7 @@ RESULT = """
 FONT_LINK_PLACEHOLDER
 <title>HOME INDEX｜{{s.address}}</title>
 <style>
- :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#6b7280;--acc:#111111;--line:#e5e5e5}
+ :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#5f6773;--acc:#111111;--line:#e5e5e5}
  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
   font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
  .wrap{max-width:760px;margin:0 auto;padding:24px 16px}
@@ -927,7 +932,7 @@ FONT_LINK_PLACEHOLDER
  .muted{color:var(--sub);font-size:13px}
  .verdict{display:inline-block;border-radius:999px;padding:4px 12px;font-weight:700;font-size:14px}
  .v-under{background:#dcfce7;color:#166534}.v-fair{background:#e0f2fe;color:#075985}
- .v-over{background:#ffedd5;color:#9a3412}.v-none{background:#f3f4f6;color:#6b7280}
+ .v-over{background:#ffedd5;color:#9a3412}.v-none{background:#f3f4f6;color:#5f6773}
  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
  th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line)}
  th{color:var(--sub);font-weight:600}
@@ -943,7 +948,7 @@ FONT_LINK_PLACEHOLDER
  .hz{display:inline-block;border-radius:8px;padding:6px 11px;margin:5px 5px 0 0;font-size:13px;font-weight:600}
  .hz-ok{background:#dcfce7;color:#166534}
  .hz-warn{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
- .hz-muted{background:#f3f4f6;color:#6b7280}
+ .hz-muted{background:#f3f4f6;color:#5f6773}
  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
  table.pc{table-layout:fixed}
  table.pc th{font-weight:600;color:var(--ink);white-space:normal}
@@ -1040,7 +1045,8 @@ BRAND_BAR
     <div class="gletter" style="color:{{grade_color}}">{{d.grade}}</div>
     <div class="gcomment" style="color:{{grade_color}}">{{grade_comment}}</div>
     <div class="muted">情報充足度 {{d.suff}}%</div>
-    <div class="muted" style="font-size:12px">未確認項目は評価に反映していません</div>
+    <div class="muted" style="font-size:12px"><b>点数ではありません。</b>採点に
+     使えた情報の割合です。未確認の項目は点数に入れていません</div>
    </div>
   </div>
  </div>
@@ -1109,6 +1115,21 @@ BRAND_BAR
  {% endif %}
 
  <div class="card">
+  {% if pro %}
+  <div class="banner" style="margin-bottom:10px">
+   <b>PRO診断：情報充足度 {{pro.free_suff}}% → {{pro.suff}}%</b>
+   （総合 {{pro.free_total}}点 → {{pro.total}}点／{{"%+d"|format(pro.diff)}}点）<br>
+   <span class="muted">点数が動いたのは、無料診断では評価に入れていなかった項目に回答があったためです。推定価格レンジは無料診断と同じ計算です。</span>
+  </div>
+  {% endif %}
+  <h2>スコア内訳</h2>
+  {% for c in cats %}
+  <div class="cat"><div class="top"><span>{{c.name}}</span>
+    <span class="muted">{{c.points}} / {{c.weight}}</span></div>
+   <div class="bar"><span style="width:{{c.pct}}%;background:{{c.color}}"></span></div>
+   <div class="muted">{{c.reason}}</div></div>
+  {% endfor %}
+
   {% if handover %}
   <div class="card" data-html2canvas-ignore style="border-color:#111">
    <h2 style="margin-top:0">無料でここまで／PROでここまで</h2>
@@ -1137,6 +1158,10 @@ BRAND_BAR
     <b>重要事項説明書</b>は、この物件で効く欄を根拠の条文つきで並べます。<br>
     推定価格レンジの計算は無料もPROも同じで、PROで価格が動くことはありません。
    </p>
+   {% if plan_price %}
+   <p class="muted" style="margin:10px 0 0"><b>PRO　{{plan_price}}</b>
+    ／ お申し込みにはメールアドレスでのログインが必要です。いつでも解約できます。</p>
+   {% endif %}
    PLAN_LINKS_PLACEHOLDER
   </div>
 
@@ -1177,20 +1202,6 @@ BRAND_BAR
   </div>
   {% endif %}
 
-  {% if pro %}
-  <div class="banner" style="margin-bottom:10px">
-   <b>PRO診断：情報充足度 {{pro.free_suff}}% → {{pro.suff}}%</b>
-   （総合 {{pro.free_total}}点 → {{pro.total}}点／{{"%+d"|format(pro.diff)}}点）<br>
-   <span class="muted">点数が動いたのは、無料診断では評価に入れていなかった項目に回答があったためです。推定価格レンジは無料診断と同じ計算です。</span>
-  </div>
-  {% endif %}
-  <h2>スコア内訳</h2>
-  {% for c in cats %}
-  <div class="cat"><div class="top"><span>{{c.name}}</span>
-    <span class="muted">{{c.points}} / {{c.weight}}</span></div>
-   <div class="bar"><span style="width:{{c.pct}}%;background:{{c.color}}"></span></div>
-   <div class="muted">{{c.reason}}</div></div>
-  {% endfor %}
  </div>
 
  <div class="card">
@@ -1806,7 +1817,7 @@ LP_MENU_PLACEHOLDER
     </div>
     <!-- 本文から「物件は売りません」を外したぶん、ここで拾う。中立性は
          このサービスの一番の武器なので、ファーストビューから消せない。 -->
-    <p class="micro">会員登録なし ／ 料金なし ／ 売り込みなし ／ 約3分</p>
+    <p class="micro">会員登録なし ／ 料金なし ／ 売り込みなし ／ 入力は約1分</p>
     <p class="micro" style="margin-top:14px">
      <a href="/sample" style="color:inherit">物件がまだ無い方は、見本の結果を見る →</a></p>
   </div>
@@ -1816,7 +1827,7 @@ LP_MENU_PLACEHOLDER
         <li><b>SUUMO等で</b>気になる物件のページを開く</li>
         <li><b>説明文をコピー</b>（URLではなく、価格や面積が書かれた文章）<br>
           <a href="/copy-guide" style="color:var(--pin)">アプリでコピーできないときは</a></li>
-        <li><b>貼り付けて診断</b>。約3分で100点の採点が出ます</li>
+        <li><b>貼り付けて診断</b>。100点の採点が出ます</li>
       </ol>
       <p>販売図面のPDFも、開いて文字をコピーすれば同じように読み取れます。</p>
     </div>
@@ -2628,15 +2639,15 @@ _GUIDE_CSS = (
     'p,li{font-size:15px;line-height:1.95}'
     'li{margin-bottom:4px}'
     'a{color:#111}'
-    '.sub{color:#6b7280;font-size:12px;line-height:1.8}'
-    '.meta{color:#6b7280;font-size:12px;margin:0 0 16px}'
+    '.sub{color:#5f6773;font-size:12px;line-height:1.8}'
+    '.meta{color:#5f6773;font-size:12px;margin:0 0 16px}'
     '.lead{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:10px;'
     'padding:14px 16px;margin:0 0 6px}'
     '.formula{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:8px;'
     'padding:11px 14px;text-align:center}'
     '.toc{border:1px solid #e5e7eb;border-radius:10px;padding:14px 18px 15px;'
     'margin:20px 0 4px}'
-    '.toc>span{display:block;font-size:11px;color:#6b7280;letter-spacing:.14em;'
+    '.toc>span{display:block;font-size:11px;color:#5f6773;letter-spacing:.14em;'
     'margin-bottom:8px}'
     '.toc ol{margin:0;padding-left:1.35em}'
     '.toc li{font-size:14px;line-height:1.85;margin:0}'
@@ -2646,7 +2657,7 @@ _GUIDE_CSS = (
     'th,td{border:1px solid #e5e7eb;padding:7px 10px;text-align:left;font-size:13px}'
     'th{background:#f6f8fa;font-weight:600}'
     '.share{margin:26px 0 0;display:flex;align-items:center;gap:10px;'
-    'flex-wrap:wrap;font-size:13px;color:#6b7280}'
+    'flex-wrap:wrap;font-size:13px;color:#5f6773}'
     '.share a,.share button{display:inline-block;border:1px solid #e5e7eb;'
     'border-radius:8px;padding:7px 13px;font-size:13px;color:#1f2937;'
     'background:#fff;text-decoration:none;cursor:pointer;font-family:inherit}'
@@ -3381,6 +3392,7 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
         handover_unknowns=handover_unknowns, questions=questions,
         disc=disclosure_points,
         questions_note=questions_note, finance_carry=finance_carry,
+        plan_price=(price_now()[1] if billing_on() else None),
         edit=edit)
 
 
@@ -3568,12 +3580,17 @@ BRAND_BAR
      <input name="down" value="{{v.down}}" placeholder="例）500"></div>
    </div>
 
-   <div class="row">
-    <div><label>市区町村コード</label>
-     <input name="city" value="{{v.city}}" placeholder="住所から自動判定"></div>
-    <div><label>町名</label>
-     <input name="district" value="{{v.district}}" placeholder="住所から自動判定"></div>
-   </div>
+   <details class="more" style="margin-top:10px">
+    <summary>住所から自動で判定できないとき</summary>
+    <div class="hint">通常は入力不要です。住所を入れると自動で埋まります。
+     空のまま診断しても構いません（その場合、成約事例の絞り込みが粗くなります）。</div>
+    <div class="row">
+     <div><label>市区町村コード</label>
+      <input name="city" value="{{v.city}}" placeholder="住所から自動判定"></div>
+     <div><label>町名</label>
+      <input name="district" value="{{v.district}}" placeholder="住所から自動判定"></div>
+    </div>
+   </details>
   </details>
 
   <div class="row">
@@ -4639,7 +4656,7 @@ def _run_mansion_pro(f):
 # （accounts_on() が False なら案内だけ返す）。診断そのものは今までどおり動く。
 
 _ACCOUNT_CSS = """
- .lead{color:#6b7280;font-size:13px;line-height:1.9;margin:0 0 14px}
+ .lead{color:#5f6773;font-size:13px;line-height:1.9;margin:0 0 14px}
  .btn{display:inline-block;padding:13px 20px;background:#111;color:#fff;
    border:0;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;
    text-decoration:none;font-family:inherit}
@@ -4666,7 +4683,7 @@ _ACCOUNT_CSS = """
  .items .body{flex:1;min-width:0}
  .items .ttl{font-size:14px;font-weight:700;line-height:1.5;
    word-break:break-word}
- .items .meta{font-size:12px;color:#6b7280;margin-top:3px}
+ .items .meta{font-size:12px;color:#5f6773;margin-top:3px}
  .items .sc{font-size:20px;font-weight:800;white-space:nowrap;margin-left:6px}
  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:10px}
  table.cmp{border-collapse:collapse;font-size:13px;min-width:100%}
@@ -4675,8 +4692,8 @@ _ACCOUNT_CSS = """
  table.cmp thead th{font-size:13px;color:#111;border-bottom:2px solid #111;
    vertical-align:bottom}
  table.cmp thead th span{display:block;font-weight:400;font-size:11px;
-   color:#6b7280;margin-top:2px}
- table.cmp th.rowlbl{color:#6b7280;font-weight:600;position:sticky;left:0;
+   color:#5f6773;margin-top:2px}
+ table.cmp th.rowlbl{color:#5f6773;font-weight:600;position:sticky;left:0;
    background:#fff}
  table.cmp td.best{background:#ecfdf5;font-weight:700}
  table.cmp td.best::after{content:" ◎";color:#059669;font-size:11px}
@@ -4700,7 +4717,7 @@ _ACCOUNT_CSS = """
     overflow-wrap:anywhere}
   /* どの物件の値かを、セル自身に持たせる（見出し行を隠すため） */
   table.cmp td::before{content:attr(data-name); display:block; font-size:11px;
-    color:#6b7280; font-weight:400; margin-bottom:3px;
+    color:#5f6773; font-weight:400; margin-bottom:3px;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   /* この grid は比較表（2〜3件を横に並べる）のためのもの。値が1つ
      しかない表（特商法の確認画面、保存した診断の詳細）まで2列に割られ、
@@ -4726,7 +4743,7 @@ _ACCOUNT_CSS = """
  .bars .track{height:9px;background:#eef2f7;border-radius:5px;overflow:hidden;
    margin:5px 0 3px}
  .bars .fill{display:block;height:100%}
- .bars .why{font-size:12.5px;color:#6b7280;line-height:1.75}
+ .bars .why{font-size:12.5px;color:#5f6773;line-height:1.75}
  .rsk{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;
    padding:10px 12px;margin:8px 0;font-size:13.5px;line-height:1.8}
  .rsk b{color:#9a3412}
@@ -4736,12 +4753,12 @@ _ACCOUNT_CSS = """
  .memo-read{white-space:pre-wrap;font-size:14px;line-height:1.9;
    background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;
    padding:12px 14px}
- .items .memo-tag{font-size:12px;color:#6b7280;margin-top:5px;
+ .items .memo-tag{font-size:12px;color:#5f6773;margin-top:5px;
    display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
  .selbar{position:sticky;bottom:0;background:#fff;border-top:1px solid #e5e7eb;
    padding:12px 0;margin-top:6px;display:flex;gap:10px;align-items:center}
- .selbar .n{font-size:13px;color:#6b7280}
+ .selbar .n{font-size:13px;color:#5f6773}
 """
 
 
@@ -4763,6 +4780,82 @@ _PRO_LOCKED_BODY = """
 """
 
 
+_PRO_GATE = """
+<div class="card">
+ <h1>ここから先はPROです</h1>
+ <p class="lead">{{ intro }}</p>
+ <div class="note" style="margin:14px 0">
+  <b>PRO　{{ price_label }}</b><br>
+  <span class="sub">いつでも解約できます。解約後も、支払済みの期間の末日までは
+   お使いいただけます。</span>
+ </div>
+ <p>PROでできること</p>
+ <ul>
+  <li>無料診断が「未確認」として点数に入れていない項目を、ご自身の回答で埋めて
+   診断し直す</li>
+  <li>答えられなかった項目が<b>「仲介業者に聞くこと」</b>の一覧になる</li>
+  <li><b>「重要事項説明書の、どこを見るか」</b>が、根拠の条文つきで出る</li>
+  <li>諸費用・金利・繰上返済・住宅ローン控除まで含めた資金計画（PDF）</li>
+ </ul>
+ <p><a href="/sample/finance">資金計画の見本</a>で、中身をそのまま見られます。
+  <a href="/plan">無料とPROのちがい</a>も先にご覧いただけます。</p>
+
+ {% if fields %}
+ <div class="note warn" style="margin-top:14px">
+  <b>入力した内容はこの画面に残しています。</b>{{ login_note }}
+ </div>
+ {% endif %}
+
+ <p style="margin-top:16px">
+  {% if logged_in %}
+  <a class="btn" href="/plan">プランを見る</a>
+  {% else %}
+  <a class="btn" href="/login" target="_blank" rel="noopener">ログインする（別のタブ）</a>
+  {% endif %}
+  <a class="btn ghost" href="/plan">料金を見る</a>
+ </p>
+
+ {% if fields %}
+ <form method="post" action="{{ action }}" style="margin-top:10px">
+  {% for k, v in fields %}<input type="hidden" name="{{k}}" value="{{v}}">{% endfor %}
+  <button class="btn" type="submit" style="width:auto">{{ retry_label }}</button>
+ </form>
+ {% endif %}
+</div>
+"""
+
+
+def _pro_gate():
+    """PROの入口で止めるときの画面。押す前に入れた内容を捨てない。
+
+    ここは長らく redirect("/login") だった。ところが結果画面からPROへ進む
+    ボタンはPOSTで、住所・価格・築年・面積・年収など13項目を hidden で
+    運んでいる。302を返した時点でPOSTの中身は消え、ログインしても戻る先も
+    無いので、診断のやり直しになっていた。
+
+    保存ボタンと同じ形にする。ログインは別タブで開き、この画面は残す。
+    戻ってもう一度押せば、運んできた内容がそのまま次へ行く。
+
+    あわせて、押す前に分からなかったこと（料金・ログインが要ること・
+    何が手に入るか）を、ここで先に見せる。
+    """
+    logged_in = bool(current_user())
+    fields = [(k, v) for k, v in request.form.items()]         if request.method == "POST" else []
+    intro = ("この続きはPROプランでご覧いただけます。"
+             if logged_in else
+             "この続きはPROプランでご覧いただけます。お申し込みの前に、"
+             "メールアドレスでのログインが必要です。")
+    body = render_template_string(
+        _PRO_GATE, price_label=price_now()[1], fields=fields,
+        logged_in=logged_in, action=request.path,
+        retry_label="ログインしたら、ここをもう一度押す",
+        login_note=("ログイン画面は別のタブで開きます。この画面はそのまま"
+                    "残るので、ログインしたあと戻って、下のボタンを"
+                    "もう一度押してください。"),
+        intro=intro)
+    return _account_page("PROプラン", body, chip="PRO")
+
+
 def _require_pro():
     """PROの画面を開いてよいか。開いてよければ None。
 
@@ -4776,12 +4869,11 @@ def _require_pro():
     """
     if not billing_on():
         return None
-    r = _require_login()
-    if r is not None:
-        return r
+    if not accounts_on():
+        return _account_page("準備中", _OFF_BODY)
     if accounts.is_pro(current_user()):
         return None
-    return _account_page("PROプランの機能です", _PRO_LOCKED_BODY, chip="PRO")
+    return _pro_gate()
 
 
 def _account_page(title, body, chip="マイページ", indexable=False, desc=None):
@@ -6298,7 +6390,7 @@ PRO_FINANCE_FORM = """
 FONT_LINK_PLACEHOLDER
 <title>詳細な資金計画｜HOME INDEX PRO</title>
 <style>
- :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#6b7280;--acc:#111111;--line:#e5e5e5}
+ :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#5f6773;--acc:#111111;--line:#e5e5e5}
  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
   font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
  .wrap{max-width:760px;margin:0 auto;padding:20px 16px}
@@ -6546,7 +6638,7 @@ FONT_LINK_PLACEHOLDER
 <meta name="description" content="中古戸建3,180万円を例に、仲介手数料・印紙税・登録免許税・不動産取得税・司法書士報酬・火災保険の内訳、金利が上がった場合の返済額、繰上返済の効果、住宅ローン控除、引渡日の精算金までを試算した見本です。根拠と出典つき。">
 {% else %}<title>資金計画の結果｜HOME INDEX PRO</title>{% endif %}
 <style>
- :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#6b7280;--acc:#111111;--line:#e5e5e5}
+ :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#5f6773;--acc:#111111;--line:#e5e5e5}
  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
   font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
  .wrap{max-width:760px;margin:0 auto;padding:20px 16px}
@@ -6567,7 +6659,7 @@ FONT_LINK_PLACEHOLDER
  .st{display:inline-block;font-size:10px;border-radius:5px;padding:2px 6px;white-space:nowrap}
  .st-computed{background:#e8f0e8;color:#2f5233}
  .st-estimated{background:#eef2f7;color:#3f4a5a}
- .st-unknown{background:#f3f4f6;color:#6b7280}
+ .st-unknown{background:#f3f4f6;color:#5f6773}
  .foot{color:var(--sub);font-size:11.5px;line-height:1.9;margin-top:10px}
  .warn{background:#fafafa;border:1px solid var(--line);border-radius:10px;padding:12px 14px;
   font-size:12px;color:var(--sub);line-height:1.85}

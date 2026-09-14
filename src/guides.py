@@ -319,7 +319,7 @@ _REPAIR_FUND = Guide(
 分かるだけでも、月額の数字の意味がまるで変わります。</p>
 """,
     cta_href="/mansion",
-    cta_text="マンションを診断する",
+    cta_text="修繕積立金を入れて管理の点を見る",
 )
 
 
@@ -385,7 +385,7 @@ _SHIN_TAISHIN = Guide(
 という話ではなく、確認すべきことが増える、という意味です。</p>
 """,
     cta_href="/mansion",
-    cta_text="マンションを診断する",
+    cta_text="築年を入れて新耐震か確かめる",
 )
 
 
@@ -814,7 +814,7 @@ _USE_DISTRICT = Guide(
 まとめて聞いてください。口頭ではなく、都市計画図の写しをもらうのが確実です。</p>
 """,
     cta_href="/buy",
-    cta_text="無料で診断する",
+    cta_text="住所を入れて用途地域を調べる",
 )
 
 # ---------------------------------------------------------------------------
@@ -1049,7 +1049,7 @@ _KYU_TAISHIN = Guide(
 目安は<a href="/guide/shuzen-tsumitatekin-meyasu">修繕積立金の目安</a>に書きました。</p>
 """,
     cta_href="/mansion",
-    cta_text="マンションを診断する",
+    cta_text="築年を入れて資産性の点を見る",
 )
 
 # ---------------------------------------------------------------------------
@@ -1366,7 +1366,7 @@ _ENERGY = Guide(
 カタログの等級を探すより早く済みます。</p>
 """,
     cta_href="/buy",
-    cta_text="無料で診断する",
+    cta_text="築年から建物の評価を見る",
 )
 
 # ---------------------------------------------------------------------------
@@ -1569,7 +1569,7 @@ _WEIGHTS = Guide(
 形に合わせて判断してください。</p>
 """,
     cta_href="/buy",
-    cta_text="無料で診断する",
+    cta_text="この物件のカテゴリ別の点を見る",
 )
 
 GUIDES: List[Guide] = [_WEIGHTS, _MANAGEMENT, _ENERGY, _RATE_RISE, _LOAN_DEDUCTION, _KYU_TAISHIN, _SEDIMENT, _USE_DISTRICT, _LIGHT_STEEL, _FLOOD, _REPAIR_FUND, _SHIN_TAISHIN,
