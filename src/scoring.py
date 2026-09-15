@@ -460,18 +460,31 @@ def score_risk(use_district: Optional[str], urbanization: Optional[str],
             raw -= 0.10
             hit.append(f"大規模盛土造成地（{hazard.embankment}）")
         raw = max(0.0, raw)
-        notes.append("・".join(hit) if hit else "指定ハザード区域に該当なし")
+        blocked = list(getattr(hazard, "restricted", None) or [])
+        if blocked:
+            # 提供元の利用条件で取得していないレイヤがある。見ていないものを
+            # 「該当なし」に数えると、いちばんやってはいけない嘘になる。
+            raw = min(raw, 0.7)
+            suff = min(suff, 0.5)
+            notes.append("この地域では" + "・".join(blocked) + "を確認していません")
+        if hit:
+            notes.append("・".join(hit))
+        elif not blocked:
+            notes.append("指定ハザード区域に該当なし")
 
     reason = "・".join(notes) if notes else "重大リスクの検出なし"
     plus, minus = [], []
     if urbanization and "調整区域" in urbanization:
         minus.append("市街化調整区域の可能性")
+    blocked = list(getattr(hazard, "restricted", None) or [])
     if checked:
         # 未確認のときは何も言わない。該当なしと言えるのは、調べた場合だけ。
         if hit:
             minus.extend(hit)
-        else:
+        elif not blocked:
             plus.append("指定のハザード区域に該当なし")
+    if blocked:
+        minus.append("この地域では" + "・".join(blocked) + "を確認していません")
     return CategoryScore("リスク", w, round(raw, 3), round(w * raw, 1), suff,
                          reason, src, plus=plus, minus=minus)
 

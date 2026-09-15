@@ -13,7 +13,9 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
+import io
 import math
+import os
 import requests
 from concurrent.futures import ThreadPoolExecutor
 from .osm import fetch_shops_around
@@ -51,6 +53,9 @@ FLOOD_RANK_LABEL = {
 
 @dataclass
 class HazardResult:
+    # 提供元の利用条件で取得していないレイヤの名前。空なら全部見ている。
+    # 「該当なし」と「見ていない」を混ぜないために要る。
+    restricted: List[str] = field(default_factory=list)
     checked: bool = False               # ハザードAPIを取得できたか
     flood_rank: Optional[int] = None    # 洪水 浸水深ランク(最大)
     flood_label: Optional[str] = None
@@ -154,6 +159,53 @@ def point_in_geometry(lon, lat, geom) -> bool:
     return False
 
 
+# ---- 非商用に指定されている範囲 ----------------------------------------
+# 不動産情報ライブラリのデータには、コンテンツごと・自治体ごとに「一部非商用」
+# のものがある。このサービスは有料プラン（PRO）を持つので、該当する地域では
+# そのレイヤを取りに行かない。取ってから捨てるのではなく、そもそも取らない。
+#
+# 範囲は noncommercial.json に置いた。県名・市区町村名は出典ページの一次情報で、
+# コードは XIT002（市区町村一覧API）で名前から引いたもの。
+# 出典 https://www.reinfolib.mlit.go.jp/help/contents/
+def _load_noncommercial():
+    import json
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "noncommercial.json")
+    try:
+        with io.open(p, encoding="utf-8") as f:
+            return json.load(f).get("layers", {})
+    except Exception as e:      # pragma: no cover - 置き場所依存
+        print(f"[noncommercial] 読めなかった: {e}")
+        return {}
+
+
+NONCOMMERCIAL = _load_noncommercial()
+
+
+def is_noncommercial(api: str, city_code: Optional[str]) -> bool:
+    """この市区町村で、このレイヤが非商用に指定されているか。
+
+    市区町村コードが分からないときは True（取りに行かない）。どの地域か
+    分からないまま、条件のあるデータを有料サービスで出すわけにいかない。
+    """
+    rule = NONCOMMERCIAL.get(api)
+    if not rule:
+        return False
+    if not city_code or len(str(city_code)) < 5:
+        return True
+    code = str(city_code)
+    pref = code[:2]
+    if pref in (rule.get("prefectures") or []):
+        return True
+    if code in (rule.get("cities") or []):
+        return True
+    # 「◯◯市以外の全市町村」の形。挙げた市区町村だけが商用可。
+    allowed = (rule.get("prefectures_except") or {}).get(pref)
+    if allowed is not None and code not in allowed:
+        return True
+    return False
+
+
 def _reinfolib_tile(api, key, z, x, y):
     ck = (api, z, x, y)
     cached = _TILE_CACHE.get(ck)
@@ -254,7 +306,7 @@ def _first_str(props: dict, *keys) -> Optional[str]:
     return None
 
 
-def fetch_school_districts(lat, lon, key, zoom=14):
+def fetch_school_districts(lat, lon, key, zoom=14, city_code=None):
     """小学校区・中学校区の学校名。XKT004/005 はポリゴンで返る。
 
     項目名は実データで確認：小学校区 A27_004_ja、中学校区 A32_004_ja。
@@ -273,8 +325,9 @@ def fetch_school_districts(lat, lon, key, zoom=14):
                 return api, name
         return api, None
 
-    got = dict(_parallel(get, [("XKT004", "A27_004_ja"),
-                               ("XKT005", "A32_004_ja")], workers=2))
+    specs = [sp for sp in [("XKT004", "A27_004_ja"), ("XKT005", "A32_004_ja")]
+             if not is_noncommercial(sp[0], city_code)]
+    got = dict(_parallel(get, specs, workers=2)) if specs else {}
     return got.get("XKT004"), got.get("XKT005")
 
 
@@ -316,7 +369,7 @@ def fetch_future_population(lat, lon, key, zoom=14,
     return None, None, None
 
 
-def fetch_ground_hazards(lat, lon, key, zoom=14) -> dict:
+def fetch_ground_hazards(lat, lon, key, zoom=14, city_code=None) -> dict:
     """液状化・盛土・急傾斜地・地すべり・災害危険区域。
 
     液状化（XKT025）は note に「やや液状化しにくい」のような説明文が入るので、
@@ -333,9 +386,13 @@ def fetch_ground_hazards(lat, lon, key, zoom=14) -> dict:
         except Exception:
             return api, None
 
-    got = dict(_parallel(get, [("XKT025", zoom), ("XKT020", zoom),
-                               ("XKT022", 13), ("XKT021", 13),
-                               ("XKT016", 13)], workers=5))
+    specs = [("XKT025", zoom), ("XKT020", zoom), ("XKT022", 13),
+             ("XKT021", 13), ("XKT016", 13)]
+    specs = [sp for sp in specs if not is_noncommercial(sp[0], city_code)]
+    out["_restricted"] = [NONCOMMERCIAL[a]["name"]
+                          for a in ("XKT022", "XKT021", "XKT016")
+                          if is_noncommercial(a, city_code)]
+    got = dict(_parallel(get, specs, workers=5))
 
     liq = got.get("XKT025") or []
     if liq:
@@ -348,8 +405,10 @@ def fetch_ground_hazards(lat, lon, key, zoom=14) -> dict:
     if emb:
         out["embankment"] = (_first_str(emb[0], "embankment_classification")
                              or "大規模盛土造成地")
-    out["steep_slope"] = bool(got.get("XKT022"))
-    out["landslide_zone"] = bool(got.get("XKT021"))
+    if "XKT022" in dict(specs):
+        out["steep_slope"] = bool(got.get("XKT022"))
+    if "XKT021" in dict(specs):
+        out["landslide_zone"] = bool(got.get("XKT021"))
     dz = got.get("XKT016") or []
     if dz:
         out["danger_zone"] = (_first_str(dz[0], "A48_007_name_ja", "A48_008_ja")
@@ -357,7 +416,7 @@ def fetch_ground_hazards(lat, lon, key, zoom=14) -> dict:
     return out
 
 
-def fetch_hazard(lat, lon, key, zoom=15) -> HazardResult:
+def fetch_hazard(lat, lon, key, zoom=15, city_code=None) -> HazardResult:
     h = HazardResult()
     x, y = latlon_to_tile(lat, lon, zoom)
 
@@ -367,7 +426,14 @@ def fetch_hazard(lat, lon, key, zoom=15) -> HazardResult:
         except Exception as e:
             return api, e
 
-    results = dict(_parallel(get, ["XKT026", "XKT029", "XKT028", "XKT027"], workers=4))
+    # 土砂（XKT029）と津波（XKT028）は、県によっては非商用。その県では
+    # 取りに行かず、未取得として扱う。黙って「該当なし」にはしない。
+    apis = [a for a in ("XKT026", "XKT029", "XKT028", "XKT027")
+            if not is_noncommercial(a, city_code)]
+    for a in ("XKT029", "XKT028"):
+        if a not in apis:
+            h.restricted.append(NONCOMMERCIAL[a]["name"])
+    results = dict(_parallel(get, apis, workers=4)) if apis else {}
     ok = 0
     # 洪水 XKT026
     r = results.get("XKT026")
@@ -628,11 +694,14 @@ def enrich(lat: Optional[float], lon: Optional[float],
         if reinfolib_key:
             tasks["ud"] = ex.submit(fetch_use_district, lat, lon, reinfolib_key)
             tasks["ur"] = ex.submit(fetch_urbanization, lat, lon, reinfolib_key)
-            tasks["hz"] = ex.submit(fetch_hazard, lat, lon, reinfolib_key)
+            tasks["hz"] = ex.submit(fetch_hazard, lat, lon, reinfolib_key,
+                                    city_code=city_code)
             tasks["fa"] = ex.submit(fetch_facilities, lat, lon, reinfolib_key)
-            tasks["sd"] = ex.submit(fetch_school_districts, lat, lon, reinfolib_key)
+            tasks["sd"] = ex.submit(fetch_school_districts, lat, lon,
+                                    reinfolib_key, city_code=city_code)
             tasks["fp"] = ex.submit(fetch_future_population, lat, lon, reinfolib_key)
-            tasks["gh"] = ex.submit(fetch_ground_hazards, lat, lon, reinfolib_key)
+            tasks["gh"] = ex.submit(fetch_ground_hazards, lat, lon,
+                                    reinfolib_key, city_code=city_code)
         # 買い物先は国交省のAPIに無いのでOpenStreetMapから。鍵は要らない。
         tasks["shop"] = ex.submit(fetch_shops_around, lat, lon)
         if estat_appid and city_code:
@@ -675,7 +744,10 @@ def enrich(lat: Optional[float], lon: Optional[float],
             e.notes.append(f"将来推計人口取得失敗: {ex_}")
         try:
             for k, v in (tasks["gh"].result() or {}).items():
-                setattr(e.hazard, k, v)
+                if k == "_restricted":
+                    e.hazard.restricted.extend(v)
+                else:
+                    setattr(e.hazard, k, v)
         except Exception as ex_:
             e.notes.append(f"地盤情報取得失敗: {ex_}")
     else:
