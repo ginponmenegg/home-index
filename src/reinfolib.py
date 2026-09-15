@@ -27,8 +27,9 @@ BASE = "https://www.reinfolib.mlit.go.jp/ex-api/external"
 # 超えたら使っていない古いものから捨てる。
 _TXN_CACHE: "OrderedDict[tuple, List[Transaction]]" = OrderedDict()
 _TXN_LOCK = threading.Lock()
-# 1件あたりの概算。実測 1.6MB / 2,320件 ≒ 690バイト。増えても桁は変わらない。
-_BYTES_PER_TXN = 700
+# 1件あたりの概算。実測 1.76MB / 2,320件 ≒ 795バイト
+# （2026-09-16・土地の項目を足したあと）。少し多めに見ておく。
+_BYTES_PER_TXN = 800
 _CACHE_BUDGET = int(os.environ.get("TXN_CACHE_MB", "96")) * 1024 * 1024
 _cache_bytes = 0
 
@@ -135,6 +136,13 @@ def normalize_txn(rec: dict) -> Transaction:
         city_planning=rec.get("CityPlanning") or None,
         structure=rec.get("Structure") or None,
         layout=rec.get("FloorPlan") or None,
+        # 土地の取引でほぼ必ず埋まっている項目。宅地(土地)の分析に使う。
+        road_width_m=_to_float(rec.get("Breadth")),
+        road_type=rec.get("Classification") or None,
+        land_shape=rec.get("LandShape") or None,
+        frontage_m=_to_float(rec.get("Frontage")),
+        coverage_ratio=_to_int(rec.get("CoverageRatio")),
+        floor_area_ratio=_to_int(rec.get("FloorAreaRatio")),
     )
 
 

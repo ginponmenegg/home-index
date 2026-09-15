@@ -99,6 +99,10 @@ class FacilityResult:
 @dataclass
 class Enrichment:
     use_district: Optional[str] = None
+    # 用途地域に紐づく指定建ぺい率・指定容積率（%）。土地に何が建てられるかは
+    # この二つで決まる。XKT002 の面に最初から入っている。
+    coverage_ratio: Optional[int] = None
+    floor_area_ratio: Optional[int] = None
     urbanization: Optional[str] = None
     hazard: HazardResult = field(default_factory=HazardResult)
     facility: FacilityResult = field(default_factory=FacilityResult)
@@ -233,19 +237,50 @@ def _extract_use_district(props: dict) -> Optional[str]:
     return None
 
 
+def _ratio(props: dict, key: str) -> Optional[int]:
+    """"60%" のような文字列から 60 を取り出す。"""
+    v = str(props.get(key) or "").strip()
+    digits = "".join(ch for ch in v if ch.isdigit())
+    try:
+        n = int(digits)
+    except ValueError:
+        return None
+    return n if 0 < n <= 2000 else None
+
+
 def fetch_use_district(lat, lon, key, zoom=15) -> Optional[str]:
+    return fetch_zoning(lat, lon, key, zoom)[0]
+
+
+def fetch_zoning(lat, lon, key, zoom=15):
+    """用途地域と、そこに紐づく建ぺい率・容積率を返す。
+
+    XKT002 の面には use_area_ja のほかに
+    u_building_coverage_ratio_ja（建ぺい率）と u_floor_area_ratio_ja（容積率）
+    が入っている。長らく用途地域の名前だけ読んで、この二つを捨てていた。
+    土地に何が建てられるかは、この二つで決まる。
+
+    返り値は (用途地域, 建ぺい率%, 容積率%)。取れなければ None。
+    """
     x, y = latlon_to_tile(lat, lon, zoom)
     feats = _reinfolib_tile("XKT002", key, zoom, x, y)
+
+    def pick(f):
+        p = f.get("properties", {}) or {}
+        return (_extract_use_district(p),
+                _ratio(p, "u_building_coverage_ratio_ja"),
+                _ratio(p, "u_floor_area_ratio_ja"))
+
     for f in feats:
         if point_in_geometry(lon, lat, f.get("geometry") or {}):
-            ud = _extract_use_district(f.get("properties", {}) or {})
+            ud, cov, far = pick(f)
             if ud:
-                return ud
+                return ud, cov, far
     for f in feats:  # 内包判定不能時はタイル代表値
-        ud = _extract_use_district(f.get("properties", {}) or {})
+        ud, cov, far = pick(f)
         if ud:
-            return ud
-    return None
+            return ud, cov, far
+    return None, None, None
 
 
 # ---------- 区域区分（市街化区域／市街化調整区域） ----------
@@ -692,7 +727,7 @@ def enrich(lat: Optional[float], lon: Optional[float],
     tasks = {}  # 用途地域・区域区分・ハザード・周辺施設・人口を並列実行
     with ThreadPoolExecutor(max_workers=5) as ex:
         if reinfolib_key:
-            tasks["ud"] = ex.submit(fetch_use_district, lat, lon, reinfolib_key)
+            tasks["ud"] = ex.submit(fetch_zoning, lat, lon, reinfolib_key)
             tasks["ur"] = ex.submit(fetch_urbanization, lat, lon, reinfolib_key)
             tasks["hz"] = ex.submit(fetch_hazard, lat, lon, reinfolib_key,
                                     city_code=city_code)
@@ -709,7 +744,7 @@ def enrich(lat: Optional[float], lon: Optional[float],
 
     if reinfolib_key:
         try:
-            e.use_district = tasks["ud"].result()
+            e.use_district, e.coverage_ratio, e.floor_area_ratio =                 tasks["ud"].result()
             if not e.use_district:
                 e.notes.append("用途地域：該当ポリゴンを特定できず（要確認）")
         except Exception as ex_:

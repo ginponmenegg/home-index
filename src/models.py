@@ -95,6 +95,17 @@ class Transaction:
     latitude: Optional[float] = None      # 町名ジオコーディング結果（中心）
     longitude: Optional[float] = None
     distance_m: Optional[float] = None    # 対象物件からの距離(m)
+    # ---- 土地の取引で埋まっている項目 ----
+    # XIT001 の 宅地(土地) は、幅員・道路の種類・形状・建ぺい率・容積率が
+    # 96〜100%埋まっている（実測 2026-09-15・船橋市／小田原市）。戸建や
+    # マンションの成約より項目が濃い。土地の分析はここに乗る。
+    road_width_m: Optional[float] = None    # Breadth 前面道路の幅員
+    road_type: Optional[str] = None         # Classification 市道/私道 など
+    land_shape: Optional[str] = None        # LandShape ほぼ長方形/不整形 など
+    frontage_m: Optional[float] = None      # Frontage 間口
+    coverage_ratio: Optional[int] = None    # CoverageRatio 建ぺい率(%)
+    floor_area_ratio: Optional[int] = None  # FloorAreaRatio 容積率(%)
+
     # 生レコード（raw）はここに持たない。誰も読んでいないのに、1市区町村・
     # 1年分でメモリが 1.6MB → 5.1MB になっていた（実測・船橋市2024年 2,320件）。
     # 取引データはプロセス内にキャッシュするので、この差がそのまま効く。
