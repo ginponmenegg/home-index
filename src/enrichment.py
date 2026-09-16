@@ -186,18 +186,25 @@ def _load_noncommercial():
 NONCOMMERCIAL = _load_noncommercial()
 
 
-def is_noncommercial(api: str, city_code: Optional[str]) -> bool:
+def is_noncommercial(api: str, city_code: Optional[str],
+                     pref_code: Optional[str] = None) -> bool:
     """この市区町村で、このレイヤが非商用に指定されているか。
 
-    市区町村コードが分からないときは True（取りに行かない）。どの地域か
+    市区町村コードが分からないときは、**都道府県だけで判定できるなら
+    そうする。** 以前はコードが無いというだけで全国どこでも取りに行くのを
+    やめていた。制限のある県が6〜9県しかないレイヤでも、住所の解決に
+    失敗しただけで、北海道でも沖縄でも土砂災害を落としていた。
+    それは「省かなくて良い項目を省いている」ことになる。
+
+    都道府県も分からないときだけ True（取りに行かない）。どの地域か
     分からないまま、条件のあるデータを有料サービスで出すわけにいかない。
     """
     rule = NONCOMMERCIAL.get(api)
     if not rule:
         return False
-    if not city_code or len(str(city_code)) < 5:
-        return True
-    code = str(city_code)
+    code = str(city_code or "")
+    if len(code) < 5:
+        return _pref_only(rule, pref_code)
     pref = code[:2]
     if pref in (rule.get("prefectures") or []):
         return True
@@ -208,6 +215,25 @@ def is_noncommercial(api: str, city_code: Optional[str]) -> bool:
     if allowed is not None and code not in allowed:
         return True
     return False
+
+
+def _pref_only(rule: dict, pref_code: Optional[str]) -> bool:
+    """市区町村コードが無く、都道府県だけ分かるときの判定。
+
+    その県に制限が一つも掛かっていなければ False（普通に取りに行く）。
+    県まるごと制限なら True。市区町村単位の制限がその県にあるときだけ、
+    どの市か分からないので True にする（制限はその県の中に閉じる）。
+    """
+    if not pref_code or len(str(pref_code)) != 2:
+        return True
+    pref = str(pref_code)
+    if pref in (rule.get("prefectures") or []):
+        return True
+    if pref in (rule.get("prefectures_except") or {}):
+        return True
+    # 市区町村で指定されているレイヤ。その県に1つでも該当市があれば、
+    # どの市か分からないので取りに行かない。無ければ制限は無い。
+    return any(c.startswith(pref) for c in (rule.get("cities") or []))
 
 
 def _reinfolib_tile(api, key, z, x, y):
@@ -358,7 +384,8 @@ def _first_str(props: dict, *keys) -> Optional[str]:
     return None
 
 
-def fetch_school_districts(lat, lon, key, zoom=14, city_code=None):
+def fetch_school_districts(lat, lon, key, zoom=14, city_code=None,
+                           pref_code=None):
     """小学校区・中学校区の学校名。XKT004/005 はポリゴンで返る。
 
     項目名は実データで確認：小学校区 A27_004_ja、中学校区 A32_004_ja。
@@ -378,7 +405,7 @@ def fetch_school_districts(lat, lon, key, zoom=14, city_code=None):
         return api, None
 
     specs = [sp for sp in [("XKT004", "A27_004_ja"), ("XKT005", "A32_004_ja")]
-             if not is_noncommercial(sp[0], city_code)]
+             if not is_noncommercial(sp[0], city_code, pref_code)]
     got = dict(_parallel(get, specs, workers=2)) if specs else {}
     return got.get("XKT004"), got.get("XKT005")
 
@@ -421,7 +448,8 @@ def fetch_future_population(lat, lon, key, zoom=14,
     return None, None, None
 
 
-def fetch_ground_hazards(lat, lon, key, zoom=14, city_code=None) -> dict:
+def fetch_ground_hazards(lat, lon, key, zoom=14, city_code=None,
+                         pref_code=None) -> dict:
     """液状化・盛土・急傾斜地・地すべり・災害危険区域。
 
     液状化（XKT025）は note に「やや液状化しにくい」のような説明文が入るので、
@@ -440,10 +468,10 @@ def fetch_ground_hazards(lat, lon, key, zoom=14, city_code=None) -> dict:
 
     specs = [("XKT025", zoom), ("XKT020", zoom), ("XKT022", 13),
              ("XKT021", 13), ("XKT016", 13)]
-    specs = [sp for sp in specs if not is_noncommercial(sp[0], city_code)]
+    specs = [sp for sp in specs if not is_noncommercial(sp[0], city_code, pref_code)]
     out["_restricted"] = [NONCOMMERCIAL[a]["name"]
                           for a in ("XKT022", "XKT021", "XKT016")
-                          if is_noncommercial(a, city_code)]
+                          if is_noncommercial(a, city_code, pref_code)]
     got = dict(_parallel(get, specs, workers=5))
 
     liq = got.get("XKT025") or []
@@ -468,7 +496,8 @@ def fetch_ground_hazards(lat, lon, key, zoom=14, city_code=None) -> dict:
     return out
 
 
-def fetch_hazard(lat, lon, key, zoom=15, city_code=None) -> HazardResult:
+def fetch_hazard(lat, lon, key, zoom=15, city_code=None,
+                 pref_code=None) -> HazardResult:
     h = HazardResult()
     x, y = latlon_to_tile(lat, lon, zoom)
 
@@ -481,7 +510,7 @@ def fetch_hazard(lat, lon, key, zoom=15, city_code=None) -> HazardResult:
     # 土砂（XKT029）と津波（XKT028）は、県によっては非商用。その県では
     # 取りに行かず、未取得として扱う。黙って「該当なし」にはしない。
     apis = [a for a in ("XKT026", "XKT029", "XKT028", "XKT027")
-            if not is_noncommercial(a, city_code)]
+            if not is_noncommercial(a, city_code, pref_code)]
     for a in ("XKT029", "XKT028"):
         if a not in apis:
             h.restricted.append(NONCOMMERCIAL[a]["name"])
@@ -735,7 +764,8 @@ def enrich(lat: Optional[float], lon: Optional[float],
            reinfolib_key: Optional[str],
            estat_appid: Optional[str] = None,
            city_code: Optional[str] = None,
-           estat_table: str = "0000020201") -> Enrichment:
+           estat_table: str = "0000020201",
+           pref_code: Optional[str] = None) -> Enrichment:
     e = Enrichment()
     if lat is None or lon is None:
         e.notes.append("座標未取得のためエンリッチメントをスキップ")
@@ -747,13 +777,16 @@ def enrich(lat: Optional[float], lon: Optional[float],
             tasks["ud"] = ex.submit(fetch_zoning, lat, lon, reinfolib_key)
             tasks["ur"] = ex.submit(fetch_urbanization, lat, lon, reinfolib_key)
             tasks["hz"] = ex.submit(fetch_hazard, lat, lon, reinfolib_key,
-                                    city_code=city_code)
+                                    city_code=city_code,
+                                    pref_code=pref_code)
             tasks["fa"] = ex.submit(fetch_facilities, lat, lon, reinfolib_key)
             tasks["sd"] = ex.submit(fetch_school_districts, lat, lon,
-                                    reinfolib_key, city_code=city_code)
+                                    reinfolib_key, city_code=city_code,
+                                    pref_code=pref_code)
             tasks["fp"] = ex.submit(fetch_future_population, lat, lon, reinfolib_key)
             tasks["gh"] = ex.submit(fetch_ground_hazards, lat, lon,
-                                    reinfolib_key, city_code=city_code)
+                                    reinfolib_key, city_code=city_code,
+                                    pref_code=pref_code)
         # 買い物先は国交省のAPIに無いのでOpenStreetMapから。鍵は要らない。
         tasks["shop"] = ex.submit(fetch_shops_around, lat, lon)
         if estat_appid and city_code:

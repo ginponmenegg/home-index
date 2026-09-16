@@ -17,7 +17,7 @@ from .comparable import (extract_comparables, DEFAULT_WEIGHTS, NEWBUILD_WEIGHTS,
                          NEIGHBOR_RADIUS_M, DETACHED_TYPES)
 from .price_analysis import analyze_price
 from .enrichment import enrich, haversine_m
-from .citycode import CityCodeResolver
+from .citycode import CityCodeResolver, detect_prefecture
 from .config import CONFIG
 from .loan import compute_loan, LoanResult
 from .scoring import build_diagnosis, Diagnosis
@@ -251,6 +251,7 @@ def run_mansion_pipeline(subject: MansionSubject,
         result.enrichment = enrich(subject.latitude, subject.longitude,
                                    reinfolib_key, estat_appid=estat_appid,
                                    city_code=subject.municipality_code,
+                                   pref_code=detect_prefecture(subject.address),
                                    estat_table=estat_table)
         if result.enrichment:
             result.warnings.extend(result.enrichment.notes)
@@ -341,6 +342,7 @@ def run_land_pipeline(subject: LandSubject,
         result.enrichment = enrich(subject.latitude, subject.longitude,
                                    reinfolib_key, estat_appid=estat_appid,
                                    city_code=subject.municipality_code,
+                                   pref_code=detect_prefecture(subject.address),
                                    estat_table=estat_table)
         if result.enrichment:
             result.warnings.extend(result.enrichment.notes)
@@ -470,6 +472,7 @@ def run_pipeline(subject: SubjectProperty,
         result.enrichment = enrich(subject.latitude, subject.longitude,
                                    reinfolib_key, estat_appid=estat_appid,
                                    city_code=subject.municipality_code,
+                                   pref_code=detect_prefecture(subject.address),
                                    estat_table=estat_table)
         if result.enrichment:
             result.warnings.extend(result.enrichment.notes)

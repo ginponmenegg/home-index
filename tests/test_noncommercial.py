@@ -92,3 +92,73 @@ def test_a_real_hit_still_outranks_the_restriction():
     h.sediment = "特別警戒区域"
     c = score_risk(None, None, h)
     assert c.raw <= 0.3, "土砂の特別警戒区域が効いていない"
+
+
+# ---- 都道府県だけで判定できるときは、落とさない ----
+def test_a_known_prefecture_without_a_city_code_is_still_decided():
+    """市区町村コードが取れないだけで、全国どこでも落とすのはやりすぎ。
+
+    制限のある県が6〜9県しかないレイヤでも、住所の解決に失敗しただけで
+    北海道でも沖縄でも土砂災害を落としていた。
+    """
+    from src.enrichment import is_noncommercial
+    # 北海道は XKT016（災害危険区域・函館市）だけ。土砂・津波・学区は制限なし
+    assert is_noncommercial("XKT029", None, "01") is False
+    assert is_noncommercial("XKT028", None, "01") is False
+    assert is_noncommercial("XKT004", None, "01") is False
+    # 京都府は土砂・津波が県まるごと、学区は宇治市。府内では判定できない
+    assert is_noncommercial("XKT029", None, "26") is True
+    assert is_noncommercial("XKT028", None, "26") is True
+    assert is_noncommercial("XKT004", None, "26") is True
+
+
+def test_nothing_known_still_stops_at_the_gate():
+    from src.enrichment import is_noncommercial
+    assert is_noncommercial("XKT029", None, None) is True
+    assert is_noncommercial("XKT029", None, "") is True
+
+
+def test_the_prefecture_of_a_city_only_rule_confines_the_doubt():
+    """市区町村で指定されているレイヤは、その県の中でだけ不明にする。"""
+    from src.enrichment import is_noncommercial
+    # XKT016 の災害危険区域は函館市など6市町。北海道内は不明、沖縄は制限なし
+    assert is_noncommercial("XKT016", None, "01") is True
+    assert is_noncommercial("XKT016", None, "47") is False
+
+
+def test_the_layers_that_are_never_restricted_are_never_dropped():
+    """洪水・高潮・用途地域・液状化・盛土は、どこでも落とさない。"""
+    from src.enrichment import is_noncommercial
+    for api in ("XKT026", "XKT027", "XKT002", "XKT001", "XKT025", "XKT020",
+                "XKT013", "XKT006", "XKT007", "XKT010", "XKT011", "XKT015",
+                "XKT018"):
+        for city, pref in (("26100", "26"), (None, "26"), (None, None)):
+            assert is_noncommercial(api, city, pref) is False, (api, city, pref)
+
+
+def test_only_the_listed_layer_is_dropped_in_a_restricted_city():
+    """函館市で落ちるのは災害危険区域だけ。土砂も津波も学区も落とさない。"""
+    from src.enrichment import is_noncommercial
+    assert is_noncommercial("XKT016", "01202") is True
+    for api in ("XKT029", "XKT028", "XKT022", "XKT021", "XKT004", "XKT005"):
+        assert is_noncommercial(api, "01202") is False, api
+
+
+def test_the_cap_does_not_soften_just_because_only_one_layer_was_blocked():
+    """落ちた数に比例させようとして、やめた。
+
+    洪水・高潮を見て該当なし、土砂だけ取得条件で見られなかった土地を、
+    0.9（＝15点中13.5点）にする案を書いてみた。だが土砂災害こそ、
+    分からないことがいちばん危ないレイヤ（特別警戒区域は建築制限が
+    かかる）。見ていないものを満点近くで通すほうが、間違いが大きい。
+    頭打ちは落ちた数によらず 0.7 のままにする。
+    """
+    from src.scoring import score_risk
+    one = score_risk(None, None, HazardResult(
+        checked=True, restricted=["土砂災害警戒区域"]))
+    two = score_risk(None, None, HazardResult(
+        checked=True, restricted=["土砂災害警戒区域", "津波浸水想定"]))
+    assert one.raw <= 0.7 and two.raw <= 0.7
+    # 差は充足度で出す。何も見ていないときのほうが低い。
+    nothing = score_risk(None, None, HazardResult(checked=False))
+    assert nothing.sufficiency < one.sufficiency
