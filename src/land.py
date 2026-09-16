@@ -188,7 +188,8 @@ def build_capacity(site_area_m2: Optional[float],
                    road_width_m: Optional[float] = None,
                    frontage_m: Optional[float] = None,
                    corner_designated: Optional[bool] = None,
-                   fire_relaxation: bool = False) -> BuildCapacity:
+                   fire_relaxation: bool = False,
+                   usable_area_m2: Optional[float] = None) -> BuildCapacity:
     """建てられる建築面積と延床の上限。分からないところは埋めない。"""
     designated_coverage = coverage_ratio
     coverage_ratio, relax_notes = coverage_with_relaxations(
@@ -233,7 +234,15 @@ def build_capacity(site_area_m2: Optional[float],
             "（道の中心から2m下がる前提の概算）")
 
     usable = site_area_m2
-    if usable and lost:
+    if usable_area_m2:
+        # 測量図に後退後の面積があるなら、概算より実測を採る。
+        usable = usable_area_m2
+        if site_area_m2:
+            c.setback_m2 = round(site_area_m2 - usable_area_m2, 1) or None
+        c.notes.append(
+            f"測量図の実測（セットバック後の有効面積 {usable_area_m2}㎡）で"
+            "計算しています。概算は使っていません")
+    elif usable and lost:
         usable = max(0.0, usable - lost)
 
     if usable and coverage_ratio:

@@ -204,3 +204,130 @@ def test_unanswered_rules_come_back_as_things_to_check():
 def test_a_corner_with_no_designation_still_asks_about_it():
     _, confirm = score_land_rules(_base_build(), _rules(corner="corner_only"))
     assert any("特定行政庁が指定した角地" in c for c in confirm)
+
+
+# ============================================================
+# C群 ── 買えるかどうか・いつ買えるか
+# ============================================================
+from src.land_pro_scoring import (LEGAL_CHOICES, LEGAL_MAX_DOWN, LEGAL_MAX_UP,
+                                  farmland_procedure, heritage_notice,
+                                  legal_detail_from, score_land_access,
+                                  score_land_asset, score_land_heritage)
+
+
+def _legal(**kw):
+    return legal_detail_from(kw)
+
+
+def _base_named(name, weight, raw=1.0, suff=0.8):
+    return CategoryScore(name, weight, raw, round(weight * raw, 1), suff,
+                         name, [])
+
+
+# ---- 農地法（条文で確認済み）----
+def test_farmland_in_an_urban_zone_only_needs_a_notification():
+    """農地法4条1項7号・5条1項6号。市街化区域内は農業委員会への届出。"""
+    got = farmland_procedure(_legal(chimoku="nochi"), "市街化区域")
+    assert "届け出れば" in got
+    assert "許可は要りません" in got
+
+
+def test_farmland_outside_the_urban_zone_needs_permission():
+    got = farmland_procedure(_legal(chimoku="nochi"), "市街化調整区域")
+    assert "許可" in got
+    assert "届け出れば" not in got
+    # 許可が下りない土地があることも言う。ここを黙ると、買ってから困る。
+    assert "許可が下りない土地" in got
+
+
+def test_an_unknown_zone_says_both_and_asks():
+    got = farmland_procedure(_legal(chimoku="nochi"), None)
+    assert "届出" in got and "許可" in got
+    assert "確認してください" in got
+
+
+def test_nothing_is_said_when_the_land_is_not_farmland():
+    assert farmland_procedure(_legal(chimoku="takuchi"), "市街化区域") is None
+    assert farmland_procedure(_legal(), "市街化区域") is None
+
+
+# ---- 文化財保護法93条 ----
+def test_a_heritage_site_gets_the_sixty_day_lead_time():
+    got = heritage_notice(_legal(maizo="yes"))
+    assert "60日前" in got
+    assert "文化財保護法93条" in got
+    assert heritage_notice(_legal(maizo="no")) is None
+    assert heritage_notice(_legal()) is None
+
+
+def test_a_heritage_site_also_costs_points_on_risk():
+    plain, _ = score_land_heritage(_base_named("リスク", 25), _legal(maizo="no"))
+    hit, _ = score_land_heritage(_base_named("リスク", 25), _legal(maizo="yes"))
+    assert hit.points < plain.points
+
+
+# ---- 私道のときだけ聞く ----
+def test_the_private_road_questions_are_skipped_on_a_public_road():
+    """公道なら掘削の承諾も持分も関係がない。
+
+    関係のない項目を「未確認」として並べると、読む人は自分に要ることだと
+    思ってしまう。
+    """
+    base = _base_named("接道", 15)
+    cat, confirm = score_land_access(base, _legal(kussaku="none"), "公道")
+    assert cat is base            # 触らない
+    assert confirm == []
+
+
+def test_a_missing_dig_consent_costs_the_most_on_a_private_road():
+    base = _base_named("接道", 15)
+    written, _ = score_land_access(base, _legal(kussaku="written"), "私道")
+    verbal, _ = score_land_access(base, _legal(kussaku="verbal"), "私道")
+    none, _ = score_land_access(base, _legal(kussaku="none"), "私道")
+    assert none.points < verbal.points < written.points
+    assert any("工事ができない" in m for m in none.minus)
+
+
+def test_a_verbal_consent_says_why_paper_matters():
+    cat, _ = score_land_access(_base_named("接道", 15),
+                               _legal(kussaku="verbal"), "私道")
+    assert any("所有者が変わると引き継がれない" in m for m in cat.minus)
+
+
+def test_a_designated_road_counts_as_private_for_these_questions():
+    cat, confirm = score_land_access(_base_named("接道", 15),
+                                     _legal(), "位置指定")
+    assert confirm                # 未確認なら確認先を出す
+
+
+# ---- 資産性 ----
+def test_an_unfixed_boundary_costs_asset_value():
+    fixed, _ = score_land_asset(_base_named("資産性", 10),
+                                _legal(boundary="fixed"))
+    unfixed, _ = score_land_asset(_base_named("資産性", 10),
+                                  _legal(boundary="unfixed"))
+    assert unfixed.points < fixed.points
+    assert any("売るときに確定測量" in m for m in unfixed.minus)
+
+
+def test_an_encroachment_is_the_heaviest_asset_penalty():
+    from src.land_pro_scoring import ASSET_ADJUST
+    assert ASSET_ADJUST[("encroach", "exists")] < ASSET_ADJUST[("chimoku", "nochi")]
+
+
+def test_the_legal_adjustments_are_bounded():
+    worst = _legal(chimoku="sanrin", boundary="unfixed", encroach="exists")
+    cat, _ = score_land_asset(_base_named("資産性", 10, raw=0.9), worst)
+    assert cat.raw == round(0.9 + LEGAL_MAX_DOWN, 3)
+    assert 0 < LEGAL_MAX_UP < abs(LEGAL_MAX_DOWN)
+
+
+def test_unanswered_legal_questions_do_not_dock_the_score():
+    base = _base_named("資産性", 10)
+    cat, confirm = score_land_asset(base, _legal())
+    assert cat.points == base.points
+    assert len(confirm) == 3
+
+
+def test_an_unknown_legal_value_falls_back_to_unconfirmed():
+    assert legal_detail_from({"chimoku": "でたらめ"})["chimoku"] == "unknown"

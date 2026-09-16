@@ -288,3 +288,80 @@ def test_the_floors_needed_to_use_the_far_are_spelled_out(client):
     h = _post(client)
     assert "4階建てが要ります" in h
     assert "注文住宅は2階建てが多い" in h
+
+
+# ---- C群（買えるかどうか・いつ着工できるか）----
+def _asset(h):
+    m = re.search(r"資産性</span>\s*<span class=\"muted\">([\d.]+) / 10", h)
+    return float(m.group(1))
+
+
+def _access(h):
+    m = re.search(r"接道</span>\s*<span class=\"muted\">([\d.]+) / 15", h)
+    return float(m.group(1))
+
+
+def test_the_legal_questions_are_on_the_form(client):
+    h = client.get("/pro/land").get_data(as_text=True)
+    for key in ("chimoku", "maizo", "kussaku", "mochibun", "boundary",
+                "encroach", "setback_actual"):
+        assert f'name="{key}"' in h, key
+    assert "周知の埋蔵文化財包蔵地に当たる" in h
+    assert "確定測量済み・図面がある" in h
+
+
+def test_farmland_in_an_urban_zone_shows_the_notification_route(client):
+    h = _post(client, chimoku="nochi")
+    assert "着工までに要る手続き" in h
+    assert "農地法" in h
+    # 区域区分が取れていれば、届出か許可かまで出す
+    assert ("農業委員会" in h) or ("知事等の許可" in h)
+
+
+def test_a_heritage_site_shows_the_sixty_day_rule(client):
+    h = _post(client, maizo="yes")
+    assert "60日前" in h
+    assert "文化財保護法93条" in h
+    assert "教育委員会" in h
+
+
+def test_no_procedure_card_when_there_is_nothing_to_do(client):
+    h = _post(client, chimoku="takuchi", maizo="no")
+    assert "着工までに要る手続き" not in h
+
+
+def test_the_boundary_and_encroachment_move_asset_value(client):
+    clean = _post(client, boundary="fixed", encroach="none")
+    messy = _post(client, boundary="unfixed", encroach="exists")
+    assert _asset(messy) < _asset(clean)
+    assert "覚書" in messy
+
+
+def test_the_private_road_consents_move_access_only_on_a_private_road(client):
+    private_ok = _post(client, road_type="私道", kussaku="written",
+                       mochibun="yes")
+    private_bad = _post(client, road_type="私道", kussaku="none",
+                        mochibun="no")
+    assert _access(private_bad) < _access(private_ok)
+    # 公道なら、同じ答えでも動かない
+    public_a = _post(client, road_type="公道", kussaku="none")
+    public_b = _post(client, road_type="公道", kussaku="written")
+    assert _access(public_a) == _access(public_b)
+
+
+def test_a_public_road_never_mentions_the_dig_consent(client):
+    """関係のない項目を未確認として並べない。自分に要ることだと思われる。"""
+    h = _post(client, road_type="公道")
+    assert "掘削" not in h
+
+
+def test_a_surveyed_setback_replaces_the_estimate(client):
+    h = _post(client, road_width="3", setback_actual="114.8")
+    assert "測量図の実測" in h
+    assert "概算は使っていません" in h
+
+
+def test_leaving_the_legal_questions_blank_does_not_dock_the_score(client):
+    blank = _post(client)
+    free = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
+    assert _asset(blank) == _asset(free)

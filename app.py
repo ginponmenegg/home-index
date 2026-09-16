@@ -4192,6 +4192,15 @@ BRAND_BAR
  </div>
  {% endif %}
 
+ {% if procedures %}
+ <div class="card" style="border-color:#f59e0b;background:#fffbeb">
+  <h2 style="margin-top:0;color:#92400e">着工までに要る手続き</h2>
+  {% for p in procedures %}<p style="margin:8px 0;font-size:14px">{{p}}</p>{% endfor %}
+  <div class="foot">どちらも、いつ着工できるかに直接効きます。
+   引渡しの時期や、つなぎ融資の期間を決める前に確かめてください。</div>
+ </div>
+ {% endif %}
+
  <div class="card">
   <h2>この土地に建てられる家</h2>
   {% if cap.max_total_floor_m2 %}
@@ -4601,7 +4610,7 @@ def _land_position(unit, low, mid, high):
 
 
 def _render_land_result(res, subject, f, down_yen, loan_years,
-                        fin=None, pro=False):
+                        fin=None, pro=False, procedures=None):
     from src.land import tsubo
     from src.land_scoring import guided_area_m2, DEFAULT_HOUSEHOLD, score_cap
 
@@ -4650,7 +4659,12 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
         # 建ぺい率の緩和・容積を使い切る階数・法55条の高さ制限は、
         # 計算の途中で分かったこと。数字だけ出して黙っていると、
         # なぜその数字になったのかが読む人に分からない。
-        notes=[n for n in c.notes if "セットバック" not in n
+        #
+        # 除くのは、このカードの別の場所で枠として出しているものだけ。
+        # 「セットバック」を含む行をまとめて落としていたら、測量図の実測を
+        # 使ったという注記まで消えていた。落とす条件は狭く書くこと。
+        notes=[n for n in c.notes
+               if "セットバックで使えません" not in n
                and "前面道路" not in n],
         guided=f"{guided_area_m2(household):.0f}")
 
@@ -4718,7 +4732,7 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
     return render_template_string(
         LAND_RESULT, s=sctx, d=dctx, cats=cats, cap=cap_ctx, mk=mk,
         loan=loan, capped=capped, warnings=_public_warnings(res.warnings),
-        fin=fin, pro=pro, handover=handover,
+        fin=fin, pro=pro, handover=handover, procedures=procedures,
         ring_circ=round(circ, 1),
         ring_off=round(circ * (1 - d.total_score / 100.0), 1),
         grade_color=GRADE_COLOR.get(d.grade, "#0d9488"),
@@ -4905,6 +4919,29 @@ BRAND_BAR
   {% endfor %}
   {% endfor %}
 
+  {% for title, note, keys in legal_sections %}
+  <h3 class="sec">{{title}}</h3>
+  <div class="hint" style="margin-bottom:6px">{{note|safe}}</div>
+  {% for key in keys %}
+  <div class="row">
+   <div><label>{{legal_labels[key]}}</label>
+    <select name="{{key}}">
+     {% for val, lbl in legal_choices[key] %}
+     <option value="{{val}}" {{'selected' if v[key]==val else ''}}>{{lbl}}</option>
+     {% endfor %}
+    </select></div>
+   <div></div>
+  </div>
+  {% endfor %}
+  {% endfor %}
+  <div class="row">
+   <div><label>セットバック後の有効面積（㎡・任意）</label>
+    <input name="setback_actual" value="{{v.setback_actual}}" placeholder="例）114.8">
+    <div class="hint">測量図に後退後の面積が入っていれば、そちらを使います。
+     未入力なら、道の中心から2m下がる前提の概算で計算します</div></div>
+   <div></div>
+  </div>
+
   <h3 class="sec">住宅ローン本体</h3>
   <div class="row">
    <div><label>世帯年収（万円）</label>
@@ -4966,6 +5003,9 @@ def _land_pro_defaults():
         v[key] = lps.UNKNOWN
     for key in lps.RULE_CHOICES:
         v[key] = lps.UNKNOWN
+    for key in lps.LEGAL_CHOICES:
+        v[key] = lps.UNKNOWN
+    v["setback_actual"] = ""
     return v
 
 
@@ -4986,7 +5026,10 @@ def _land_pro_page(v, banner=None):
                                   site_labels=lps.LABELS,
                                   rule_sections=lps.RULE_SECTIONS,
                                   rule_choices=lps.RULE_CHOICES,
-                                  rule_labels=lps.RULE_LABELS)
+                                  rule_labels=lps.RULE_LABELS,
+                                  legal_sections=lps.LEGAL_SECTIONS,
+                                  legal_choices=lps.LEGAL_CHOICES,
+                                  legal_labels=lps.LEGAL_LABELS)
 
 
 @app.route("/pro/land/start", methods=["POST"])
@@ -5049,9 +5092,27 @@ def _run_land_pro(f):
 
     detail = lps.detail_from(f)
     rules = lps.rule_detail_from(f)
+    legal = lps.legal_detail_from(f)
 
     # 角地の指定があれば建ぺい率そのものが変わる（法53条3項2号）。
     # 点を足し引きするのではなく、建てられる大きさを計算し直す。
+    # 測量図の実測があれば、セットバックの概算をやめて実測で計算し直す。
+    usable = to_float(f.get("setback_actual"))
+    if usable and not lps.corner_designated(rules):
+        e = res.enrichment
+        ud = e.use_district if e else None
+        res.capacity = build_capacity(
+            subject.land_area_m2,
+            subject.coverage_ratio or (e.coverage_ratio if e else None),
+            subject.floor_area_ratio or (e.floor_area_ratio if e else None),
+            use_district=ud, road_width_m=subject.road_width_m,
+            frontage_m=subject.frontage_m, usable_area_m2=usable)
+        for i, c in enumerate(res.diagnosis.categories):
+            if c.name == "建てられる家":
+                res.diagnosis.categories[i] = score_buildable(
+                    res.capacity, ud, subject.household_size)
+                break
+
     if lps.corner_designated(rules):
         e = res.enrichment
         ud = e.use_district if e else None
@@ -5062,7 +5123,8 @@ def _run_land_pro(f):
             use_district=ud,
             road_width_m=subject.road_width_m,
             frontage_m=subject.frontage_m,
-            corner_designated=True)
+            corner_designated=True,
+            usable_area_m2=to_float(f.get("setback_actual")))
         # 建ぺい率が変わったので、素点を出し直す。都市計画の足し引きは
         # このあとの上書きでまとめてかかるので、ここではかけない。
         for i, c in enumerate(res.diagnosis.categories):
@@ -5100,10 +5162,20 @@ def _run_land_pro(f):
     extra_confirm = []
     for i, c in enumerate(d.categories):
         if c.name == "リスク":
-            d.categories[i], conf = lps.score_land_site(c, detail)
+            c, conf = lps.score_land_site(c, detail)
             extra_confirm += conf
+            c, conf = lps.score_land_heritage(c, legal)
+            extra_confirm += conf
+            d.categories[i] = c
         elif c.name == "建てられる家":
             d.categories[i], conf = lps.score_land_rules(c, rules)
+            extra_confirm += conf
+        elif c.name == "接道":
+            d.categories[i], conf = lps.score_land_access(
+                c, legal, subject.road_type)
+            extra_confirm += conf
+        elif c.name == "資産性":
+            d.categories[i], conf = lps.score_land_asset(c, legal)
             extra_confirm += conf
     d.to_confirm = list(d.to_confirm) + extra_confirm
     d.total_score = max(0, min(100, int(round(
@@ -5120,10 +5192,14 @@ def _run_land_pro(f):
         / sum(c.weight for c in d.categories) * 100))
     d.strengths, d.weaknesses = highlights(d.categories)
 
+    urban = res.enrichment.urbanization if res.enrichment else None
+    procedures = [x for x in (lps.farmland_procedure(legal, urban),
+                              lps.heritage_notice(legal)) if x]
+
     metrics.bump("pro_diag")
     return _render_land_result(res, subject, f, down_yen, loan_years,
                                fin=_land_fin_ctx(bridge, total, events),
-                               pro=True)
+                               pro=True, procedures=procedures)
 
 
 def _land_fin_ctx(bridge, total, events):

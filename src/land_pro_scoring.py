@@ -452,3 +452,234 @@ def score_land_rules(base: CategoryScore,
                   sufficiency=round(suff, 2), reason=reason,
                   plus=plus, minus=minus)
     return cat, confirm
+
+
+# ============================================================
+# C群 ── 買えるかどうか・いつ買えるか
+# ============================================================
+# 地目と埋蔵文化財は、**着工がいつになるか**の話。点数より先に、
+# 手続きと期間を言葉で出すほうが役に立つ。
+#
+# 農地法（e-Gov で確認）
+#   第4条第1項第7号／第5条第1項第6号 … 市街化区域内の農地は、あらかじめ
+#   農業委員会に**届け出て**転用できる。それ以外は**知事等の許可**が要る。
+#   区域区分は無料の診断がすでに持っているので、地目を聞けば
+#   どちらの手続きになるかまで出せる。
+#
+# 文化財保護法（同じく確認）
+#   第93条 … 周知の埋蔵文化財包蔵地を土木工事のために発掘するときは、
+#   **着工の60日前まで**に届出（第92条第1項の「三十日前」を「六十日前」と
+#   読み替える、と条文にそう書いてある）。
+
+LEGAL_CHOICES: Dict[str, List[Tuple[str, str]]] = {
+    "chimoku": [(UNKNOWN, "未確認"),
+                ("takuchi", "宅地"),
+                ("zasshu", "雑種地"),
+                ("nochi", "農地（田・畑）"),
+                ("sanrin", "山林")],
+    "maizo": [(UNKNOWN, "未確認"),
+              ("no", "埋蔵文化財包蔵地ではない"),
+              ("yes", "周知の埋蔵文化財包蔵地に当たる")],
+    "kussaku": [(UNKNOWN, "未確認"),
+                ("written", "掘削・通行の承諾が書面である"),
+                ("verbal", "口頭の了解だけ"),
+                ("none", "承諾がない")],
+    "mochibun": [(UNKNOWN, "未確認"),
+                 ("yes", "私道の持分がある"),
+                 ("no", "私道の持分がない")],
+    "boundary": [(UNKNOWN, "未確認"),
+                 ("fixed", "確定測量済み・図面がある"),
+                 ("unfixed", "境界が未確定")],
+    "encroach": [(UNKNOWN, "未確認"),
+                 ("none", "越境はない"),
+                 ("exists", "越境がある（塀・屋根・配管など）")],
+}
+
+LEGAL_LABELS = {"chimoku": "登記簿の地目", "maizo": "埋蔵文化財包蔵地",
+                "kussaku": "私道の掘削・通行の承諾", "mochibun": "私道の持分",
+                "boundary": "境界確定測量", "encroach": "越境"}
+
+LEGAL_SECTIONS = [
+    ("買えるかどうか・いつ着工できるか",
+     "登記簿と測量図、市区町村の教育委員会で分かります。"
+     "<b>農地と埋蔵文化財包蔵地は、着工までの時間に直接効きます。</b>",
+     ["chimoku", "maizo"]),
+    ("私道のとき",
+     "前面道路が私道か位置指定道路のときだけ効きます。公道なら"
+     "「未確認」のままで構いません。",
+     ["kussaku", "mochibun"]),
+    ("境界",
+     "売るときに効きます。確定測量がないと、買い手が付きにくくなります。",
+     ["boundary", "encroach"]),
+]
+
+# 私道のときだけ効く項目。公道なら足し引きしない。
+PRIVATE_ROAD_ONLY = ["kussaku", "mochibun"]
+PRIVATE_ROAD_TYPES = {"私道", "位置指定"}
+
+# 接道（15点）への足し引き
+ACCESS_ADJUST: Dict[Tuple[str, str], float] = {
+    ("kussaku", "written"): 0.04,
+    ("kussaku", "verbal"): -0.06,
+    ("kussaku", "none"): -0.12,
+    ("mochibun", "yes"): 0.03,
+    ("mochibun", "no"): -0.05,
+}
+# 資産性（10点）への足し引き
+ASSET_ADJUST: Dict[Tuple[str, str], float] = {
+    ("boundary", "fixed"): 0.08,
+    ("boundary", "unfixed"): -0.10,
+    ("encroach", "none"): 0.04,
+    ("encroach", "exists"): -0.12,
+    ("chimoku", "takuchi"): 0.03,
+    ("chimoku", "zasshu"): -0.03,
+    ("chimoku", "nochi"): -0.08,
+    ("chimoku", "sanrin"): -0.10,
+}
+# リスク（25点）への足し引き
+HERITAGE_ADJUST: Dict[Tuple[str, str], float] = {
+    ("maizo", "no"): 0.03,
+    ("maizo", "yes"): -0.08,
+}
+
+LEGAL_PLUS_TEXT = {
+    ("kussaku", "written"): "私道の掘削・通行の承諾が書面であります",
+    ("mochibun", "yes"): "私道の持分があります",
+    ("boundary", "fixed"): "確定測量済みで図面があります",
+    ("encroach", "none"): "越境はありません",
+    ("chimoku", "takuchi"): "地目は宅地",
+}
+LEGAL_MINUS_TEXT = {
+    ("kussaku", "verbal"): "私道の掘削・通行の承諾が口頭だけです。"
+                           "所有者が変わると引き継がれないことがあり、"
+                           "水道やガスを引くときに工事ができなくなります。"
+                           "書面でもらってください",
+    ("kussaku", "none"): "私道の掘削・通行の承諾がありません。"
+                         "上下水道やガスの引き込み工事ができない可能性があります。"
+                         "契約の前に、承諾がもらえるか必ず確かめてください",
+    ("mochibun", "no"): "私道の持分がありません。将来、通行料や"
+                        "掘削の同意で揉めることがあります",
+    ("boundary", "unfixed"): "境界が未確定です。売るときに確定測量を"
+                             "求められるのが普通で、隣地の協力が要ります",
+    ("encroach", "exists"): "越境があります。どちらの所有物か、いつ是正するかを"
+                            "書面（覚書）にしてもらってください",
+    ("chimoku", "nochi"): "地目が農地です。宅地にするには農地法の手続きが"
+                          "要ります",
+    ("chimoku", "sanrin"): "地目が山林です。造成と、林地開発の許可が"
+                           "要ることがあります",
+    ("chimoku", "zasshu"): "地目が雑種地です。地目変更の登記が要ります",
+    ("maizo", "yes"): "周知の埋蔵文化財包蔵地です。着工の60日前までに"
+                      "届出が要り、試掘調査になると数か月止まることがあります",
+}
+
+LEGAL_CONFIRM_TEXT = {
+    "chimoku": "地目: 登記簿で地目を確認してください。農地なら、宅地にする"
+               "手続きに時間がかかります",
+    "maizo": "埋蔵文化財: 周知の埋蔵文化財包蔵地かどうかを、市区町村の"
+             "教育委員会で確認してください。該当すると着工が遅れます",
+    "kussaku": "私道の承諾: 前面道路が私道なら、掘削・通行の承諾が書面で"
+               "あるかを売主に確認してください",
+    "mochibun": "私道の持分: 登記簿で私道の持分の有無を確認してください",
+    "boundary": "境界: 確定測量の図面があるかを売主に確認してください",
+    "encroach": "越境: 塀・屋根・配管の越境がないかを、測量図と現地で"
+                "確認してください",
+}
+
+LEGAL_MAX_UP = 0.08
+LEGAL_MAX_DOWN = -0.20
+
+
+def legal_detail_from(values: Dict[str, str]) -> Dict[str, str]:
+    out = {}
+    for key, choices in LEGAL_CHOICES.items():
+        v = (values.get(key) or UNKNOWN).strip()
+        out[key] = v if v in dict(choices) else UNKNOWN
+    return out
+
+
+def farmland_procedure(legal: Dict[str, str],
+                       urbanization: Optional[str]) -> Optional[str]:
+    """農地のときの手続き。区域区分で届出か許可かが変わる（農地法4条・5条）。
+
+    区域区分は無料の診断がすでに取っている。だから地目さえ聞けば、
+    どちらの手続きになるかまで出せる。
+    """
+    if legal.get("chimoku") != "nochi":
+        return None
+    u = urbanization or ""
+    if "調整区域" in u:
+        return ("市街化調整区域の農地です。宅地にするには都道府県知事等の"
+                "許可が要ります（農地法4条・5条）。許可が下りない土地も"
+                "あるので、契約の前に農業委員会で見通しを確かめてください。")
+    if "市街化区域" in u:
+        return ("市街化区域内の農地なので、あらかじめ農業委員会に届け出れば"
+                "宅地にできます（農地法4条1項7号・5条1項6号）。許可は要りません。")
+    return ("農地を宅地にするには農地法の手続きが要ります。市街化区域なら"
+            "農業委員会への届出、それ以外は知事等の許可です"
+            "（農地法4条・5条）。区域区分が分からないため、どちらになるかは"
+            "市区町村で確認してください。")
+
+
+def heritage_notice(legal: Dict[str, str]) -> Optional[str]:
+    """埋蔵文化財包蔵地のときの、着工までの逆算（文化財保護法93条）。"""
+    if legal.get("maizo") != "yes":
+        return None
+    return ("周知の埋蔵文化財包蔵地では、土木工事のための発掘は着工の"
+            "60日前までに届出が要ります（文化財保護法93条）。"
+            "試掘調査になると、そこから数か月止まることがあります。"
+            "引渡しの時期を決める前に、教育委員会に相談してください。")
+
+
+def _apply_legal(base: CategoryScore, legal: Dict[str, str],
+                 table: Dict[Tuple[str, str], float],
+                 keys: List[str]) -> Tuple[CategoryScore, List[str]]:
+    plus, minus, confirm = list(base.plus), list(base.minus), []
+    bits, delta = [], 0.0
+    for key in keys:
+        v = legal.get(key, UNKNOWN)
+        delta += table.get((key, v), 0.0)
+        if (key, v) in LEGAL_PLUS_TEXT:
+            plus.append(LEGAL_PLUS_TEXT[(key, v)])
+        if (key, v) in LEGAL_MINUS_TEXT:
+            minus.append(LEGAL_MINUS_TEXT[(key, v)])
+        if v == UNKNOWN:
+            confirm.append(LEGAL_CONFIRM_TEXT[key])
+        else:
+            bits.append(f"{LEGAL_LABELS[key]}:{dict(LEGAL_CHOICES[key])[v]}")
+
+    raw = base.raw + max(LEGAL_MAX_DOWN, min(LEGAL_MAX_UP, delta))
+    raw = max(0.0, min(1.0, raw))
+    answered = sum(1 for k in keys if legal.get(k, UNKNOWN) != UNKNOWN)
+    suff = 0.6 * base.sufficiency + 0.4 * (answered / len(keys))
+    reason = base.reason + ("／" + "・".join(bits) if bits else "")
+    cat = replace(base, raw=round(raw, 3),
+                  points=round(base.weight * raw, 1),
+                  sufficiency=round(suff, 2), reason=reason,
+                  plus=plus, minus=minus)
+    return cat, confirm
+
+
+def score_land_access(base: CategoryScore, legal: Dict[str, str],
+                      road_type: str) -> Tuple[CategoryScore, List[str]]:
+    """接道を、私道の承諾と持分で上書きする。
+
+    公道なら掘削の承諾も持分も関係がないので、点は動かさず、確認にも
+    出さない。関係のない項目を「未確認」として並べると、読む人は
+    自分に要ることだと思ってしまう。
+    """
+    if road_type not in PRIVATE_ROAD_TYPES:
+        return base, []
+    return _apply_legal(base, legal, ACCESS_ADJUST, PRIVATE_ROAD_ONLY)
+
+
+def score_land_asset(base: CategoryScore,
+                     legal: Dict[str, str]) -> Tuple[CategoryScore, List[str]]:
+    """資産性を、地目・境界・越境で上書きする。売るときに効くもの。"""
+    return _apply_legal(base, legal, ASSET_ADJUST,
+                        ["chimoku", "boundary", "encroach"])
+
+
+def score_land_heritage(base: CategoryScore,
+                        legal: Dict[str, str]) -> Tuple[CategoryScore, List[str]]:
+    """リスクに、埋蔵文化財包蔵地を足す。"""
+    return _apply_legal(base, legal, HERITAGE_ADJUST, ["maizo"])
