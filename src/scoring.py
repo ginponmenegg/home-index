@@ -590,6 +590,38 @@ def score_asset(subj: SubjectProperty, use_district: Optional[str],
                          "・".join(bits), src, plus=plus, minus=minus)
 
 
+def hazard_risks(hazard) -> List[CriticalRisk]:
+    """ハザードの取得結果を Critical Risk に直す。戸建・マンション・土地で共通。
+
+    同じ判定を三か所に書くと、片方だけ直したときに診断ごとに答えが変わる。
+    """
+    risks: List[CriticalRisk] = []
+    if not (hazard and getattr(hazard, "checked", False)):
+        risks.append(CriticalRisk("ハザード未確認", "medium", "unknown",
+                                  "洪水/土砂/津波等を公的データで要確認"))
+        return risks
+    if getattr(hazard, "sediment", None) == "特別警戒区域":
+        risks.append(CriticalRisk("土砂災害特別警戒区域(レッドゾーン)", "high",
+                                  "confirmed", "建築制限・移転勧告等の対象になり得る"))
+    elif getattr(hazard, "sediment", None) == "警戒区域":
+        risks.append(CriticalRisk("土砂災害警戒区域(イエローゾーン)", "medium",
+                                  "confirmed", "警戒避難体制の対象区域"))
+    fr = getattr(hazard, "flood_rank", None)
+    if fr and fr >= 3:
+        risks.append(CriticalRisk("洪水浸水想定(大)", "high", "confirmed",
+                                  f"想定浸水深 {hazard.flood_label}"))
+    elif fr:
+        risks.append(CriticalRisk("洪水浸水想定", "medium", "confirmed",
+                                  f"想定浸水深 {hazard.flood_label}"))
+    if getattr(hazard, "tsunami", False):
+        risks.append(CriticalRisk("津波浸水想定域", "high", "confirmed",
+                                  "津波浸水想定区域に位置"))
+    if getattr(hazard, "storm_surge", False):
+        risks.append(CriticalRisk("高潮浸水想定域", "medium", "confirmed",
+                                  "高潮浸水想定区域に位置"))
+    return risks
+
+
 def grade_of(total: int) -> str:
     if total >= 80:
         return "A"
@@ -639,30 +671,7 @@ def build_diagnosis(subj: SubjectProperty, price_a: Optional[PriceAnalysis],
     if urbanization and "調整区域" in urbanization:
         risks.append(CriticalRisk("市街化調整区域", "high", "confirmed",
                                   "再建築・利用に制限の可能性"))
-    checked = bool(hazard and getattr(hazard, "checked", False))
-    if not checked:
-        risks.append(CriticalRisk("ハザード未確認", "medium", "unknown",
-                                  "洪水/土砂/津波等を公的データで要確認"))
-    else:
-        if getattr(hazard, "sediment", None) == "特別警戒区域":
-            risks.append(CriticalRisk("土砂災害特別警戒区域(レッドゾーン)", "high",
-                                      "confirmed", "建築制限・移転勧告等の対象になり得る"))
-        elif getattr(hazard, "sediment", None) == "警戒区域":
-            risks.append(CriticalRisk("土砂災害警戒区域(イエローゾーン)", "medium",
-                                      "confirmed", "警戒避難体制の対象区域"))
-        fr = getattr(hazard, "flood_rank", None)
-        if fr and fr >= 3:
-            risks.append(CriticalRisk("洪水浸水想定(大)", "high", "confirmed",
-                                      f"想定浸水深 {hazard.flood_label}"))
-        elif fr:
-            risks.append(CriticalRisk("洪水浸水想定", "medium", "confirmed",
-                                      f"想定浸水深 {hazard.flood_label}"))
-        if getattr(hazard, "tsunami", False):
-            risks.append(CriticalRisk("津波浸水想定域", "high", "confirmed",
-                                      "津波浸水想定区域に位置"))
-        if getattr(hazard, "storm_surge", False):
-            risks.append(CriticalRisk("高潮浸水想定域", "medium", "confirmed",
-                                      "高潮浸水想定区域に位置"))
+    risks.extend(hazard_risks(hazard))
     if price_a and price_a.verdict == "割高の可能性" and (price_a.deviation_pct or 0) >= 15:
         risks.append(CriticalRisk("価格乖離", "medium", "confirmed",
                                   f"推定中央値比 {price_a.deviation_pct:+}%"))

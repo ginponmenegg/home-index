@@ -78,6 +78,34 @@ class MansionSubject:
 
 
 @dataclass
+class LandSubject:
+    """診断対象の土地（手入力前提）。
+
+    駅徒歩を `station_walk_min`、建物を `building_area_m2` としているのは、
+    既存の score_location / score_asset がその名前を見るため。土地には建物が
+    無いので building_area_m2 は None のままにする。
+    """
+    address: str
+    price: Optional[int] = None                 # 土地の売出価格(円)
+    land_area_m2: Optional[float] = None        # 敷地面積(㎡)
+    building_budget: Optional[int] = None       # 建物の予算(円)。総額の計算に使う
+    household_size: Optional[int] = None        # 世帯人数。居住面積水準の基準
+    frontage_m: Optional[float] = None          # 間口(m)
+    road_width_m: Optional[float] = None        # 前面道路の幅員(m)。2つ以上あれば広いほう
+    road_contact_m: Optional[float] = None      # 接道の長さ(m)。法43条は2m以上
+    road_type: str = "unknown"                  # 公道 / 私道 / 位置指定 / none / unknown
+    station_walk_min: Optional[int] = None      # 駅 or バス停まで徒歩(分)
+    bus_min: Optional[int] = None               # バス便：駅までのバス乗車分
+    nearest_station: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    municipality_code: Optional[str] = None
+    district_name: Optional[str] = None
+    city_planning: Optional[str] = None
+    building_area_m2: Optional[float] = None    # 常に None。score_asset が読む
+
+
+@dataclass
 class Transaction:
     """XIT001 の1取引レコードを正規化したもの。"""
     trade_price: Optional[int]        # 取引価格(円)

@@ -20,6 +20,7 @@ from .loan import LoanResult
 from .config import CONFIG
 from .scoring import (CategoryScore, CriticalRisk, Diagnosis, grade_of, _clamp,
                       score_price, score_location, score_risk, score_finance,
+                      hazard_risks,
                       _future_population_adj, highlights)
 
 WEIGHTS = CONFIG["mansion_category_weights"]
@@ -302,29 +303,7 @@ def build_mansion_diagnosis(subj: MansionSubject,
             "旧耐震基準", "high", "confirmed",
             f"{subj.build_year}年築。耐震診断・改修の履歴と、住宅ローン控除の"
             "適用可否を確認してください"))
-    if not (hazard and getattr(hazard, "checked", False)):
-        risks.append(CriticalRisk("ハザード未確認", "medium", "unknown",
-                                  "洪水/土砂/津波等を公的データで要確認"))
-    else:
-        if getattr(hazard, "sediment", None) == "特別警戒区域":
-            risks.append(CriticalRisk("土砂災害特別警戒区域(レッドゾーン)", "high",
-                                      "confirmed", "建築制限・移転勧告等の対象になり得る"))
-        elif getattr(hazard, "sediment", None) == "警戒区域":
-            risks.append(CriticalRisk("土砂災害警戒区域(イエローゾーン)", "medium",
-                                      "confirmed", "警戒避難体制の対象区域"))
-        fr = getattr(hazard, "flood_rank", None)
-        if fr and fr >= 3:
-            risks.append(CriticalRisk("洪水浸水想定(大)", "high", "confirmed",
-                                      f"想定浸水深 {hazard.flood_label}"))
-        elif fr:
-            risks.append(CriticalRisk("洪水浸水想定", "medium", "confirmed",
-                                      f"想定浸水深 {hazard.flood_label}"))
-        if getattr(hazard, "tsunami", False):
-            risks.append(CriticalRisk("津波浸水想定域", "high", "confirmed",
-                                      "津波浸水想定区域に位置"))
-        if getattr(hazard, "storm_surge", False):
-            risks.append(CriticalRisk("高潮浸水想定域", "medium", "confirmed",
-                                      "高潮浸水想定区域に位置"))
+    risks.extend(hazard_risks(hazard))
     if price_a and price_a.verdict == "割高の可能性" \
             and (price_a.deviation_pct or 0) >= 15:
         risks.append(CriticalRisk("価格乖離", "medium", "confirmed",
