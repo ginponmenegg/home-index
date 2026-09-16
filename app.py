@@ -4433,9 +4433,23 @@ BRAND_BAR
  </div>
 
  {% if d.confirm %}
- <div class="card">
-  <h2>確認すること</h2>
-  <ul>{% for t in d.confirm %}<li>{{t}}</li>{% endfor %}</ul>
+ <div class="card" id="ask">
+  <h2 style="margin-top:0">確認すること（{{d.confirm|length}}件）</h2>
+  <p class="only-print">{{s.address}}　土地　{{s.price}}</p>
+  <p class="muted no-print" style="margin:6px 0 10px">
+   役所・仲介業者・売主に確かめることの一覧です。
+   答えが分かったらもう一度診断すると、情報充足度が上がります。</p>
+  <ol class="asklist">
+   {% for t in d.confirm %}
+   <li><label><input type="checkbox"><span>{{t}}</span></label></li>
+   {% endfor %}
+  </ol>
+  <p class="no-print" style="margin:14px 0 0">
+   <button type="button" class="sub" onclick="window.print()">この一覧だけ印刷する</button>
+  </p>
+  <p class="muted no-print" style="font-size:12px;margin:8px 0 0">
+   市区町村の窓口や現地に持っていけます。チェックは印刷の前に付けるための
+   もので、どこにも保存されません。</p>
  </div>
  {% endif %}
 
@@ -4465,17 +4479,74 @@ BRAND_BAR
   <ul>{% for w in warnings %}<li class="muted">{{w}}</li>{% endfor %}</ul>
  </div>
  {% endif %}
-</div></body></html>
+
+ <div class="foot" style="background:#f9fafb;border:1px solid var(--line);
+   border-radius:10px;padding:12px 14px;margin-top:8px">
+  <b>免責</b>：本サービスは公的データにもとづく<b>参考情報</b>であり、
+  土地の価値・適法性・再建築可否・取引の可否を保証するものではありません。
+  建てられる大きさの計算は建築基準法の条文にもとづく概算で、斜線制限や
+  日影規制、地点ごとの条件は入っていません。実際の設計・契約条件・重要事項は、
+  建築士や宅地建物取引士など有資格の専門家の確認を前提としてください。
+  掲載データは取得時点のもので、最新性・正確性を保証しません。
+ </div>
+ <p class="foot" style="text-align:center;font-weight:700;color:#111;font-size:13px">
+  homeindex.jp　土地を100点で採点します</p>
+</div>
+<div class="wrap no-print" style="padding-top:0">
+ <div class="card" style="text-align:center">
+  <button onclick="saveReport()" class="sub" type="button">📷 画像を保存</button>
+  <button onclick="shareReport()" class="sub" type="button"
+    style="margin-left:8px">🔗 共有する</button>
+  <div class="muted" style="margin-top:6px;font-size:12px">
+   結果カードを1枚の画像にして保存・共有できます</div>
+ </div>
+ LAND_FOOTER_PLACEHOLDER
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+async function makeReportImage(){
+  const el=document.getElementById('report');
+  const canvas=await html2canvas(el,{scale:2,backgroundColor:'#ffffff',useCORS:true});
+  return new Promise(res=>canvas.toBlob(res,'image/png'));
+}
+async function saveReport(){
+  const blob=await makeReportImage();
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='HOME INDEX_土地診断.png';a.click();
+  URL.revokeObjectURL(url);
+}
+async function shareReport(){
+  try{
+    const blob=await makeReportImage();
+    const file=new File([blob],'HOME INDEX_土地診断.png',{type:'image/png'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:'HOME INDEX 土地診断',
+        text:'土地を100点で採点しました。',
+        url:'https://homeindex.jp/?from=share'});
+    }else{
+      await saveReport();
+      alert('この端末は共有に未対応のため、画像を保存しました。');
+    }
+  }catch(e){}
+}
+</script>
+</body></html>
 """
 
 _RESULT_CSS = RESULT[RESULT.index("<style>") + len("<style>"):
                      RESULT.index("</style>")]
+# フッターは印（LAND_FOOTER_PLACEHOLDER）で差し込む。
+# 以前は "</div></body></html>" の一致で足していたが、画像保存のボタンを
+# 加えて末尾の形が変わった瞬間に、一致しなくなってフッターが黙って消えた。
+# タグの並びに頼らず、置き場所を自分で書いておく。
+assert "LAND_FOOTER_PLACEHOLDER" in LAND_RESULT
 LAND_RESULT = (LAND_RESULT
                .replace("LAND_RESULT_CSS_PLACEHOLDER", _RESULT_CSS)
                .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
                .replace("BRAND_BAR", brand_bar("土地診断"))
                .replace("BRAND_LOCKUP", brand_lockup("landlock"))
-               .replace("</div></body></html>", FOOTER + "</div></body></html>"))
+               .replace("LAND_FOOTER_PLACEHOLDER", FOOTER))
 
 
 def _land_example_v():

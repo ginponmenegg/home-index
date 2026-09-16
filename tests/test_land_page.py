@@ -229,3 +229,37 @@ def test_the_land_page_is_reachable_from_everywhere(client):
         assert 'href="/land"' in client.get(path).get_data(as_text=True), path
     assert b"<loc>http://localhost/land</loc>" in \
         client.get("/sitemap.xml").data
+
+
+# ---- 持ち出せること（印刷・画像）----
+def test_the_things_to_check_can_be_printed_on_their_own(client):
+    """役所や現地に持っていける一覧にする。"""
+    h = _post(client)
+    assert 'id="ask"' in h
+    assert "この一覧だけ印刷する" in h
+    assert "asklist" in h
+    assert "@media print" in h
+
+
+def test_the_result_can_be_saved_as_an_image(client):
+    h = _post(client)
+    assert "saveReport" in h
+    assert "html2canvas.min.js" in h
+    assert "🔗 共有する" in h
+
+
+def test_the_footer_is_still_there(client):
+    """フッターを '</div></body></html>' の一致で足していたため、
+
+    画像保存のボタンを加えて末尾の形が変わった瞬間に、一致しなくなって
+    黙って消えた。印で差し込む形にしてある。
+    """
+    h = _post(client)
+    assert "出典：国土交通省" in h
+    assert "LAND_FOOTER_PLACEHOLDER" not in h
+
+
+def test_the_land_result_carries_its_own_disclaimer(client):
+    h = _post(client)
+    assert "免責" in h
+    assert "斜線制限" in h          # 計算に入れていないものを名指しする
