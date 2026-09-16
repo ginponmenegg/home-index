@@ -321,6 +321,7 @@ _PRO_MENU_MARK = "<!--HI_PRO_MENU-->"
 _PRO_MENU_HTML = (
     '<a href="/pro/diagnose">PRO　購入診断（戸建）</a>'
     '<a href="/pro/mansion">PRO　購入診断（マンション）</a>'
+    '<a href="/pro/land">PRO　土地診断（注文住宅）</a>'
     '<a href="/pro/finance">PRO　詳細な資金計画</a>')
 
 
@@ -503,6 +504,7 @@ TRIAL_NOTE = ('' if billing_on() else
 _PRO_LINKS_MEMBER = ('<a href="/pro" style="color:#111">PRO</a>：'
                      '<a href="/pro/diagnose" style="color:#111">購入診断（戸建）</a>　・　'
                      '<a href="/pro/mansion" style="color:#111">購入診断（マンション）</a>　・　'
+                     '<a href="/pro/land" style="color:#111">土地診断（注文住宅）</a>　・　'
                      '<a href="/pro/finance" style="color:#111">詳細な資金計画</a>')
 if billing_on():
     PRO_LINKS = ('<a href="/pro" style="color:#111">PROでできること</a>'
@@ -2889,7 +2891,8 @@ if not billing_on():
     # 位置は「/terms の手前」。数字で書くと、上の一覧に1つ足しただけで
     # 意図しない場所に入る（実際にずれた）。
     _i = SITEMAP_PATHS.index("/terms")
-    SITEMAP_PATHS[_i:_i] = ["/pro/diagnose", "/pro/mansion", "/pro/finance"]
+    SITEMAP_PATHS[_i:_i] = ["/pro/diagnose", "/pro/mansion", "/pro/land",
+                            "/pro/finance"]
 if operator_named():
     # 誰が作ったかは検索エンジンにも見せる（YMYLではここが効く）
     SITEMAP_PATHS.insert(3, "/about")
@@ -4293,8 +4296,77 @@ BRAND_BAR
  </div>
  {% endif %}
 
+ {% if fin %}
  <div class="card">
-  <h2>資金</h2>
+  <h2>つなぎ融資</h2>
+  {% if fin.has_interest %}
+   <p class="big">利息 {{fin.interest}}</p>
+   <p class="muted">土地の決済から建物の完成まで{{fin.days}}日。
+    年{{fin.rate}}％で、立て替える{{fin.principal}}にかかる利息です。
+    <b>この利息は住宅ローンとは別に、期間中ずっと払います。</b></p>
+  {% else %}
+   <p class="muted">つなぎ融資の利息を計算していません。</p>
+  {% endif %}
+  {% if fin.draws %}
+  <div class="tablewrap">
+   <table><tr><th>実行するお金</th><th>いつ</th><th style="text-align:right">金額</th>
+    <th style="text-align:right">完成まで</th><th style="text-align:right">利息</th></tr>
+   {% for d in fin.draws %}<tr><td>{{d.name}}</td><td>{{d.date}}</td>
+    <td style="text-align:right">{{d.amount}}</td>
+    <td style="text-align:right">{{d.days}}日</td>
+    <td style="text-align:right">{{d.interest}}</td></tr>{% endfor %}
+   </table>
+  </div>
+  {% endif %}
+  {% for a in fin.assumed %}<div class="rsk"><b>前提</b>　{{a}}</div>{% endfor %}
+  {% for n in fin.notes %}<div class="rsk">{{n}}</div>{% endfor %}
+  <div class="foot">利息は「実行額 × 年利 × 日数 ÷ 365」で計算しています。
+   つなぎ融資の事務手数料・印紙代・抵当権設定費用は金融機関ごとに違うため、
+   金額を出していません。借入先にご確認ください。</div>
+ </div>
+
+ {% if fin.events %}
+ <div class="card">
+  <h2>いつ、いくら要るか</h2>
+  <div class="tablewrap">
+   <table><tr><th>いつ</th><th>何のお金</th><th style="text-align:right">金額</th>
+    <th>どこから</th></tr>
+   {% for e in fin.events %}<tr><td>{{e.date}}</td><td>{{e.name}}
+    {% if e.note %}<br><span class="muted" style="font-size:12px">{{e.note}}</span>{% endif %}</td>
+    <td style="text-align:right">{{e.amount}}</td><td>{{e.source}}</td></tr>{% endfor %}
+   </table>
+  </div>
+  <div class="foot"><b>手付金は融資の実行前に払います。</b>
+   ここを知らずに「頭金ゼロ」と考えていると、契約の直前で詰まります。</div>
+ </div>
+ {% endif %}
+
+ <div class="card">
+  <h2>総額の積み上げ</h2>
+  <p class="big">{{fin.total}}<span class="muted"
+    style="font-size:15px;font-weight:400">（金額の出ている項目の合計）</span></p>
+  <div class="tablewrap">
+   <table><tr><th>費目</th><th style="text-align:right">金額</th><th>中身</th></tr>
+   {% for i in fin.costs %}<tr>
+    <td>{{i.name}}</td>
+    <td style="text-align:right">{% if i.known %}{{i.amount}}{% else %}—{% endif %}</td>
+    <td class="muted" style="font-size:12px">{{i.basis}}</td></tr>{% endfor %}
+   </table>
+  </div>
+  {% if fin.unknown_count %}
+  <div class="rsk" style="margin-top:10px">
+   <b>まだ金額の出ていない項目が{{fin.unknown_count}}件あります。</b>
+   上の合計には入っていません。0円という意味ではなく、
+   <b>いまは誰にも分からない</b>という意味です。地盤改良は地盤調査をするまで、
+   解体は見積りを取るまで決まりません。公的な費用統計が無いので、
+   目安の金額も出していません。
+  </div>
+  {% endif %}
+ </div>
+ {% endif %}
+
+ <div class="card">
+  <h2>{% if fin %}住宅ローン本体{% else %}資金{% endif %}</h2>
   <p class="big">総額 {{loan.total}}</p>
   <p class="muted">土地 {{s.price}} ＋ 建物予算 {{s.budget or "未入力"}}</p>
   <div class="kv">
@@ -4313,6 +4385,26 @@ BRAND_BAR
  <div class="card">
   <h2>確認すること</h2>
   <ul>{% for t in d.confirm %}<li>{{t}}</li>{% endfor %}</ul>
+ </div>
+ {% endif %}
+
+ {% if handover %}
+ <div class="card" data-html2canvas-ignore style="border-color:#111">
+  <h2 style="margin-top:0">つなぎ融資の利息は、この診断に入っていません</h2>
+  <p style="font-size:14px;margin:6px 0">注文住宅は、土地の決済から建物の
+   完成まで半年〜1年あります。その間は住宅ローンが実行されないので、
+   土地代金と工事の前払い金を<b>つなぎ融資で立て替える</b>ことになります。
+   その利息は、上の返済額とは<b>別に</b>かかります。</p>
+  <p style="font-size:14px;margin:6px 0">PROでは、決済日と完成予定日から
+   <b>つなぎ融資の利息</b>を計算し、<b>いつ・いくら手元から出ていくか</b>を
+   時系列で出します。手付金のように、融資の前に現金で払うものも並べます。</p>
+  <form method="post" action="/pro/land/start" style="margin-top:10px">
+   {% for k, val in handover.items() %}
+   <input type="hidden" name="{{k}}" value="{{val}}">
+   {% endfor %}
+   <button type="submit" style="width:auto;padding:11px 20px">
+    PROで資金の流れまで見る</button>
+  </form>
  </div>
  {% endif %}
 
@@ -4386,7 +4478,13 @@ def land_diagnose():
         _SEM.release()
 
 
-def _run_land_diagnose(f):
+def _land_subject_from(f):
+    """入力から LandSubject を組み立てる。無料とPROで共有する。
+
+    二重に書くと、片方にだけ項目を足したときに静かに食い違う。
+    戻り値は (subject, 市区町村コード, 町名, エラー文言)。
+    エラー文言が返ったら、呼び出し側がフォームへ戻すこと。
+    """
     address = (f.get("address") or "").strip()
     city = (f.get("city") or "").strip()
     district = (f.get("district") or "").strip()
@@ -4402,10 +4500,8 @@ def _run_land_diagnose(f):
 
     area = to_float(f.get("area"))
     if not area or area <= 0:
-        return render_template_string(
-            LAND_FORM, v=_land_form_values(f), road_types=LAND_ROAD_TYPES, conditions=LAND_CONDITIONS,
-            banner="敷地面積を入力してください。"
-                   "建てられる家の大きさを計算するのに必要です。")
+        return None, city, district, ("敷地面積を入力してください。"
+                                      "建てられる家の大きさを計算するのに必要です。")
 
     road_type = (f.get("road_type") or "unknown").strip()
     if road_type not in dict(LAND_ROAD_TYPES):
@@ -4414,7 +4510,7 @@ def _run_land_diagnose(f):
     if condition not in dict(LAND_CONDITIONS):
         condition = "unknown"
 
-    subject = LandSubject(
+    return LandSubject(
         address=address,
         price=to_yen(f.get("price")) or 0,
         land_area_m2=area,
@@ -4429,7 +4525,15 @@ def _run_land_diagnose(f):
         municipality_code=city or None,
         district_name=district or None,
         coverage_ratio=to_int(f.get("coverage")),
-        floor_area_ratio=to_int(f.get("far")))
+        floor_area_ratio=to_int(f.get("far"))), city, district, None
+
+
+def _run_land_diagnose(f):
+    subject, city, district, err = _land_subject_from(f)
+    if err:
+        return render_template_string(
+            LAND_FORM, v=_land_form_values(f), road_types=LAND_ROAD_TYPES,
+            conditions=LAND_CONDITIONS, banner=err)
 
     loan_years = max(1, min(50, to_int(f.get("loan_years")) or 35))
     down_yen = to_yen(f.get("down")) or 0
@@ -4492,7 +4596,8 @@ def _land_position(unit, low, mid, high):
     return "近隣の成約の真ん中あたりです"
 
 
-def _render_land_result(res, subject, f, down_yen, loan_years):
+def _render_land_result(res, subject, f, down_yen, loan_years,
+                        fin=None, pro=False):
     from src.land import tsubo
     from src.land_scoring import guided_area_m2, DEFAULT_HOUSEHOLD, score_cap
 
@@ -4590,15 +4695,374 @@ def _render_land_result(res, subject, f, down_yen, loan_years):
                 down=man(down_yen), monthly=f"{L.monthly_payment:,}円",
                 burden=L.burden_ratio)
 
+    # 無料の結果からPROへ入力を持っていくための値。年収などを含むので
+    # URLには載せず、hiddenでPOSTする（戸建・マンションと同じ作り）。
+    handover = None
+    if not pro:
+        handover = {k: v for k, v in _land_pro_form_values(f).items()
+                    if v not in (None, "", "unknown")}
+
     circ = 2 * 3.14159265 * 58
     return render_template_string(
         LAND_RESULT, s=sctx, d=dctx, cats=cats, cap=cap_ctx, mk=mk,
         loan=loan, capped=capped, warnings=_public_warnings(res.warnings),
+        fin=fin, pro=pro, handover=handover,
         ring_circ=round(circ, 1),
         ring_off=round(circ * (1 - d.total_score / 100.0), 1),
         grade_color=GRADE_COLOR.get(d.grade, "#0d9488"),
         grade_comment=GRADE_COMMENT.get(d.grade, ""),
         edit=_edit_carry("/land/edit", f, _land_example_v()))
+
+
+# ---- PRO 土地診断 ---------------------------------------------------
+# 無料の土地診断に、注文住宅の資金の流れを足す。
+#
+# 建売とマンションは決済の日に住宅ローンが実行されて終わる。注文住宅は
+# 終わらない。土地の決済が半年〜1年先行し、その間はつなぎ融資で立て替える。
+# その利息を誰も先に教えてくれない。ここを出すのがPROの最初の仕事。
+#
+# 金額を出せない費目（地盤改良・解体・引き込み）は、名前だけ出して金額を
+# 書かない。公的な統計が無いことを確かめた（docs/土地PRO_設計.md 第7章）。
+
+LAND_PRO_FORM = """
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+FONT_LINK_PLACEHOLDER
+<title>HOME INDEX｜PRO 土地診断（注文住宅）</title>
+<style>
+LAND_PRO_CSS_PLACEHOLDER
+ .sec{font-size:15px;margin:22px 0 2px;padding-top:14px;
+   border-top:1px solid #e5e5e5}
+</style></head><body>
+BRAND_BAR
+<div class="wrap">
+ <h1>PRO　土地診断（注文住宅）</h1>
+ <p class="aim">無料診断に、<b>注文住宅の資金の流れ</b>を足します。
+  土地の決済から建物の完成までの<b>つなぎ融資の利息</b>と、
+  いつ・いくら手元から出ていくかの時系列を出します。</p>
+ <p class="lead">建売やマンションは、決済の日に住宅ローンが実行されて
+  その日に終わります。<b>注文住宅は終わりません。</b>住宅ローンは建物が
+  完成しないと実行されないので、土地代金と工事の前払い金を、その間ずっと
+  立て替えることになります。</p>
+
+ {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
+
+ <form class="card" method="post" action="/pro/land">
+  <label>所在地 <span class="req">必須</span></label>
+  <input name="address" value="{{v.address}}" placeholder="例）〇〇県〇〇市〇〇町2-3-4" required>
+
+  <div class="row">
+   <div><label>土地の価格（万円） <span class="req">必須</span></label>
+    <input name="price" value="{{v.price}}" placeholder="例）1800" required></div>
+   <div><label>敷地面積（㎡） <span class="req">必須</span></label>
+    <input name="area" value="{{v.area}}" placeholder="例）120" required></div>
+  </div>
+  <div class="row">
+   <div><label>建物の本体工事費（万円）</label>
+    <input name="budget" value="{{v.budget}}" placeholder="例）2500">
+    <div class="hint">本体工事だけの金額。付帯・外構は下で別に聞きます</div></div>
+   <div><label>世帯人数</label>
+    <input name="household" value="{{v.household}}" placeholder="例）4"></div>
+  </div>
+  <div class="row">
+   <div><label>建築条件</label>
+    <select name="condition">
+     {% for k, lbl in conditions %}
+     <option value="{{k}}" {{'selected' if v.condition==k else ''}}>{{lbl}}</option>
+     {% endfor %}
+    </select></div>
+   <div></div>
+  </div>
+
+  <h3 class="sec">接道</h3>
+  <div class="row">
+   <div><label>前面道路の幅員（m）</label>
+    <input name="road_width" value="{{v.road_width}}" placeholder="例）6">
+    <div class="hint">2つ以上に接しているときは、いちばん広いほう</div></div>
+   <div><label>間口（m）</label>
+    <input name="frontage" value="{{v.frontage}}" placeholder="例）8">
+    <div class="hint">道路に接している長さ</div></div>
+  </div>
+  <div class="row">
+   <div><label>道路の種類</label>
+    <select name="road_type">
+     {% for k, lbl in road_types %}
+     <option value="{{k}}" {{'selected' if v.road_type==k else ''}}>{{lbl}}</option>
+     {% endfor %}
+    </select></div>
+   <div></div>
+  </div>
+
+  <h3 class="sec">支払いの予定（つなぎ融資の計算に使います）</h3>
+  <div class="hint" style="margin-bottom:8px">日付は<b>予定で構いません</b>。
+   入っている分だけ計算します。分からない日は空のままにしてください
+   （仮に置いたときは、結果にそう書きます）。</div>
+  <div class="row">
+   <div><label>土地の契約予定日</label>
+    <input type="date" name="contract_date" value="{{v.contract_date}}"></div>
+   <div><label>手付金（万円）</label>
+    <input name="deposit" value="{{v.deposit}}" placeholder="例）100">
+    <div class="hint"><b>融資の実行前に払うので、現金が要ります</b></div></div>
+  </div>
+  <div class="row">
+   <div><label>土地の決済予定日 <span class="req">必須</span></label>
+    <input type="date" name="settlement" value="{{v.settlement}}">
+    <div class="hint">つなぎ融資が始まる日</div></div>
+   <div><label>建物の完成（引渡し）予定日 <span class="req">必須</span></label>
+    <input type="date" name="completion" value="{{v.completion}}">
+    <div class="hint">住宅ローンが実行され、つなぎ融資を一括返済する日</div></div>
+  </div>
+  <div class="row">
+   <div><label>着工予定日</label>
+    <input type="date" name="start_date" value="{{v.start_date}}"></div>
+   <div><label>上棟予定日</label>
+    <input type="date" name="framing_date" value="{{v.framing_date}}"></div>
+  </div>
+  <div class="row">
+   <div><label>つなぎ融資の金利（年％）</label>
+    <input name="bridge_rate" value="{{v.bridge_rate}}" placeholder="例）2.8">
+    <div class="hint">金融機関に聞けば分かります。住宅ローン本体より
+     高いのが普通です。<b>未入力なら利息は0円として出します</b>
+     （こちらで勝手に置きません）</div></div>
+   <div><label>自己資金のうち、土地代金に充てる額（万円）</label>
+    <input name="own_funds" value="{{v.own_funds}}" placeholder="例）300">
+    <div class="hint">この分だけ、つなぎ融資の元本と利息が減ります</div></div>
+  </div>
+  <div class="row">
+   <div><label>着工金の割合（％）</label>
+    <input name="start_pct" value="{{v.start_pct}}" placeholder="例）30"></div>
+   <div><label>上棟時の中間金の割合（％）</label>
+    <input name="framing_pct" value="{{v.framing_pct}}" placeholder="例）30">
+    <div class="hint">請負契約書に書いてあります。未入力なら
+     30％・30％で計算し、そう明記します</div></div>
+  </div>
+
+  <h3 class="sec">本体工事以外のお金</h3>
+  <div class="row">
+   <div><label>付帯工事費（万円）</label>
+    <input name="extra_work" value="{{v.extra_work}}" placeholder="例）300">
+    <div class="hint">給排水の引き込み、電気、空調、解体、地盤改良など</div></div>
+   <div><label>外構工事費（万円）</label>
+    <input name="exterior" value="{{v.exterior}}" placeholder="例）150">
+    <div class="hint">駐車場・門・塀・植栽</div></div>
+  </div>
+  <div class="row">
+   <div><label>諸費用（万円）</label>
+    <input name="other_costs" value="{{v.other_costs}}" placeholder="例）250">
+    <div class="hint">登記・火災保険・ローン手数料など</div></div>
+   <div></div>
+  </div>
+
+  <h3 class="sec">金額がまだ読めない工事</h3>
+  <div class="hint" style="margin-bottom:8px">
+   要るか要らないかだけ選んでください。<b>金額は出しません。</b>
+   公的な費用統計が無く、根拠のない相場を出さない方針のためです。
+   要ると分かっているものは、合計に混ぜずに「まだ金額の出ていない項目」
+   として残します。</div>
+  {% for key, label in needs %}
+  <div class="row">
+   <div><label>{{label}}</label>
+    <select name="{{key}}">
+     <option value="unknown" {{'selected' if v[key]=='unknown' else ''}}>まだ分からない</option>
+     <option value="yes" {{'selected' if v[key]=='yes' else ''}}>要る</option>
+     <option value="no" {{'selected' if v[key]=='no' else ''}}>要らない</option>
+    </select></div>
+   <div></div>
+  </div>
+  {% endfor %}
+
+  <h3 class="sec">住宅ローン本体</h3>
+  <div class="row">
+   <div><label>世帯年収（万円）</label>
+    <input name="income" value="{{v.income}}" placeholder="例）800"></div>
+   <div><label>頭金（万円）</label>
+    <input name="down" value="{{v.down}}" placeholder="例）500"></div>
+  </div>
+  <div class="row">
+   <div><label>借入年数（年）</label>
+    <input name="loan_years" value="{{v.loan_years}}" placeholder="35"></div>
+   <div></div>
+  </div>
+
+  <details class="more">
+   <summary>住所から自動で判定できないとき</summary>
+   <div class="row">
+    <div><label>市区町村コード</label>
+     <input name="city" value="{{v.city}}" placeholder="住所から自動判定"></div>
+    <div><label>町名</label>
+     <input name="district" value="{{v.district}}" placeholder="住所から自動判定"></div>
+   </div>
+   <div class="row">
+    <div><label>指定建ぺい率（％）</label>
+     <input name="coverage" value="{{v.coverage}}" placeholder="住所から自動判定"></div>
+    <div><label>指定容積率（％）</label>
+     <input name="far" value="{{v.far}}" placeholder="住所から自動判定"></div>
+   </div>
+   <div class="row">
+    <div><label>最寄駅まで徒歩（分）</label>
+     <input name="station" value="{{v.station}}" placeholder="例）8"></div>
+    <div><label>駅までバス（分）</label>
+     <input name="bus" value="{{v.bus}}" placeholder="例）12"></div>
+   </div>
+  </details>
+
+  <button type="submit">PROで診断する</button>
+  <div class="hint">押したあと、公的データを集めるのに10〜30秒ほどかかります。</div>
+ </form>
+</div></body></html>
+"""
+
+# 金額の出せない工事。src/land_finance.py の NO_SOURCE_ITEMS と対にする。
+LAND_NEEDS = [("need_ground", "地盤改良"),
+              ("need_demolition", "古家の解体"),
+              ("need_utilities", "上下水道・ガスの引き込み")]
+
+LAND_PRO_FORM = (LAND_PRO_FORM
+                 .replace("LAND_PRO_CSS_PLACEHOLDER", _FORM_CSS)
+                 .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
+                 .replace("BRAND_BAR", brand_bar("PRO 土地診断"))
+                 .replace("</div></body></html>",
+                          FOOTER + "</div></body></html>"))
+
+
+def _land_pro_defaults():
+    v = dict(_land_example_v())
+    v.update(contract_date="", deposit="", settlement="", completion="",
+             start_date="", framing_date="", bridge_rate="", own_funds="",
+             start_pct="", framing_pct="", extra_work="", exterior="",
+             other_costs="")
+    for key, _label in LAND_NEEDS:
+        v[key] = "unknown"
+    return v
+
+
+def _land_pro_form_values(f):
+    v = _land_pro_defaults()
+    for k in v:
+        if f.get(k) is not None:
+            v[k] = f.get(k)
+    return v
+
+
+def _land_pro_page(v, banner=None):
+    return render_template_string(LAND_PRO_FORM, v=v, banner=banner,
+                                  road_types=LAND_ROAD_TYPES,
+                                  conditions=LAND_CONDITIONS,
+                                  needs=LAND_NEEDS)
+
+
+@app.route("/pro/land/start", methods=["POST"])
+def pro_land_start():
+    """無料の土地診断から、入力を引き継いでPROのフォームを開く。"""
+    g = _require_pro()
+    if g is not None:
+        return g
+    return _land_pro_page(
+        _land_pro_form_values(request.form),
+        banner=(_EDIT_BANNER if request.form.get("edit") else
+                "無料診断の入力を引き継ぎました。"
+                "支払いの予定を入れると、つなぎ融資の利息が出ます。"))
+
+
+@app.route("/pro/land", methods=["GET", "POST"])
+def pro_land():
+    """土地のPRO診断。課金中はPRO会員だけ。"""
+    g = _require_pro()
+    if g is not None:
+        return g
+    if request.method == "GET":
+        return _land_pro_page(_land_pro_defaults())
+    if not _rate_ok(_client_ip()):
+        return _land_pro_page(
+            _land_pro_form_values(request.form),
+            f"本日の診断回数の上限（{_RATE_LIMIT}回）に達しました。"), 429
+    if not _SEM.acquire(timeout=25):
+        return _land_pro_page(_land_pro_form_values(request.form),
+                              "ただいまアクセスが集中しています。"), 503
+    try:
+        return _run_land_pro(request.form)
+    finally:
+        _SEM.release()
+
+
+def _needs_from_form(f):
+    """要否の回答を {費目名: True/False/None} にする。"""
+    out = {}
+    for key, label in LAND_NEEDS:
+        a = (f.get(key) or "unknown").strip()
+        out[label] = True if a == "yes" else (False if a == "no" else None)
+    return out
+
+
+def _run_land_pro(f):
+    from src.land_finance import bridge_loan, cash_timeline, land_total
+
+    subject, city, district, err = _land_subject_from(f)
+    if err:
+        return _land_pro_page(_land_pro_form_values(f), err)
+
+    loan_years = max(1, min(50, to_int(f.get("loan_years")) or 35))
+    down_yen = to_yen(f.get("down")) or 0
+    res = run_land_pipeline(
+        subject, reinfolib_key=os.environ.get("REINFOLIB_KEY"),
+        google_key=os.environ.get("GOOGLE_KEY"),
+        mock=(os.environ.get("SHINDAN_MOCK") == "1"),
+        annual_income=to_yen(f.get("income")), down_payment=down_yen,
+        loan_years=loan_years,
+        estat_appid=os.environ.get("ESTAT_APPID"),
+        estat_table=os.environ.get("ESTAT_TABLE", "0000020201"))
+
+    own = to_yen(f.get("own_funds")) or 0
+    bridge = bridge_loan(
+        land_price=subject.price or 0,
+        building_price=subject.building_budget or 0,
+        settlement=f.get("settlement"), start=f.get("start_date"),
+        framing=f.get("framing_date"), completion=f.get("completion"),
+        rate_pct=to_float(f.get("bridge_rate")) or 0.0,
+        own_funds=own,
+        start_pct=to_int(f.get("start_pct")),
+        framing_pct=to_int(f.get("framing_pct")))
+    total = land_total(
+        subject.price or 0, subject.building_budget or 0,
+        extra_work=to_yen(f.get("extra_work")),
+        exterior=to_yen(f.get("exterior")),
+        other_costs=to_yen(f.get("other_costs")),
+        bridge_interest=bridge.interest,
+        needs=_needs_from_form(f))
+    events = cash_timeline(
+        bridge, subject.price or 0, subject.building_budget or 0,
+        own_funds=own, deposit=to_yen(f.get("deposit")),
+        contract_date=f.get("contract_date"), settlement=f.get("settlement"),
+        completion=f.get("completion"))
+
+    metrics.bump("pro_diag")
+    return _render_land_result(res, subject, f, down_yen, loan_years,
+                               fin=_land_fin_ctx(bridge, total, events),
+                               pro=True)
+
+
+def _land_fin_ctx(bridge, total, events):
+    """資金の画面に渡す値。金額の表記は man_yen に通して揃える。"""
+    from src.finance import man_yen as my
+
+    def when(d):
+        return f"{d.year}年{d.month}月{d.day}日" if d else "—"
+
+    return dict(
+        rate=bridge.rate_pct, days=bridge.days,
+        principal=my(bridge.principal), interest=my(bridge.interest),
+        has_interest=bool(bridge.interest),
+        draws=[dict(name=x.name, date=when(x.date), amount=my(x.amount),
+                    days=x.days, interest=my(x.interest))
+               for x in bridge.drawdowns],
+        notes=bridge.notes, assumed=bridge.assumed,
+        # キー名を costs にしてあるのは、Jinja で fin.items と書くと
+        # 辞書の items メソッドが先に返って落ちるため。
+        costs=[dict(name=i.name, amount=my(i.amount), basis=i.basis,
+                    known=i.amount is not None) for i in total.items],
+        total=my(total.total), unknown_count=len(total.unknown),
+        events=[dict(date=when(e.date), name=e.name, amount=my(e.amount),
+                     source=e.source, note=e.note) for e in events])
 
 
 # ---- PRO 購入診断（たたき台・戸建）--------------------------------
