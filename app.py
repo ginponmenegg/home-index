@@ -3920,7 +3920,7 @@ BRAND_BAR
   近隣の<b>土地の成約事例</b>から㎡単価の分布を出します。</p>
  <p class="lead"><b>所在地・価格・敷地面積・建物の予算</b>の4つで診断できます。
   分かる項目を足すほど、点の確からしさ（情報充足度）が上がります。
-  金額は<b>万円</b>。<a href="/buy">戸建（建売）の診断はこちら</a></p>
+  金額は<b>万円</b>。<a href="/buy">戸建の診断はこちら</a>　<a href="/mansion">マンションの診断はこちら</a></p>
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
 
@@ -4187,14 +4187,19 @@ BRAND_BAR
  {% if mk.count %}
  <div class="card">
   <h2>近隣の土地取引</h2>
-  {% if mk.unit_mid %}
-   <p class="big">㎡単価 {{mk.low}} 〜 {{mk.high}}<span class="muted"
-     style="font-size:15px;font-weight:400">（中央値 {{mk.mid}}）</span></p>
-   <p class="muted">{{mk.where}}の成約 {{mk.count}}件{{mk.years}}。
+  {% if mk.has %}
+   <p class="big">坪単価 {{mk.tlow}} 〜 {{mk.thigh}}<span class="muted"
+     style="font-size:15px;font-weight:400">（中央値 {{mk.tmid}}）</span></p>
+   <p style="font-size:15px;margin:2px 0 0">㎡単価 {{mk.low}} 〜 {{mk.high}}
+    <span class="muted">（中央値 {{mk.mid}}）</span></p>
+   <p class="muted">{{mk.where}}の土地の成約 {{mk.count}}件{{mk.years}}。
     ばらつきは中央値の±{{mk.spread}}%です。</p>
    {% if mk.subject_unit %}
-   <p style="font-size:15px;margin:10px 0 0">この土地の㎡単価は
-    <b>{{mk.subject_unit}}</b>（{{mk.position}}）</p>
+   <div class="kv" style="margin-top:12px">
+    <div><b>この土地の坪単価</b>{{mk.subject_tsubo}}</div>
+    <div><b>この土地の㎡単価</b>{{mk.subject_unit}}</div>
+    <div><b>近隣と比べると</b>{{mk.position}}</div>
+   </div>
    {% endif %}
    <div class="foot"><b>点数には使っていません。</b>同じ町でも、角地か、
     間口が広いか、形がいびつか、道路が何mかで単価は大きく動きます。
@@ -4416,6 +4421,18 @@ def _public_warnings(warnings):
     return out[:6]
 
 
+# 土地の打ち合わせは坪単価で進むことが多い。㎡単価だけだと読み替えが要る。
+M2_PER_TSUBO = 3.30578
+
+
+def _tsubo_yen(unit_m2):
+    """㎡単価（円）を坪単価の万円表記に直す。"""
+    if not unit_m2:
+        return None
+    man = unit_m2 * M2_PER_TSUBO / 10000.0
+    return f"{man:.1f}万円"
+
+
 def _land_position(unit, low, mid, high):
     """対象地の㎡単価が分布のどこにいるか。断定的な言葉は使わない。"""
     if unit is None or mid is None:
@@ -4477,8 +4494,12 @@ def _render_land_result(res, subject, f, down_yen, loan_years):
         if mkt.irregular_pct is not None:
             traits.append(dict(k="不整形だった割合", v=f"{mkt.irregular_pct}%"))
         mk.update(
+            has=True,
             low=f"{mkt.unit_low:,}円", mid=f"{mkt.unit_mid:,}円",
             high=f"{mkt.unit_high:,}円", spread=mkt.spread_pct,
+            tlow=_tsubo_yen(mkt.unit_low), tmid=_tsubo_yen(mkt.unit_mid),
+            thigh=_tsubo_yen(mkt.unit_high),
+            subject_tsubo=_tsubo_yen(mkt.subject_unit),
             where=(mkt.district or "市区町村全体"),
             years=(f"（{mkt.years[0]}〜{mkt.years[-1]}年）" if mkt.years else ""),
             subject_unit=(f"{mkt.subject_unit:,}円/㎡" if mkt.subject_unit else None),
@@ -4488,6 +4509,8 @@ def _render_land_result(res, subject, f, down_yen, loan_years):
     elif mkt:
         mk["note"] = (mkt.notes[0] if mkt.notes
                       else "近隣の土地取引が見つかりませんでした")
+    else:
+        mk["note"] = "近隣の土地取引を取得できませんでした"
 
     sc = score_cap(subject.road_width_m, subject.frontage_m,
                    subject.road_type,

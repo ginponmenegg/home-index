@@ -6,7 +6,6 @@ import sys
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.setdefault("SHINDAN_MOCK", "1")
 
 import app as webapp  # noqa: E402
 
@@ -15,6 +14,23 @@ FORM = dict(address="千葉県船橋市前原西6-1", price="1800", area="120",
             road_type="公道", frontage="8", station="12", coverage="60",
             far="200", city="12204", district="前原西", income="800",
             down="500", loan_years="35")
+
+
+@pytest.fixture(autouse=True)
+def mock_mode():
+    """毎回このテストの中で立てる。
+
+    import 時に一度だけ立てると、先に走る test_accounts が後始末で
+    SHINDAN_MOCK を消したあとに走ったとき、実際のAPIを叩きにいって
+    成約0件になる。順番に依存しない形にしておく。
+    """
+    keep = os.environ.get("SHINDAN_MOCK")
+    os.environ["SHINDAN_MOCK"] = "1"
+    yield
+    if keep is None:
+        os.environ.pop("SHINDAN_MOCK", None)
+    else:
+        os.environ["SHINDAN_MOCK"] = keep
 
 
 @pytest.fixture
@@ -118,6 +134,44 @@ def test_the_edit_button_brings_the_answers_back(client):
     h = client.post("/land/edit", data=FORM).get_data(as_text=True)
     assert 'value="1800"' in h and 'value="120"' in h
     assert 'value="公道" selected' in h or '"公道" selected' in h
+
+
+def test_the_form_links_to_both_other_diagnoses(client):
+    h = client.get("/land").get_data(as_text=True)
+    assert "戸建の診断はこちら" in h
+    assert "マンションの診断はこちら" in h
+    assert "建売" not in h          # 土地から見たら戸建は戸建
+
+
+# ---- 近隣の土地取引（モックの宅地(土地)で描く）----
+MARKET = dict(FORM, address="神奈川県小田原市南町1-1", city="14206",
+              district="南町")
+
+
+def test_the_neighbourhood_prices_are_shown_in_tsubo_and_m2(client):
+    """土地の打ち合わせは坪単価で進む。㎡単価だけだと読み替えが要る。"""
+    h = client.post("/land_diagnose", data=MARKET).get_data(as_text=True)
+    assert "坪単価" in h
+    assert "㎡単価" in h
+    assert "中央値" in h
+    assert "この土地の坪単価" in h
+    assert "点数には使っていません" in h
+
+
+def test_the_neighbourhood_card_says_something_even_with_no_sales(client):
+    """分布が出せないときに、見出しだけ出して中身が空になってはいけない。"""
+    h = client.post("/land_diagnose",
+                    data=dict(MARKET, district="存在しない町",
+                              city="99999")).get_data(as_text=True)
+    if "近隣の土地取引" in h:
+        i = h.index("近隣の土地取引")
+        assert len(h[i:i + 600].strip()) > 100
+
+
+def test_the_neighbourhood_traits_are_not_claimed_about_this_plot(client):
+    h = client.post("/land_diagnose", data=MARKET).get_data(as_text=True)
+    assert "私道に接していた割合" in h
+    assert "対象地がそうだという意味ではありません" in h
 
 
 def test_the_land_page_is_reachable_from_everywhere(client):

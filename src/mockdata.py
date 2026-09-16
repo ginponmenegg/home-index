@@ -30,4 +30,34 @@ def sample_transactions():
         T(34800000, 112, 96, 2006, 2024, 3, "南町"),
         T(33000000, 60, None, 2014, 2024, 4, "本町", cp="商業地域",
           structure="ＲＣ"),  # マンション類似の異形（建物面積欠損）
+    ] + sample_land_transactions()
+
+
+def sample_land_transactions():
+    """宅地(土地)の成約。土地診断の分布と近隣の傾向を出すのに要る。
+
+    宅地(土地と建物)の成約からは幅員・道路種別・形状がほとんど取れないが、
+    宅地(土地)には入っている（実測で96〜100%）。そこを見せるのが土地診断
+    なので、モックにも同じ形で入れておく。値はダミー。
+    """
+    def L(price, land, py, district, width=None, road=None, shape=None):
+        return Transaction(
+            trade_price=price, type="宅地(土地)",
+            municipality_code="14206", district_name=district,
+            land_area_m2=land, building_area_m2=None, build_year=None,
+            period_year=py, period_quarter=1, city_planning="第一種住居地域",
+            structure=None, layout=None,
+            road_width_m=width, road_type=road, land_shape=shape,
+            coverage_ratio=60, floor_area_ratio=200)
+    return [
+        L(19800000, 120.0, 2024, "南町", 6.0, "公道", "長方形"),
+        L(17500000, 110.5, 2024, "南町", 4.0, "公道", "長方形"),
+        L(23000000, 132.0, 2023, "南町", 6.0, "公道", "ほぼ長方形"),
+        L(15800000, 105.0, 2023, "南町", 4.0, "私道", "不整形"),
+        L(21500000, 125.0, 2022, "南町", 8.0, "公道", "長方形"),
+        L(14200000, 98.0, 2022, "南町", 3.5, "私道", "長方形"),
+        L(26000000, 145.0, 2024, "南町", 6.0, "公道", "台形"),
+        L(16900000, 112.0, 2021, "南町", 4.0, "公道", "長方形"),
+        L(12000000, 88.0, 2021, "浜町", 4.0, "公道", "長方形"),
+        L(18000000, 120.0, 2020, "浜町", 6.0, "公道", "長方形"),
     ]
