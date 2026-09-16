@@ -135,3 +135,72 @@ def test_unanswered_costs_stay_unknown_rather_than_assumed_absent():
 def test_a_seller_paid_demolition_is_not_the_buyers_cost():
     assert cost_needs(detail_from(dict(GOOD, oldhouse="seller")))["古家の解体"] \
         is False
+
+
+# ============================================================
+# B群 ── 建てられる形を決める規制
+# ============================================================
+from src.land_pro_scoring import (RULE_CHOICES, RULE_MAX_DOWN, RULE_MAX_UP,
+                                  corner_designated, rule_detail_from,
+                                  score_land_rules)
+
+
+def _rules(**kw):
+    return rule_detail_from(kw)
+
+
+def _base_build(raw=1.0, suff=0.8):
+    return CategoryScore("建てられる家", 25, raw, round(25 * raw, 1), suff,
+                         "延床の上限 240㎡", [])
+
+
+def test_a_corner_without_the_designation_is_not_relaxed():
+    """指定が確認できたときだけ True。ここを緩めると、建てられない家を
+    建てられると言うことになる。"""
+    assert corner_designated(_rules(corner="designated")) is True
+    assert corner_designated(_rules(corner="no")) is False
+    assert corner_designated(_rules(corner="corner_only")) is None
+    assert corner_designated(_rules()) is None
+
+
+def test_the_corner_is_not_scored_as_a_delta():
+    """角地は建ぺい率そのものを変える。点の足し引きにはしない。"""
+    from src.land_pro_scoring import RULE_ADJUST
+    assert not [k for k in RULE_ADJUST if k[0] == "corner"]
+
+
+def test_a_district_plan_costs_points_and_says_why():
+    cat, _ = score_land_rules(_base_build(), _rules(district_plan="yes"))
+    assert cat.points < _base_build().points
+    assert any("外壁の後退" in m for m in cat.minus)
+
+
+def test_the_strictest_height_district_costs_the_most():
+    def pts(v):
+        return score_land_rules(_base_build(raw=0.8),
+                                _rules(height_district=v))[0].points
+    assert pts("h1") < pts("h2") < pts("h3") < pts("none")
+
+
+def test_the_fire_zone_mentions_the_relaxation_it_unlocks():
+    cat, _ = score_land_rules(_base_build(), _rules(fire_zone="fire"))
+    assert any("耐火建築物にすれば" in m for m in cat.minus)
+
+
+def test_the_rule_adjustments_are_bounded():
+    worst = _rules(fire_zone="fire", height_district="h1",
+                   district_plan="yes", scenic="yes")
+    cat, _ = score_land_rules(_base_build(raw=0.9), worst)
+    assert cat.raw == round(0.9 + RULE_MAX_DOWN, 3)
+    assert 0 < RULE_MAX_UP < abs(RULE_MAX_DOWN)
+
+
+def test_unanswered_rules_come_back_as_things_to_check():
+    cat, confirm = score_land_rules(_base_build(), _rules())
+    assert cat.points == _base_build().points      # 減点しない
+    assert len(confirm) == len(RULE_CHOICES)
+
+
+def test_a_corner_with_no_designation_still_asks_about_it():
+    _, confirm = score_land_rules(_base_build(), _rules(corner="corner_only"))
+    assert any("特定行政庁が指定した角地" in c for c in confirm)

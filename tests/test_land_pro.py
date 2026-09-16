@@ -32,6 +32,10 @@ BAD_SITE = dict(water="none", sewer="septic", gas="lpg", ground="needed",
 def mock_mode():
     keep = os.environ.get("SHINDAN_MOCK")
     os.environ["SHINDAN_MOCK"] = "1"
+    # 1日40回の上限はモジュール変数なので、テストをまたいで貯まる。
+    # 土地のテストが増えたときに上限に当たり、診断の代わりにフォームが
+    # 返ってきて、関係のないアサーションが落ちた。毎回まっさらにする。
+    webapp._RATE.clear()
     yield
     if keep is None:
         os.environ.pop("SHINDAN_MOCK", None)
@@ -226,3 +230,61 @@ def test_the_score_is_the_same_when_the_site_is_unanswered(client):
     free = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
     pro = _post(client)
     assert score(free) == score(pro)
+
+
+# ---- B群（建てられる形を決める規制）----
+RULE_KEYS = ("corner", "fire_zone", "height_district", "district_plan",
+             "scenic")
+
+
+def _build(h):
+    m = re.search(r"建てられる家</span>\s*<span class=\"muted\">([\d.]+) / 25", h)
+    return float(m.group(1))
+
+
+def test_the_planning_questions_are_on_the_form(client):
+    h = client.get("/pro/land").get_data(as_text=True)
+    for key in RULE_KEYS:
+        assert f'name="{key}"' in h, key
+    assert "角地で、特定行政庁の指定がある" in h
+    assert "地区計画または建築協定がある" in h
+
+
+def test_a_designated_corner_raises_the_coverage_and_the_ground_floor(client):
+    """角地の緩和は点の足し引きではなく、建ぺい率そのものを変える。"""
+    plain = _post(client)
+    corner = _post(client, corner="designated")
+    assert "建築面積の上限（1階）</b>72㎡" in plain
+    assert "建築面積の上限（1階）</b>84㎡" in corner
+    assert "建ぺい率（緩和後）" in corner
+    assert "法53条3項2号" in corner
+
+
+def test_a_corner_without_the_designation_changes_nothing(client):
+    """角地であることと、特定行政庁に指定されていることは別。"""
+    plain = _post(client)
+    unsure = _post(client, corner="corner_only")
+    assert "建築面積の上限（1階）</b>72㎡" in unsure
+    assert _build(unsure) == _build(plain)
+    assert "指定があるか" in unsure          # 確認先は出す
+
+
+def test_restrictions_lower_the_buildable_score(client):
+    loose = _post(client, district_plan="no", height_district="none",
+                  scenic="no", fire_zone="none")
+    tight = _post(client, district_plan="yes", height_district="h1",
+                  scenic="yes", fire_zone="fire")
+    assert _build(tight) < _build(loose)
+    assert "外壁の後退" in tight
+
+
+def test_leaving_the_planning_questions_blank_does_not_dock_the_score(client):
+    assert _build(_post(client)) == _build(
+        client.post("/land_diagnose", data=PRO).get_data(as_text=True))
+
+
+def test_the_floors_needed_to_use_the_far_are_spelled_out(client):
+    """建ぺい60%・容積200%は4階建てにしないと容積を使い切れない。"""
+    h = _post(client)
+    assert "4階建てが要ります" in h
+    assert "注文住宅は2階建てが多い" in h

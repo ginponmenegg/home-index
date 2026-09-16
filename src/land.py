@@ -43,8 +43,9 @@ u_building_coverage_ratio_ja / u_floor_area_ratio_ja）。住所から自動で�
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 # 前面道路の幅員から基準容積率を出すときの乗数（建築基準法第52条第2項）。
 # 十分の四になるのは、低層住居専用・田園住居・中高層住居専用・住居・準住居。
@@ -58,12 +59,33 @@ FAR_MULTIPLIER_OTHER = 0.6
 MIN_ROAD_WIDTH_M = 4.0
 MIN_FRONTAGE_M = 2.0
 
+# 建ぺい率の緩和（建築基準法第53条第3項・第6項。e-Gov で確認）。
+#
+#   第3項「第一号又は第二号のいずれかに該当する建築物にあつては第一項各号に
+#         定める数値に十分の一を加えたものを…第一号及び第二号に該当する
+#         建築物にあつては…十分の二を加えたもの」
+#     一号 … 防火地域内の耐火建築物等、準防火地域内の耐火・準耐火建築物等
+#            （ただし建蔽率の限度が十分の八の地域は一号から除く）
+#     二号 … 街区の角にある敷地又はこれに準ずる敷地で
+#            **特定行政庁が指定するもの**
+#
+#   第6項一号「防火地域（…限度が十分の八とされている地域に限る）内にある
+#            耐火建築物等」は、前各項の規定を適用しない（＝制限なし）
+#
+# **角地なら自動で緩和、ではない。**特定行政庁が指定した角地だけ。
+# 指定されていない角地に10%を足すと、建てられない家を建てられると言うことになる。
+CORNER_BONUS = 10
+FIRE_BONUS = 10
+COVERAGE_EXEMPT = 80    # この建ぺい率の地域＋防火地域＋耐火で制限なし
+
 
 @dataclass
 class BuildCapacity:
     """この土地に建てられる大きさ。分からないものは None のままにする。"""
     site_area_m2: Optional[float] = None
-    coverage_ratio: Optional[int] = None       # 指定建ぺい率(%)
+    coverage_ratio: Optional[int] = None       # 実際に使える建ぺい率(%)
+    designated_coverage: Optional[int] = None  # 都市計画で定められた建ぺい率(%)
+    coverage_relaxed: bool = False             # 法53条の緩和がかかったか
     designated_far: Optional[int] = None       # 指定容積率(%)
     road_far: Optional[int] = None             # 前面道路による基準容積率(%)
     effective_far: Optional[int] = None        # 実際に使えるほう(%)
@@ -71,7 +93,57 @@ class BuildCapacity:
     max_footprint_m2: Optional[float] = None   # 建築面積の上限
     max_total_floor_m2: Optional[float] = None  # 延床の上限
     setback_m2: Optional[float] = None         # セットバックで使えなくなる面積
+    floors_to_use_far: Optional[int] = None    # 容積率を使い切るのに要る階数
     notes: List[str] = field(default_factory=list)
+
+
+def coverage_with_relaxations(coverage_ratio: Optional[int],
+                              corner_designated: Optional[bool] = None,
+                              fire_relaxation: bool = False
+                              ) -> Tuple[Optional[int], List[str]]:
+    """建ぺい率に、法53条の緩和を反映する。戻り値は (建ぺい率, 注記)。
+
+    corner_designated は「特定行政庁が指定した角地か」。角地であることと、
+    指定されていることは別なので、True にするのは指定が確認できたときだけ。
+
+    fire_relaxation は「防火地域に耐火建築物等を建てる／準防火地域に
+    耐火・準耐火建築物等を建てる」場合。土地の段階では**建てるものを
+    まだ選べる**ので、こちらが勝手に True にはしない。
+    """
+    notes: List[str] = []
+    if not coverage_ratio:
+        return coverage_ratio, notes
+
+    if fire_relaxation and coverage_ratio == COVERAGE_EXEMPT:
+        notes.append(
+            f"建ぺい率{COVERAGE_EXEMPT}%の地域に、防火地域内の耐火建築物を"
+            "建てる場合は建ぺい率の制限を受けません（法53条6項1号）")
+        return 100, notes
+
+    out = coverage_ratio
+    if fire_relaxation:
+        out += FIRE_BONUS
+        notes.append(f"防火・準防火の緩和で建ぺい率＋{FIRE_BONUS}%（法53条3項1号）")
+    if corner_designated:
+        out += CORNER_BONUS
+        notes.append(
+            f"特定行政庁が指定した角地なので建ぺい率＋{CORNER_BONUS}%"
+            "（法53条3項2号）")
+    out = min(100, out)
+    return out, notes
+
+
+def floors_to_use_far(max_total_floor_m2: Optional[float],
+                      max_footprint_m2: Optional[float]) -> Optional[int]:
+    """容積率を使い切るのに要る階数。
+
+    建ぺい率60%・容積率200%の土地は、200÷60 で**4階建て**にしないと容積を
+    使い切れない。注文住宅は2階建てが多いので、広告の容積率をそのまま
+    「建てられる広さ」と読むと実際より大きく見える。
+    """
+    if not max_total_floor_m2 or not max_footprint_m2:
+        return None
+    return int(math.ceil(max_total_floor_m2 / max_footprint_m2 - 1e-9))
 
 
 def far_multiplier(use_district: Optional[str]) -> float:
@@ -114,10 +186,18 @@ def build_capacity(site_area_m2: Optional[float],
                    designated_far: Optional[int],
                    use_district: Optional[str] = None,
                    road_width_m: Optional[float] = None,
-                   frontage_m: Optional[float] = None) -> BuildCapacity:
+                   frontage_m: Optional[float] = None,
+                   corner_designated: Optional[bool] = None,
+                   fire_relaxation: bool = False) -> BuildCapacity:
     """建てられる建築面積と延床の上限。分からないところは埋めない。"""
+    designated_coverage = coverage_ratio
+    coverage_ratio, relax_notes = coverage_with_relaxations(
+        coverage_ratio, corner_designated, fire_relaxation)
     c = BuildCapacity(site_area_m2=site_area_m2, coverage_ratio=coverage_ratio,
+                      designated_coverage=designated_coverage,
+                      coverage_relaxed=(coverage_ratio != designated_coverage),
                       designated_far=designated_far)
+    c.notes.extend(relax_notes)
 
     # ---- 前面道路による容積率の上限（法第52条第2項）----
     if road_width_m and road_width_m < 12.0:
@@ -160,6 +240,23 @@ def build_capacity(site_area_m2: Optional[float],
         c.max_footprint_m2 = round(usable * coverage_ratio / 100.0, 1)
     if usable and c.effective_far:
         c.max_total_floor_m2 = round(usable * c.effective_far / 100.0, 1)
+    # 絶対高さ（法55条）。第一種・第二種低層住居専用地域と田園住居地域は
+    # 10mか12m（都市計画でどちらかが定まる）。用途地域は無料でも取れるので、
+    # ここは無料の診断でも出す。
+    if use_district and any(t in use_district
+                            for t in ("低層住居専用", "田園住居")):
+        c.notes.append(
+            f"{use_district}は建物の高さが10mまたは12mまでに制限されます"
+            "（法55条。どちらかは都市計画で決まります）。3階建ては"
+            "設計次第で入らないことがあります")
+
+    c.floors_to_use_far = floors_to_use_far(c.max_total_floor_m2,
+                                            c.max_footprint_m2)
+    if c.floors_to_use_far and c.floors_to_use_far >= 3:
+        c.notes.append(
+            f"容積率を使い切るには{c.floors_to_use_far}階建てが要ります"
+            "（延床の上限 ÷ 建築面積の上限）。注文住宅は2階建てが多いので、"
+            "実際に建てる家はこれより小さくなるのが普通です")
     return c
 
 

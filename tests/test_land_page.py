@@ -26,6 +26,10 @@ def mock_mode():
     """
     keep = os.environ.get("SHINDAN_MOCK")
     os.environ["SHINDAN_MOCK"] = "1"
+    # 1日40回の上限はモジュール変数なので、テストをまたいで貯まる。
+    # 土地のテストが増えたときに上限に当たり、診断の代わりにフォームが
+    # 返ってきて、関係のないアサーションが落ちた。毎回まっさらにする。
+    webapp._RATE.clear()
     yield
     if keep is None:
         os.environ.pop("SHINDAN_MOCK", None)

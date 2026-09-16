@@ -286,3 +286,169 @@ def score_land_site(base: CategoryScore,
                   sufficiency=round(suff, 2), reason=reason,
                   plus=plus, minus=minus)
     return cat, confirm
+
+
+# ============================================================
+# B群 ── 建てられる形を決める規制
+# ============================================================
+# 角地緩和だけは、ここで点を足し引きしない。建ぺい率そのものが変わるので、
+# build_capacity に corner_designated を渡して計算し直す。結果は延床と
+# 建築面積の数字に出る（land.coverage_with_relaxations）。
+
+RULE_CHOICES: Dict[str, List[Tuple[str, str]]] = {
+    "corner": [(UNKNOWN, "未確認"),
+               ("designated", "角地で、特定行政庁の指定がある"),
+               ("corner_only", "角地だが、指定があるか分からない"),
+               ("no", "角地ではない")],
+    "fire_zone": [(UNKNOWN, "未確認"),
+                  ("none", "防火の指定はない"),
+                  ("art22", "法22条区域"),
+                  ("quasi", "準防火地域"),
+                  ("fire", "防火地域")],
+    "height_district": [(UNKNOWN, "未確認"),
+                        ("none", "高度地区の指定はない"),
+                        ("h3", "第三種高度地区"),
+                        ("h2", "第二種高度地区"),
+                        ("h1", "第一種高度地区")],
+    "district_plan": [(UNKNOWN, "未確認"),
+                      ("no", "地区計画・建築協定はない"),
+                      ("yes", "地区計画または建築協定がある")],
+    "scenic": [(UNKNOWN, "未確認"),
+               ("no", "風致地区・景観地区ではない"),
+               ("yes", "風致地区または景観地区")],
+}
+
+RULE_LABELS = {"corner": "角地かどうか", "fire_zone": "防火の指定",
+               "height_district": "高度地区", "district_plan": "地区計画・建築協定",
+               "scenic": "風致地区・景観地区"}
+
+RULE_SECTIONS = [
+    ("建てられる形を決める規制",
+     "都市計画の話です。市区町村の都市計画課か、重要事項説明書で分かります。"
+     "**角地の指定があるかどうかで、建てられる大きさが変わります。**",
+     ["corner", "fire_zone", "height_district", "district_plan", "scenic"]),
+]
+
+# 建てられる家（25点）の raw への足し引き。角地はここに入れない
+# （建ぺい率そのものが変わるため、延床と建築面積の数字に出る）。
+RULE_ADJUST: Dict[Tuple[str, str], float] = {
+    ("fire_zone", "none"): 0.02,
+    ("fire_zone", "art22"): 0.0,
+    ("fire_zone", "quasi"): -0.01,
+    ("fire_zone", "fire"): -0.03,
+    ("height_district", "none"): 0.02,
+    ("height_district", "h3"): -0.02,
+    ("height_district", "h2"): -0.04,
+    ("height_district", "h1"): -0.06,
+    ("district_plan", "no"): 0.02,
+    ("district_plan", "yes"): -0.06,
+    ("scenic", "no"): 0.01,
+    ("scenic", "yes"): -0.05,
+}
+
+RULE_PLUS_TEXT = {
+    ("corner", "designated"): "特定行政庁が指定した角地。建ぺい率が10%上がります",
+    ("district_plan", "no"): "地区計画・建築協定の制限がありません",
+    ("height_district", "none"): "高度地区の指定がありません",
+}
+RULE_MINUS_TEXT = {
+    ("corner", "corner_only"): "角地ですが、特定行政庁の指定があるか"
+                               "分かりません。指定がなければ建ぺい率は"
+                               "上がりません（法53条3項2号）",
+    ("fire_zone", "fire"): "防火地域。建物を耐火構造にする必要があり、"
+                           "工事費が上がります。ただし耐火建築物にすれば"
+                           "建ぺい率が10%上がります（法53条3項1号）",
+    ("fire_zone", "quasi"): "準防火地域。外壁や開口部に制限がかかり、"
+                            "工事費に響きます。耐火・準耐火建築物にすれば"
+                            "建ぺい率が10%上がります",
+    ("height_district", "h1"): "第一種高度地区。北側の斜線制限が厳しく、"
+                               "北側の屋根を削ることになります",
+    ("height_district", "h2"): "第二種高度地区。北側に斜線制限がかかります",
+    ("height_district", "h3"): "第三種高度地区。北側に斜線制限がかかります",
+    ("district_plan", "yes"): "地区計画または建築協定があります。外壁の後退、"
+                              "高さ、屋根の形、色まで決まっていることがあり、"
+                              "設計が始まってから気づくと計画のやり直しになります",
+    ("scenic", "yes"): "風致地区・景観地区。建ぺい率や高さ、外観に"
+                       "上乗せの制限がかかります",
+}
+
+RULE_CONFIRM_TEXT = {
+    "corner": "角地: 角地の建ぺい率の緩和は、特定行政庁が指定した角地だけに"
+              "かかります（法53条3項2号）。指定があるかを建築指導課で"
+              "確認してください",
+    "fire_zone": "防火: 防火地域・準防火地域・法22条区域のどれかを"
+                 "都市計画課で確認してください。工事費に直接効きます",
+    "height_district": "高度地区: 指定があるかを都市計画課で確認してください。"
+                       "北側の斜線が厳しいと、思った形の家になりません",
+    "district_plan": "地区計画: 地区計画・建築協定の有無を都市計画課で"
+                     "確認してください。外壁後退や意匠の制限がかかります",
+    "scenic": "風致地区: 風致地区・景観地区かどうかを確認してください",
+}
+
+RULE_NOT_ANSWERED = {UNKNOWN, "corner_only"}
+RULE_MAX_UP = 0.08
+RULE_MAX_DOWN = -0.20
+
+
+def rule_detail_from(values: Dict[str, str]) -> Dict[str, str]:
+    """フォームの値からB群の答えを取り出す。知らない値は未確認に倒す。"""
+    out = {}
+    for key, choices in RULE_CHOICES.items():
+        v = (values.get(key) or UNKNOWN).strip()
+        out[key] = v if v in dict(choices) else UNKNOWN
+    return out
+
+
+def corner_designated(rules: Dict[str, str]) -> Optional[bool]:
+    """建ぺい率の緩和をかけてよいか。**指定が確認できたときだけ True。**
+
+    「角地だが指定は不明」を True にすると、建てられない家を建てられると
+    言うことになる。
+    """
+    v = rules.get("corner")
+    if v == "designated":
+        return True
+    if v == "no":
+        return False
+    return None
+
+
+def score_land_rules(base: CategoryScore,
+                     rules: Dict[str, str]) -> Tuple[CategoryScore, List[str]]:
+    """建てられる家のカテゴリを、都市計画の答えで上書きする。
+
+    角地はここで足し引きしない。建ぺい率が変わるので、延床と建築面積の
+    数字そのものが動く（呼び出し側が build_capacity をやり直す）。
+    """
+    plus, minus, confirm = list(base.plus), list(base.minus), []
+    bits = []
+    delta = 0.0
+
+    for key in RULE_CHOICES:
+        v = rules.get(key, UNKNOWN)
+        delta += RULE_ADJUST.get((key, v), 0.0)
+        if (key, v) in RULE_PLUS_TEXT:
+            plus.append(RULE_PLUS_TEXT[(key, v)])
+        if (key, v) in RULE_MINUS_TEXT:
+            minus.append(RULE_MINUS_TEXT[(key, v)])
+        if v in RULE_NOT_ANSWERED:
+            confirm.append(RULE_CONFIRM_TEXT[key])
+        else:
+            bits.append(f"{RULE_LABELS[key]}:{dict(RULE_CHOICES[key])[v]}")
+
+    raw = base.raw + max(RULE_MAX_DOWN, min(RULE_MAX_UP, delta))
+    raw = max(0.0, min(1.0, raw))
+
+    answered = sum(1 for k in RULE_CHOICES
+                   if rules.get(k, UNKNOWN) not in RULE_NOT_ANSWERED)
+    ratio = answered / len(RULE_CHOICES)
+    suff = 0.6 * base.sufficiency + 0.4 * ratio
+
+    reason = base.reason
+    if bits:
+        reason += "／" + "・".join(bits)
+    cat = replace(base, raw=round(raw, 3),
+                  points=round(base.weight * raw, 1),
+                  sufficiency=round(suff, 2), reason=reason,
+                  plus=plus, minus=minus)
+    return cat, confirm

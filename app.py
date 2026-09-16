@@ -4200,7 +4200,8 @@ BRAND_BAR
    <p class="muted">{{s.household}}人世帯の誘導居住面積水準は {{cap.guided}}㎡です
     （国土交通省・住生活基本計画）。</p>
    <div class="kv">
-    <div><b>指定建ぺい率</b>{{cap.coverage or "—"}}%</div>
+    <div><b>{% if cap.coverage_relaxed %}建ぺい率（緩和後）{% else %}指定建ぺい率{% endif %}</b>{{cap.coverage or "—"}}%{% if cap.coverage_relaxed %}
+     <span class="muted" style="font-size:11px">指定{{cap.designated_coverage}}%</span>{% endif %}</div>
     <div><b>指定容積率</b>{{cap.designated_far or "—"}}%</div>
     <div><b>実際に使える容積率</b>{{cap.effective_far or "—"}}%</div>
     <div><b>建築面積の上限（1階）</b>{{cap.footprint_m2 or "—"}}㎡</div>
@@ -4225,9 +4226,12 @@ BRAND_BAR
    <p class="muted">建ぺい率・容積率が取得できなかったため、建てられる大きさを
     計算していません。販売図面の数字を「もっと詳しく入れる」に入れると計算できます。</p>
   {% endif %}
-  <div class="foot">高さ制限（絶対高さ・斜線・日影）、角地の建ぺい率緩和、
-   防火地域の緩和は計算に入れていません。いずれも地点ごとの条件が要り、
-   公的データからは取れないためです。実際の設計はこれより小さくなることがあります。</div>
+  {% for n in cap.notes %}<div class="rsk">{{n}}</div>{% endfor %}
+  <div class="foot">斜線制限（道路斜線・北側斜線・隣地斜線）と日影規制は
+   計算に入れていません。真北の向きと隣地の条件が要り、公的データからは
+   取れないためです。実際の設計はこれより小さくなることがあります。
+   {% if not pro %}角地の建ぺい率緩和と防火地域の緩和も入れていません
+   （PROで確認できます）。{% endif %}</div>
  </div>
 
  {% if mk.count %}
@@ -4632,7 +4636,9 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
                 specs=" ・ ".join(bits))
 
     cap_ctx = dict(
-        coverage=c.coverage_ratio, designated_far=c.designated_far,
+        coverage=c.coverage_ratio, designated_coverage=c.designated_coverage,
+        coverage_relaxed=c.coverage_relaxed,
+        designated_far=c.designated_far,
         effective_far=c.effective_far, road_far=c.road_far,
         far_limited_by_road=c.far_limited_by_road,
         setback_m2=c.setback_m2,
@@ -4640,6 +4646,12 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
         floor_m2=(f"{c.max_total_floor_m2:.0f}" if c.max_total_floor_m2 else None),
         floor_tsubo=tsubo(c.max_total_floor_m2),
         footprint_m2=(f"{c.max_footprint_m2:.0f}" if c.max_footprint_m2 else None),
+        floors=c.floors_to_use_far,
+        # 建ぺい率の緩和・容積を使い切る階数・法55条の高さ制限は、
+        # 計算の途中で分かったこと。数字だけ出して黙っていると、
+        # なぜその数字になったのかが読む人に分からない。
+        notes=[n for n in c.notes if "セットバック" not in n
+               and "前面道路" not in n],
         guided=f"{guided_area_m2(household):.0f}")
 
     mk = dict(count=mkt.count if mkt else 0)
@@ -4877,6 +4889,22 @@ BRAND_BAR
   {% endfor %}
   {% endfor %}
 
+  {% for title, note, keys in rule_sections %}
+  <h3 class="sec">{{title}}</h3>
+  <div class="hint" style="margin-bottom:6px">{{note|safe}}</div>
+  {% for key in keys %}
+  <div class="row">
+   <div><label>{{rule_labels[key]}}</label>
+    <select name="{{key}}">
+     {% for val, lbl in rule_choices[key] %}
+     <option value="{{val}}" {{'selected' if v[key]==val else ''}}>{{lbl}}</option>
+     {% endfor %}
+    </select></div>
+   <div></div>
+  </div>
+  {% endfor %}
+  {% endfor %}
+
   <h3 class="sec">住宅ローン本体</h3>
   <div class="row">
    <div><label>世帯年収（万円）</label>
@@ -4936,6 +4964,8 @@ def _land_pro_defaults():
              other_costs="")
     for key in lps.CHOICES:
         v[key] = lps.UNKNOWN
+    for key in lps.RULE_CHOICES:
+        v[key] = lps.UNKNOWN
     return v
 
 
@@ -4953,7 +4983,10 @@ def _land_pro_page(v, banner=None):
                                   conditions=LAND_CONDITIONS,
                                   site_sections=lps.SECTIONS,
                                   site_choices=lps.CHOICES,
-                                  site_labels=lps.LABELS)
+                                  site_labels=lps.LABELS,
+                                  rule_sections=lps.RULE_SECTIONS,
+                                  rule_choices=lps.RULE_CHOICES,
+                                  rule_labels=lps.RULE_LABELS)
 
 
 @app.route("/pro/land/start", methods=["POST"])
@@ -4995,7 +5028,8 @@ def pro_land():
 
 def _run_land_pro(f):
     from src.land_finance import bridge_loan, cash_timeline, land_total
-    from src.land_scoring import score_cap
+    from src.land import build_capacity
+    from src.land_scoring import score_buildable, score_cap
     from src.scoring import grade_of, highlights
 
     subject, city, district, err = _land_subject_from(f)
@@ -5014,6 +5048,29 @@ def _run_land_pro(f):
         estat_table=os.environ.get("ESTAT_TABLE", "0000020201"))
 
     detail = lps.detail_from(f)
+    rules = lps.rule_detail_from(f)
+
+    # 角地の指定があれば建ぺい率そのものが変わる（法53条3項2号）。
+    # 点を足し引きするのではなく、建てられる大きさを計算し直す。
+    if lps.corner_designated(rules):
+        e = res.enrichment
+        ud = e.use_district if e else None
+        res.capacity = build_capacity(
+            subject.land_area_m2,
+            subject.coverage_ratio or (e.coverage_ratio if e else None),
+            subject.floor_area_ratio or (e.floor_area_ratio if e else None),
+            use_district=ud,
+            road_width_m=subject.road_width_m,
+            frontage_m=subject.frontage_m,
+            corner_designated=True)
+        # 建ぺい率が変わったので、素点を出し直す。都市計画の足し引きは
+        # このあとの上書きでまとめてかかるので、ここではかけない。
+        for i, c in enumerate(res.diagnosis.categories):
+            if c.name == "建てられる家":
+                res.diagnosis.categories[i] = score_buildable(
+                    res.capacity, ud, subject.household_size)
+                break
+
     own = to_yen(f.get("own_funds")) or 0
     bridge = bridge_loan(
         land_price=subject.price or 0,
@@ -5040,11 +5097,15 @@ def _run_land_pro(f):
     # 無料のリスク（25点）を、現地と書類の答えで上書きする。
     # 配点は変えない。戸建PROと同じで、raw を差し替えて充足度を上げる。
     d = res.diagnosis
+    extra_confirm = []
     for i, c in enumerate(d.categories):
         if c.name == "リスク":
-            d.categories[i], confirm = lps.score_land_site(c, detail)
-            d.to_confirm = list(d.to_confirm) + confirm
-            break
+            d.categories[i], conf = lps.score_land_site(c, detail)
+            extra_confirm += conf
+        elif c.name == "建てられる家":
+            d.categories[i], conf = lps.score_land_rules(c, rules)
+            extra_confirm += conf
+    d.to_confirm = list(d.to_confirm) + extra_confirm
     d.total_score = max(0, min(100, int(round(
         sum(c.points for c in d.categories)))))
     cap = score_cap(subject.road_width_m, subject.frontage_m,

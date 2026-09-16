@@ -134,3 +134,76 @@ def test_a_designated_ratio_still_wins_when_the_road_is_generous():
     assert c.road_far == 240
     assert c.effective_far == 200
     assert c.far_limited_by_road is False
+
+
+# ---- 建ぺい率の緩和（法53条3項・6項。e-Gov で条文を確認）----
+def test_the_corner_relaxation_needs_the_designation_not_just_a_corner():
+    """法53条3項2号は「街区の角にある敷地…で**特定行政庁が指定するもの**」。
+
+    角地であることと、指定されていることは別。指定されていない角地に
+    10%を足すと、建てられない家を建てられると言うことになる。
+    """
+    from src.land import coverage_with_relaxations
+    assert coverage_with_relaxations(60, corner_designated=True)[0] == 70
+    assert coverage_with_relaxations(60, corner_designated=False)[0] == 60
+    assert coverage_with_relaxations(60, corner_designated=None)[0] == 60
+
+
+def test_the_fire_relaxation_adds_ten_as_well():
+    from src.land import coverage_with_relaxations
+    assert coverage_with_relaxations(60, fire_relaxation=True)[0] == 70
+
+
+def test_both_relaxations_add_twenty():
+    # 「第一号及び第二号に該当する建築物にあつては…十分の二を加えたもの」
+    from src.land import coverage_with_relaxations
+    got, notes = coverage_with_relaxations(60, corner_designated=True,
+                                           fire_relaxation=True)
+    assert got == 80
+    assert len(notes) == 2
+
+
+def test_an_eighty_percent_zone_with_fireproofing_has_no_limit():
+    # 法53条6項1号。建蔽率の限度が十分の八の地域＋防火地域の耐火建築物等
+    from src.land import coverage_with_relaxations
+    got, notes = coverage_with_relaxations(80, fire_relaxation=True)
+    assert got == 100
+    assert any("53条6項" in n for n in notes)
+
+
+def test_the_relaxation_shows_up_in_the_buildable_area():
+    plain = build_capacity(120.0, 60, 200, "第一種住居地域", road_width_m=6.0)
+    corner = build_capacity(120.0, 60, 200, "第一種住居地域", road_width_m=6.0,
+                            corner_designated=True)
+    assert plain.max_footprint_m2 == 72.0
+    assert corner.max_footprint_m2 == 84.0
+    # 指定の値も残す。緩和後だけ出すと、何%の土地なのか分からなくなる。
+    assert corner.designated_coverage == 60
+    assert corner.coverage_ratio == 70
+    assert corner.coverage_relaxed is True
+    assert plain.coverage_relaxed is False
+
+
+# ---- 容積率を使い切るのに要る階数 ----
+def test_how_many_floors_the_far_actually_needs():
+    """建ぺい60%・容積200%の土地は、4階建てにしないと容積を使い切れない。
+
+    注文住宅は2階建てが多いので、広告の容積率をそのまま「建てられる広さ」
+    と読むと、実際よりずっと大きく見える。
+    """
+    from src.land import floors_to_use_far
+    assert floors_to_use_far(240.0, 72.0) == 4       # 200 ÷ 60 = 3.33
+    assert floors_to_use_far(120.0, 60.0) == 2       # ちょうど2階
+    assert floors_to_use_far(None, 72.0) is None
+
+    c = build_capacity(120.0, 60, 200, "第一種住居地域", road_width_m=6.0)
+    assert c.floors_to_use_far == 4
+    assert any("4階建てが要ります" in n for n in c.notes)
+
+
+def test_a_low_rise_zone_carries_the_absolute_height_note():
+    # 法55条。第一種・第二種低層住居専用地域と田園住居地域は10mか12m。
+    c = build_capacity(120.0, 50, 100, "第一種低層住居専用地域", road_width_m=6.0)
+    assert any("10mまたは12m" in n for n in c.notes)
+    plain = build_capacity(120.0, 60, 200, "第一種住居地域", road_width_m=6.0)
+    assert not any("10mまたは12m" in n for n in plain.notes)
