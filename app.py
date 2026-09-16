@@ -4164,6 +4164,24 @@ BRAND_BAR
   </div>
  </div>
 
+ {% if save %}
+ <div class="savebar no-print">
+  {% if save.logged_in %}
+   <form method="post" action="/save" style="margin:0">
+    <input type="hidden" name="snap" value="{{save.token}}">
+    <button type="submit">この結果を保存する</button>
+   </form>
+   <span class="why">保存すると、他の土地と項目ごとに並べて比べられます。
+    <a href="/mypage">保存した物件を見る</a></span>
+  {% else %}
+   <a class="b" href="/login" target="_blank" rel="noopener">ログインして保存する</a>
+   <span class="why">保存すると、他の土地と項目ごとに並べて比べられます。<br>
+    ログイン画面は<b>別のタブで開きます</b>。この結果は開いたまま残るので、
+    ログインしたあとこの画面に戻って保存してください。</span>
+  {% endif %}
+ </div>
+ {% endif %}
+
  {% if capped %}
  <div class="stop">
   <h2>この土地は、家を建てられない可能性があります</h2>
@@ -4753,6 +4771,23 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
                 down=man(down_yen), monthly=f"{L.monthly_payment:,}円",
                 burden=L.burden_ratio)
 
+    # 保存。戸建・マンションと同じ入口（/save）を使う。
+    # 土地は property_type を持たないので、種別は LAND_KIND で決め打つ。
+    save = None
+    if accounts_on():
+        redo = dict(kind=LAND_KIND)
+        redo.update({k: (f.get(k) or "")
+                     for k in _land_pro_form_values(f) if f.get(k)})
+        save = {"logged_in": bool(current_user())}
+        if save["logged_in"]:
+            save["token"] = sign_snapshot(dict(
+                kind=LAND_KIND,
+                title=f"土地　{subject.address}",
+                address=subject.address, price=subject.price,
+                total=d.total_score, grade=d.grade,
+                payload=saved.snapshot(res, subject, sctx, LAND_KIND,
+                                       None, redo)))
+
     # 無料の結果からPROへ入力を持っていくための値。年収などを含むので
     # URLには載せず、hiddenでPOSTする（戸建・マンションと同じ作り）。
     handover = None
@@ -4765,7 +4800,7 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
         LAND_RESULT, s=sctx, d=dctx, cats=cats, cap=cap_ctx, mk=mk,
         loan=loan, capped=capped, warnings=_public_warnings(res.warnings),
         fin=fin, pro=pro, handover=handover, procedures=procedures,
-        matched=matched,
+        matched=matched, save=save,
         ring_circ=round(circ, 1),
         ring_off=round(circ * (1 - d.total_score / 100.0), 1),
         grade_color=GRADE_COLOR.get(d.grade, "#0d9488"),
@@ -6680,7 +6715,8 @@ def saved_redo(sid):
                 'そのときの入力が残っていません。'
                 'お手数ですが、新しく診断してください。</p>'
                 '<p><a class="btn" href="/buy">戸建を診断する</a> '
-                '<a class="btn ghost" href="/mansion">マンションを診断する</a></p>'
+                '<a class="btn ghost" href="/mansion">マンションを診断する</a> '
+                '<a class="btn ghost" href="/land">土地を診断する</a></p>'
                 f'<p style="margin-top:12px"><a href="/saved/{sid}">'
                 '保存した診断にもどる</a></p></div>')
         return _account_page("再診断", body)
@@ -6689,6 +6725,19 @@ def saved_redo(sid):
               "価格が変わっていれば直してから診断してください。<br>"
               "<b>世帯年収と頭金はお預かりしていないため、空欄です。</b>"
               "返済の評価も見たい場合は入れ直してください。")
+    if redo.get("kind") == LAND_KIND:
+        v = _land_pro_defaults()
+        for k in v:
+            if redo.get(k):
+                v[k] = redo[k]
+        # PROの項目まで戻す。PRO会員ならPROのフォーム、そうでなければ
+        # 無料のフォームを開く（PROの欄を見せても入力できないため）。
+        if _require_pro() is None:
+            return _land_pro_page(v, banner=banner)
+        return render_template_string(
+            LAND_FORM, v=_land_form_values(v), banner=banner,
+            road_types=LAND_ROAD_TYPES, conditions=LAND_CONDITIONS)
+
     if redo.get("kind") == "mansion":
         v = _mansion_example_v()
         for k in ("address", "name", "price", "area", "byear", "station",
@@ -6806,9 +6855,14 @@ MYPAGE = """
 """
 
 
+# 保存の種別。土地は property_type を持たないので、こちらで決め打つ。
+LAND_KIND = "tochi"
+
+
 def _kindja(kind):
     return {"chuko_kodate": "中古戸建", "shinchiku_kodate": "新築戸建",
-            "chuko_mansion": "中古マンション"}.get(kind, "物件")
+            "chuko_mansion": "中古マンション",
+            LAND_KIND: "土地（注文住宅）"}.get(kind, "物件")
 
 
 @app.route("/mypage")
