@@ -697,3 +697,35 @@ def test_a_guide_without_a_baked_image_falls_back():
               published="2026-01-01", updated="2026-01-01", lead="", body="")
     with webapp.app.test_request_context("/guide/not-baked"):
         assert webapp._guide_og("https://x", g) == "https://x/static/ogp.png?v=1"
+
+
+def test_the_land_relevant_guides_send_readers_to_the_land_diagnosis():
+    """記事から /land へのリンクが1本も無かった（/buy は4本）。
+
+    用途地域・市街化調整区域・液状化・土砂災害・浸水深・将来人口は、
+    戸建でも土地でも効く話。読んで土地を探している人が、どこにも
+    行けない状態になっていた。
+    """
+    from src import guides
+    land = [g for g in guides.GUIDES if getattr(g, "cta2_href", "") == "/land"]
+    slugs = {g.slug for g in land}
+    assert slugs >= {"youto-chiiki-13-shurui", "shigaika-chosei-kuiki",
+                     "jiban-ekijoka-morido", "dosha-saigai-keikai-kuiki",
+                     "kouzui-shinsui-fukasa", "shorai-suikei-jinko-mesh"}
+    for g in land:
+        assert g.cta2_text, g.slug
+
+
+def test_a_mansion_guide_does_not_send_people_to_the_land_diagnosis():
+    """マンションの話を土地の診断へ送っても、読んだ人は確かめられない。"""
+    from src import guides
+    for slug in ("shuzen-tsumitatekin-meyasu", "mansion-kanri-15ten",
+                 "kyu-taishin-mansion"):
+        g = [x for x in guides.GUIDES if x.slug == slug][0]
+        assert getattr(g, "cta2_href", "") != "/land", slug
+
+
+def test_the_second_cta_is_optional():
+    from src import guides
+    plain = [g for g in guides.GUIDES if not getattr(g, "cta2_href", "")]
+    assert plain, "2つめを持たない記事もあること"

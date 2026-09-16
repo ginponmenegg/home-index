@@ -2871,7 +2871,10 @@ def guide_page(slug):
             + toc + article
             + '<div class="after"><p>この記事の数字は、診断の採点にそのまま'
               f'使っています。<a href="{g.cta_href}">{html.escape(g.cta_text)}'
-              '</a></p></div>'
+              '</a>'
+            + (f'　・　<a href="{g.cta2_href}">{html.escape(g.cta2_text)}</a>'
+               if getattr(g, "cta2_href", "") else "")
+            + '</p></div>'
             + _share_row(base, g))
     return _guide_shell(g.title, g.description, f"/guide/{g.slug}", head, body,
                         og=_guide_og(base, g))

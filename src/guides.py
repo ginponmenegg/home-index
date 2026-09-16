@@ -60,6 +60,11 @@ class Guide:
     # 送っても、読んだ人は確かめられない。
     cta_href: str = "/buy"
     cta_text: str = "無料で診断する"
+    # 2つめの送り先。用途地域・調整区域・地盤のように、戸建でも土地でも
+    # 効く話がある。1つしか置けないと、土地を探している人はどこにも
+    # 行けない（記事から /land へのリンクが1本も無かった）。
+    cta2_href: str = ""
+    cta2_text: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +173,8 @@ _LIGHT_STEEL = Guide(
 
 _FLOOD = Guide(
     slug="kouzui-shinsui-fukasa",
+    cta2_href="/land",
+    cta2_text="土地を診断する（注文住宅）",
     title="洪水ハザードの浸水深は6段階。0.5mと3mでは意味が違います",
     description=(
         "洪水浸水想定区域の浸水深は6段階に分かれます。0.5m未満と3m以上では"
@@ -466,6 +473,8 @@ _BURDEN = Guide(
 
 _GROUND = Guide(
     slug="jiban-ekijoka-morido",
+    cta2_href="/land",
+    cta2_text="土地を診断する（注文住宅）",
     title="液状化と大規模盛土造成地は、浸水の色とは別に見る",
     description=(
         "洪水や土砂の区域に入っていなくても、足元の地盤には別の話があります。"
@@ -537,6 +546,8 @@ _GROUND = Guide(
 
 _POPULATION = Guide(
     slug="shorai-suikei-jinko-mesh",
+    cta2_href="/land",
+    cta2_text="土地を診断する（注文住宅）",
     title="2050年の人口は250mメッシュで見ています。市区町村の平均では分からない",
     description=(
         "将来推計人口は市区町村単位で語られますが、同じ市でも駅前と郊外では"
@@ -604,6 +615,8 @@ _POPULATION = Guide(
 
 _CHOSEI = Guide(
     slug="shigaika-chosei-kuiki",
+    cta2_href="/land",
+    cta2_text="土地を診断する（注文住宅）",
     title="市街化調整区域は建てられないのか。原則、許可が要ります",
     description=(
         "市街化調整区域は都市計画法が「市街化を抑制すべき区域」と定めた区域で、"
@@ -725,6 +738,8 @@ _CHOSEI = Guide(
 
 _USE_DISTRICT = Guide(
     slug="youto-chiiki-13-shurui",
+    cta2_href="/land",
+    cta2_text="土地を診断する（注文住宅）",
     title="用途地域は13種類。この診断では点数に入れていません",
     description=(
         "用途地域は都市計画法で13種類と決まっています。この診断は用途地域を"
@@ -825,6 +840,8 @@ _USE_DISTRICT = Guide(
 
 _SEDIMENT = Guide(
     slug="dosha-saigai-keikai-kuiki",
+    cta2_href="/land",
+    cta2_text="土地を診断する（注文住宅）",
     title="土砂災害の警戒区域と特別警戒区域。違うのは規制の中身です",
     description=(
         "土砂災害警戒区域（イエロー）と特別警戒区域（レッド）は、土砂災害防止法の"
