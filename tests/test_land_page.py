@@ -11,7 +11,7 @@ os.environ.setdefault("SHINDAN_MOCK", "1")
 import app as webapp  # noqa: E402
 
 FORM = dict(address="千葉県船橋市前原西6-1", price="1800", area="120",
-            budget="2500", household="4", road_width="4", road_contact="8",
+            budget="2500", household="4", road_width="4",
             road_type="公道", frontage="8", station="12", coverage="60",
             far="200", city="12204", district="前原西", income="800",
             down="500", loan_years="35")
@@ -34,6 +34,9 @@ def test_the_form_opens(client):
     assert "前面道路の幅員" in h
     assert "建物の予算" in h
     assert "世帯人数" in h
+    # 間口と接道の長さは整形地では同じ数字。一度しか聞かない。
+    assert "接道の長さ" not in h
+    assert h.count('name="frontage"') == 1
     # 幅員は「いちばん広いほう」を入れてもらわないと、使える容積率を
     # 小さく出してしまう。フォームでそう言う。
     assert "いちばん広いほう" in h
@@ -67,7 +70,7 @@ def test_the_six_categories_are_shown(client):
 
 
 def test_an_unbuildable_plot_is_stopped_at_the_top_of_the_page(client):
-    h = _post(client, road_contact="1.5")
+    h = _post(client, frontage="1.5")
     assert "家を建てられない可能性があります" in h
     assert "住宅ローンがまず通らない" in h
     assert "43条2項" in h                   # 逃げ道も必ず出す

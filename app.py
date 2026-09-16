@@ -3959,9 +3959,11 @@ BRAND_BAR
     <input name="road_width" value="{{v.road_width}}" placeholder="例）6">
     <div class="hint"><b>2つ以上の道路に接しているときは、いちばん広いほう</b>を
      入れてください。狭いほうを入れると、使えるはずの容積率より小さく出ます</div></div>
-   <div><label>接道の長さ（m）</label>
-    <input name="road_contact" value="{{v.road_contact}}" placeholder="例）8">
-    <div class="hint">敷地が道路に接している長さ。建築基準法は2m以上を求めます</div></div>
+   <div><label>間口（m）</label>
+    <input name="frontage" value="{{v.frontage}}" placeholder="例）8">
+    <div class="hint">道路に接している長さ。建築基準法43条は<b>2m以上</b>を
+     求めます。角地など2本の道路に接している場合は、前面道路（幅員の広い
+     ほう）に接している長さを入れてください</div></div>
   </div>
   <div class="row">
    <div><label>道路の種類</label>
@@ -3971,9 +3973,7 @@ BRAND_BAR
      {% endfor %}
     </select>
     <div class="hint">重要事項説明書か、市区町村の道路課で分かります</div></div>
-   <div><label>間口（m・任意）</label>
-    <input name="frontage" value="{{v.frontage}}" placeholder="例）8">
-    <div class="hint">道路に面した幅。駐車と建物の配置に効きます</div></div>
+   <div></div>
   </div>
 
   <details class="more">
@@ -4289,8 +4289,8 @@ LAND_RESULT = (LAND_RESULT
 
 def _land_example_v():
     return dict(address="", price="", area="", budget="", household="",
-                road_width="", road_contact="", road_type="unknown",
-                frontage="", station="", bus="", coverage="", far="",
+                road_width="", road_type="unknown", frontage="",
+                station="", bus="", coverage="", far="",
                 city="", district="", income="", down="", loan_years="35")
 
 
@@ -4370,7 +4370,6 @@ def _run_land_diagnose(f):
         household_size=to_int(f.get("household")),
         frontage_m=to_float(f.get("frontage")),
         road_width_m=to_float(f.get("road_width")),
-        road_contact_m=to_float(f.get("road_contact")),
         road_type=road_type,
         station_walk_min=to_int(f.get("station")),
         bus_min=to_int(f.get("bus")),
@@ -4443,6 +4442,8 @@ def _render_land_result(res, subject, f, down_yen, loan_years):
         bits.append(e.use_district)
     if subject.road_width_m:
         bits.append(f"前面道路 {subject.road_width_m}m")
+    if subject.frontage_m:
+        bits.append(f"間口 {subject.frontage_m}m")
     if subject.road_type != "unknown":
         bits.append(dict(LAND_ROAD_TYPES)[subject.road_type])
     if subject.bus_min:
@@ -4488,7 +4489,7 @@ def _render_land_result(res, subject, f, down_yen, loan_years):
         mk["note"] = (mkt.notes[0] if mkt.notes
                       else "近隣の土地取引が見つかりませんでした")
 
-    sc = score_cap(subject.road_width_m, subject.road_contact_m,
+    sc = score_cap(subject.road_width_m, subject.frontage_m,
                    subject.road_type,
                    (e.use_district if e else None),
                    (e.urbanization if e else None))

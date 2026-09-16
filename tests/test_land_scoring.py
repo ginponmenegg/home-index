@@ -16,10 +16,12 @@ from src.config import CONFIG
 from src.land import build_capacity
 from src.land_scoring import (BUILDABLE_PARTS, ROAD_PARTS, SCORE_CAP_REBUILD,
                               SCORE_CAP_URBANIZATION, build_land_diagnosis,
-                              floor_area_raw, footprint_raw, frontage_raw,
-                              guided_area_m2, minimum_area_m2, score_buildable,
-                              score_cap, score_road, use_district_raw)
+                              floor_area_raw, footprint_raw, guided_area_m2,
+                              minimum_area_m2, score_buildable, score_cap,
+                              score_road, use_district_raw)
 from src.models import LandSubject
+
+UD = "第一種中高層住居専用地域"
 
 
 # ---- 配点そのもの ----
@@ -28,18 +30,28 @@ def test_the_six_categories_add_up_to_one_hundred():
 
 
 def test_the_two_new_categories_add_up_to_their_headline():
-    assert sum(BUILDABLE_PARTS.values()) == CONFIG["land_category_weights"]["建てられる家"]
-    assert sum(ROAD_PARTS.values()) == CONFIG["land_category_weights"]["接道"]
+    w = CONFIG["land_category_weights"]
+    assert sum(BUILDABLE_PARTS.values()) == w["建てられる家"]
+    assert sum(ROAD_PARTS.values()) == w["接道"] == 15
     assert ROAD_PARTS["幅員"] == 7
     assert ROAD_PARTS["接道長さ"] == 4
     assert ROAD_PARTS["道路の種類"] == 4
 
 
+def test_the_frontage_is_not_scored_twice():
+    """間口と接道の長さは、整形地では同じ数字。両方で採点しない。
+
+    分けて採ると、旗竿地が「建てられる家」と「接道」の両方で沈み、
+    一つの事実で7点が動く。接道側で一度だけ見る。
+    """
+    assert "間口" not in BUILDABLE_PARTS
+
+
 # ---- 居住面積水準（公表値そのもの）----
 def test_the_published_area_standards_for_a_family_of_four():
-    assert guided_area_m2(4) == 125          # 一般型 25×4+25
+    assert guided_area_m2(4) == 125              # 一般型 25×4+25
     assert guided_area_m2(4, urban=True) == 95   # 都市居住型 20×4+15
-    assert minimum_area_m2(4) == 50          # 最低 10×4+10
+    assert minimum_area_m2(4) == 50              # 最低 10×4+10
 
 
 def test_a_single_person_has_its_own_figures():
@@ -49,9 +61,8 @@ def test_a_single_person_has_its_own_figures():
 
 
 def test_a_household_over_four_gets_five_percent_taken_off():
-    # 25×5+25 = 150 の5%控除で 142.5
-    assert guided_area_m2(5) == 142.5
-    assert guided_area_m2(4) == 125          # 4人ちょうどは控除しない
+    assert guided_area_m2(5) == 142.5            # 25×5+25 = 150 の5%控除
+    assert guided_area_m2(4) == 125              # 4人ちょうどは控除しない
 
 
 def test_no_household_size_means_four_people():
@@ -60,26 +71,25 @@ def test_no_household_size_means_four_people():
 
 # ---- 延床は段ではなく坂 ----
 def test_one_square_metre_does_not_change_the_score_by_a_step():
-    a = floor_area_raw(124, 4)
-    b = floor_area_raw(125, 4)
+    a, b = floor_area_raw(124, 4), floor_area_raw(125, 4)
     assert b == 1.0
-    assert 0.98 <= a < b                     # 崖ではなく坂
+    assert 0.98 <= a < b
 
 
 def test_the_floor_area_score_follows_the_standards():
-    assert floor_area_raw(125, 4) == 1.0     # 誘導水準に届く
-    assert floor_area_raw(95, 4) == 0.75     # 都市居住型の水準
-    assert floor_area_raw(50, 4) == 0.35     # 最低水準ちょうど
-    assert floor_area_raw(25, 4) < 0.2       # 最低水準の半分
+    assert floor_area_raw(125, 4) == 1.0
+    assert floor_area_raw(95, 4) == 0.75
+    assert floor_area_raw(50, 4) == 0.35
+    assert floor_area_raw(25, 4) < 0.2
     assert floor_area_raw(None) is None
 
 
 def test_a_bigger_household_needs_a_bigger_house_for_the_same_score():
-    assert floor_area_raw(100, 2) == 1.0     # 2人なら75㎡で誘導水準
-    assert floor_area_raw(100, 5) < 1.0      # 5人には足りない
+    assert floor_area_raw(100, 2) == 1.0         # 2人なら75㎡で誘導水準
+    assert floor_area_raw(100, 5) < 1.0
 
 
-# ---- 建築面積・用途地域・間口 ----
+# ---- 建築面積・用途地域 ----
 def test_a_small_ground_floor_loses_points():
     assert footprint_raw(60) == 1.0
     assert footprint_raw(40) == 0.6
@@ -98,29 +108,21 @@ def test_the_use_district_table_reads_the_narrower_name_first():
     assert use_district_raw(None) is None
 
 
-def test_a_flagpole_lot_is_marked_down_on_frontage():
-    assert frontage_raw(6) == 1.0
-    assert frontage_raw(2.0) == 0.1
-    assert frontage_raw(None) is None
-
-
 # ---- 建てられる家 ----
 def _capacity(width, site=120.0, frontage=8.0):
     """指定建ぺい60%・指定容積200%・第一種中高層住居専用地域の土地。"""
-    return build_capacity(site, 60, 200, "第一種中高層住居専用地域",
+    return build_capacity(site, 60, 200, UD,
                           road_width_m=width, frontage_m=frontage)
 
 
 def test_the_road_eats_into_the_house_you_can_build():
     # 指定200%の土地でも、前面道路が4mなら 4×0.4＝160% までしか使えない。
-    wide = _capacity(6.0)
-    narrow = _capacity(4.0)
+    wide, narrow = _capacity(6.0), _capacity(4.0)
     assert wide.max_total_floor_m2 == 240.0
     assert narrow.max_total_floor_m2 == 192.0
     assert narrow.far_limited_by_road is True
 
-    a = score_buildable(wide, "第一種中高層住居専用地域", 8.0, 4)
-    b = score_buildable(narrow, "第一種中高層住居専用地域", 8.0, 4)
+    a, b = score_buildable(wide, UD, 4), score_buildable(narrow, UD, 4)
     assert a.points == b.points              # どちらも誘導水準125㎡を超える
     assert any("前面道路の制限" in m for m in b.minus)
 
@@ -128,22 +130,28 @@ def test_the_road_eats_into_the_house_you_can_build():
 def test_a_two_point_seven_metre_road_shows_up_as_a_smaller_house():
     tight = _capacity(2.7)
     assert tight.setback_m2 == 5.2
-    assert tight.max_total_floor_m2 < 125     # 4人の誘導水準に届かない
-    c = score_buildable(tight, "第一種中高層住居専用地域", 8.0, 4)
-    assert c.points < score_buildable(_capacity(6.0),
-                                      "第一種中高層住居専用地域", 8.0, 4).points
+    assert tight.max_total_floor_m2 < 125
+    c = score_buildable(tight, UD, 4)
+    assert c.points < score_buildable(_capacity(6.0), UD, 4).points
     assert any("セットバック" in m for m in c.minus)
 
 
-def test_an_unanswered_frontage_costs_confidence_not_points():
-    known = score_buildable(_capacity(6.0), "第一種中高層住居専用地域", 8.0, 4)
-    blank = score_buildable(_capacity(6.0), "第一種中高層住居専用地域", None, 4)
-    narrow = score_buildable(_capacity(6.0), "第一種中高層住居専用地域", 2.0, 4)
+def test_the_frontage_alone_does_not_move_the_buildable_score():
+    """狭い間口は接道側だけで効く。ここで二度目の減点をしない。"""
+    narrow = score_buildable(_capacity(6.0, frontage=2.0), UD, 4)
+    wide = score_buildable(_capacity(6.0, frontage=8.0), UD, 4)
+    assert narrow.points == wide.points
+    # 動くのは接道側
+    assert score_road(6.0, 2.0, "公道").points < \
+        score_road(6.0, 8.0, "公道").points
+
+
+def test_an_unknown_use_district_costs_confidence_not_points():
+    known = score_buildable(_capacity(6.0), UD, 4)
+    blank = score_buildable(_capacity(6.0), None, 4)
     assert blank.sufficiency < known.sufficiency
-    # 未入力は「狭い間口」ではない。分からない項目は平均の側に寄せ、
-    # 分かっている項目だけで点をつける。
-    assert blank.raw > narrow.raw
-    assert abs(blank.raw - known.raw) < 0.05
+    # 未入力は「悪い用途地域」ではない。分からない項目は分母から外す。
+    assert blank.raw > known.raw
 
 
 def test_nothing_known_says_what_to_type_instead_of_scoring():
@@ -152,37 +160,46 @@ def test_nothing_known_says_what_to_type_instead_of_scoring():
     assert "敷地面積" in c.reason
 
 
+def test_without_the_zoning_the_category_cannot_reach_full_marks():
+    """建ぺい率・容積率が取れない土地で、残りだけで満点が出てはいけない。"""
+    blind = build_capacity(120.0, None, None, None, road_width_m=6.0,
+                           frontage_m=8.0)
+    c = score_buildable(blind, UD, 4)
+    assert c.raw <= 0.7
+    assert c.points <= 17.5
+    assert "延床の上限を計算できていません" in c.reason
+
+
 # ---- 接道 ----
 def test_a_clean_frontage_takes_the_full_fifteen():
-    c = score_road(road_width_m=6.0, road_contact_m=5.0, road_type="公道")
+    c = score_road(road_width_m=6.0, frontage_m=5.0, road_type="公道")
     assert c.points == 15.0
     assert c.sufficiency == 1.0
 
 
-def test_the_contact_length_is_scored_in_three_bands():
+def test_the_frontage_is_scored_in_three_bands():
     def pts(m):
-        base = score_road(road_width_m=6.0, road_contact_m=m, road_type="公道")
-        return base.points - 11.0            # 幅員7＋種類4を引いた残り
+        return score_road(6.0, m, "公道").points - 11.0   # 幅員7＋種類4を引く
     assert pts(5.0) == 4.0                   # 4m以上
     assert pts(2.5) == 2.0                   # 法の2mは満たすが余裕がない
     assert pts(1.5) == 0.0                   # 法43条に足りない
 
 
-def test_an_unknown_contact_length_lands_in_the_middle_and_is_flagged():
-    c = score_road(road_width_m=6.0, road_contact_m=None, road_type="公道")
+def test_an_unknown_frontage_lands_in_the_middle_and_is_flagged():
+    c = score_road(road_width_m=6.0, frontage_m=None, road_type="公道")
     assert c.points == 13.0                  # 7 + 2 + 4
     assert c.sufficiency < 1.0
-    assert "接道の長さが未確認" in c.reason
+    assert "間口が未確認" in c.reason
 
 
 def test_a_private_road_keeps_the_point_and_says_what_to_check():
-    c = score_road(road_width_m=6.0, road_contact_m=5.0, road_type="私道")
+    c = score_road(road_width_m=6.0, frontage_m=5.0, road_type="私道")
     assert c.points == 13.0                  # 種類が4→2
     assert any("掘削" in m for m in c.minus)
 
 
 def test_a_narrow_road_is_marked_as_a_setback_not_as_unbuildable():
-    c = score_road(road_width_m=3.0, road_contact_m=5.0, road_type="公道")
+    c = score_road(road_width_m=3.0, frontage_m=5.0, road_type="公道")
     assert c.points == 10.5                  # 幅員 7→2.5
     assert any("セットバック" in m for m in c.minus)
 
@@ -190,31 +207,29 @@ def test_a_narrow_road_is_marked_as_a_setback_not_as_unbuildable():
 # ---- 頭打ち ----
 def test_a_narrow_road_on_its_own_does_not_cap_the_score():
     # 幅員4m未満でも、42条2項の道路ならセットバックして建て替えられる。
-    assert score_cap(road_width_m=3.0, road_contact_m=5.0,
-                     road_type="公道") is None
+    assert score_cap(road_width_m=3.0, frontage_m=5.0, road_type="公道") is None
 
 
 def test_too_little_frontage_caps_the_whole_score():
-    cap = score_cap(road_width_m=6.0, road_contact_m=1.5, road_type="公道")
+    cap = score_cap(road_width_m=6.0, frontage_m=1.5, road_type="公道")
     assert cap is not None
     assert cap.limit == SCORE_CAP_REBUILD == 30
     assert any("43条" in r for r in cap.reasons)
 
 
 def test_no_road_at_all_caps_the_whole_score():
-    cap = score_cap(road_type="none")
-    assert cap.limit == 30
+    assert score_cap(road_type="none").limit == 30
 
 
 def test_an_industrial_exclusive_zone_caps_the_whole_score():
-    cap = score_cap(road_width_m=6.0, road_contact_m=5.0, road_type="公道",
+    cap = score_cap(road_width_m=6.0, frontage_m=5.0, road_type="公道",
                     use_district="工業専用地域")
     assert cap.limit == 30
 
 
 def test_an_urbanisation_control_area_caps_it_more_gently():
     # 既存宅地・分家住宅・条例指定区域など、建てられる例外が実際に多い。
-    cap = score_cap(road_width_m=6.0, road_contact_m=5.0, road_type="公道",
+    cap = score_cap(road_width_m=6.0, frontage_m=5.0, road_type="公道",
                     urbanization="市街化調整区域")
     assert cap.limit == SCORE_CAP_URBANIZATION == 50
 
@@ -224,23 +239,21 @@ def _subject(**kw):
     base = dict(address="千葉県船橋市前原西1-1-1", price=30_000_000,
                 land_area_m2=120.0, building_budget=25_000_000,
                 household_size=4, frontage_m=8.0, road_width_m=6.0,
-                road_contact_m=8.0, road_type="公道", station_walk_min=8)
+                road_type="公道", station_walk_min=8)
     base.update(kw)
     return LandSubject(**base)
 
 
 def _diagnose(**kw):
     subj = _subject(**kw)
-    cap = build_capacity(subj.land_area_m2, 60, 200, "第一種中高層住居専用地域",
+    cap = build_capacity(subj.land_area_m2, 60, 200, UD,
                          road_width_m=subj.road_width_m,
                          frontage_m=subj.frontage_m)
-    return build_land_diagnosis(subj, cap,
-                                use_district="第一種中高層住居専用地域")
+    return build_land_diagnosis(subj, cap, use_district=UD)
 
 
 def test_the_land_price_never_moves_the_score():
-    cheap = _diagnose(price=10_000_000)
-    dear = _diagnose(price=90_000_000)
+    cheap, dear = _diagnose(price=10_000_000), _diagnose(price=90_000_000)
     assert cheap.total_score == dear.total_score
     assert "価格" not in [c.name for c in cheap.categories]
     assert "点数に入れていません" in cheap.comment
@@ -254,8 +267,7 @@ def test_the_categories_are_the_six_we_agreed():
 
 
 def test_an_unbuildable_plot_is_capped_not_merely_docked():
-    ok = _diagnose()
-    bad = _diagnose(road_contact_m=1.5)
+    ok, bad = _diagnose(), _diagnose(frontage_m=1.5)
     assert ok.total_score > 30
     assert bad.total_score <= SCORE_CAP_REBUILD
     assert "上限としています" in bad.comment
@@ -266,10 +278,8 @@ def test_an_unbuildable_plot_is_capped_not_merely_docked():
 
 def test_the_control_area_warning_points_at_the_right_desk():
     subj = _subject()
-    cap = build_capacity(120.0, 60, 200, "第一種中高層住居専用地域",
-                         road_width_m=6.0, frontage_m=8.0)
-    d = build_land_diagnosis(subj, cap,
-                             use_district="第一種中高層住居専用地域",
+    cap = build_capacity(120.0, 60, 200, UD, road_width_m=6.0, frontage_m=8.0)
+    d = build_land_diagnosis(subj, cap, use_district=UD,
                              urbanization="市街化調整区域")
     assert d.total_score <= SCORE_CAP_URBANIZATION
     assert "都市計画課" in d.to_confirm[0]
@@ -279,17 +289,3 @@ def test_a_good_plot_still_scores_well():
     d = _diagnose()
     assert d.total_score >= 55
     assert d.grade in ("A", "B", "C")
-
-
-def test_without_the_zoning_the_category_cannot_reach_full_marks():
-    """建ぺい率・容積率が取れない土地で、間口だけで満点が出てはいけない。
-
-    延床は25点中12点を持つ主役。それを計算できていないのに25/25と出すのは、
-    情報が無いことを good news として売ることになる。
-    """
-    blind = build_capacity(120.0, None, None, None, road_width_m=6.0,
-                           frontage_m=8.0)
-    c = score_buildable(blind, None, 8.0, 4)
-    assert c.raw <= 0.7
-    assert c.points <= 17.5
-    assert "延床の上限を計算できていません" in c.reason

@@ -55,7 +55,9 @@ from .scoring import (CategoryScore, CriticalRisk, Diagnosis, grade_of,
 WEIGHTS = CONFIG["land_category_weights"]
 
 # 建てられる家25点の内訳
-BUILDABLE_PARTS = {"延床": 12, "建築面積": 6, "用途地域": 4, "間口": 3}
+# 間口はここでは採らない。間口＝接道の長さなので、接道側で一度だけ見る。
+# 同じ数字で二度減点すると、旗竿地が二重に沈む。
+BUILDABLE_PARTS = {"延床": 14, "建築面積": 7, "用途地域": 4}
 # 接道15点の内訳
 ROAD_PARTS = {"幅員": 7, "接道長さ": 4, "道路の種類": 4}
 
@@ -166,23 +168,8 @@ def use_district_raw(use_district: Optional[str]) -> Optional[float]:
     return None
 
 
-def frontage_raw(frontage_m: Optional[float]) -> Optional[float]:
-    """間口。駐車と配置の自由度。旗竿地の竿はここで効く。"""
-    if not frontage_m or frontage_m <= 0:
-        return None
-    f = float(frontage_m)
-    if f >= 6:
-        return 1.0
-    if f >= 4:
-        return round(_ramp(f, 4, 6, 0.7, 1.0), 3)
-    if f >= 2.5:
-        return round(_ramp(f, 2.5, 4, 0.4, 0.7), 3)
-    return 0.1
-
-
 def score_buildable(capacity: BuildCapacity,
                     use_district: Optional[str] = None,
-                    frontage_m: Optional[float] = None,
                     household: Optional[int] = None) -> CategoryScore:
     """建てられる家（25点）。分からない項目は埋めず、充足度を下げる。"""
     w = WEIGHTS["建てられる家"]
@@ -195,7 +182,6 @@ def score_buildable(capacity: BuildCapacity,
         "延床": floor_area_raw(capacity.max_total_floor_m2, household),
         "建築面積": footprint_raw(capacity.max_footprint_m2),
         "用途地域": use_district_raw(use_district),
-        "間口": frontage_raw(frontage_m),
     }
     known = {k: v for k, v in parts.items() if v is not None}
     if not known:
@@ -206,9 +192,9 @@ def score_buildable(capacity: BuildCapacity,
     total_w = sum(BUILDABLE_PARTS[k] for k in known)
     raw = sum(BUILDABLE_PARTS[k] * v for k, v in known.items()) / total_w
     coverage = total_w / sum(BUILDABLE_PARTS.values())
-    # 延床は25点中12点を持つ主役。それが計算できていないのに、間口だけで
-    # 満点が出てはいけない。score_risk がハザード未確認で 0.7 に頭を
-    # 押さえるのと同じ扱いにする。
+    # 延床は25点中14点を持つ主役。それが計算できていないのに、
+    # 残りだけで満点が出てはいけない。score_risk がハザード未確認で
+    # 0.7 に頭を押さえるのと同じ扱いにする。
     if parts["延床"] is None:
         raw = min(raw, 0.7)
         bits.append("建ぺい率・容積率が取れず、延床の上限を計算できていません")
@@ -245,13 +231,6 @@ def score_buildable(capacity: BuildCapacity,
             minus.append(f"{use_district}。住宅は建てられません")
         elif "商業" in use_district or "工業" in use_district:
             minus.append(f"{use_district}。隣接地に住宅以外の建物が建ち得ます")
-    if frontage_m:
-        bits.append(f"間口 {frontage_m}m")
-        if frontage_m < 4:
-            minus.append(f"間口{frontage_m}m。駐車と建物の配置が窮屈になります")
-    else:
-        bits.append("間口は未入力")
-
     if capacity.setback_m2:
         minus.append(
             f"セットバックでおよそ{capacity.setback_m2}㎡が使えません（概算）")
@@ -279,9 +258,13 @@ ROAD_TYPE_LABEL = {
 
 
 def score_road(road_width_m: Optional[float] = None,
-               road_contact_m: Optional[float] = None,
+               frontage_m: Optional[float] = None,
                road_type: str = "unknown") -> CategoryScore:
     """接道（15点）。建て替えられるか、工事ができるか。家の大きさは見ない。
+
+    frontage_m は間口＝道路に接している長さ。整形地では同じ数字なので、
+    入力も採点もここで一度だけ扱う。駐車や建物の配置が窮屈になるのも、
+    工事車両が入らないのも、元は同じ一つの事実。
 
     幅員は「建てられる家」でも効くが、あちらは連続量として結果の延床に、
     こちらは4mという法的な線として建て替えの可否に効く。別の問いなので
@@ -320,29 +303,31 @@ def score_road(road_width_m: Optional[float] = None,
                 f"前面道路{road_width_m}m。建築基準法の道路として認められない"
                 "おそれがあります")
 
-    # ---- 接道の長さ 4点（法43条は2m以上。2mちょうどは法は満たすが余裕がない）----
+    # ---- 間口＝接道の長さ 4点 ----
+    # 法43条は2m以上。2mちょうどは法を満たすが余裕がない。4m以上あれば
+    # 駐車も工事車両も普通に収まる。
     cw = ROAD_PARTS["接道長さ"]
     if road_type == "none":
         known_w += cw
         bits.append("接道なし")
-    elif road_contact_m is None:
+    elif frontage_m is None:
         pts += 2.0
-        bits.append("接道の長さが未確認")
+        bits.append("間口が未確認")
     else:
         known_w += cw
-        if road_contact_m >= 4.0:
+        if frontage_m >= 4.0:
             pts += 4.0
-            bits.append(f"接道の長さ {road_contact_m}m")
-        elif road_contact_m >= MIN_FRONTAGE_M:
+            bits.append(f"間口 {frontage_m}m")
+        elif frontage_m >= MIN_FRONTAGE_M:
             pts += 2.0
-            bits.append(f"接道の長さ {road_contact_m}m")
+            bits.append(f"間口 {frontage_m}m")
             minus.append(
-                f"接道の長さ{road_contact_m}m。法の2mは満たしますが余裕がありません。"
-                "実測で2mを割ると再建築ができなくなります")
+                f"間口{frontage_m}m。法43条の2mは満たしますが余裕がありません。"
+                "実測で2mを割ると再建築ができなくなり、駐車と工事車両も窮屈です")
         else:
-            bits.append(f"接道の長さ {road_contact_m}m（2m未満）")
+            bits.append(f"間口 {frontage_m}m（2m未満）")
             minus.append(
-                f"接道の長さ{road_contact_m}m。建築基準法43条の2mに足りません")
+                f"間口{frontage_m}m。建築基準法43条の2mに足りません")
 
     # ---- 道路の種類 4点 ----
     tw = ROAD_PARTS["道路の種類"]
@@ -373,7 +358,7 @@ class ScoreCap:
 
 
 def score_cap(road_width_m: Optional[float] = None,
-              road_contact_m: Optional[float] = None,
+              frontage_m: Optional[float] = None,
               road_type: str = "unknown",
               use_district: Optional[str] = None,
               urbanization: Optional[str] = None) -> Optional[ScoreCap]:
@@ -385,8 +370,9 @@ def score_cap(road_width_m: Optional[float] = None,
     hard: List[str] = []
     if road_type == "none":
         hard.append("建築基準法の道路に接していない可能性")
-    if road_contact_m is not None and road_contact_m < MIN_FRONTAGE_M:
-        hard.append(f"接道の長さが{road_contact_m}mで、法43条の2mに足りない")
+    if frontage_m is not None and frontage_m < MIN_FRONTAGE_M:
+        hard.append(f"間口（道路に接している長さ）が{frontage_m}mで、"
+                    "法43条の2mに足りない")
     if road_width_m is not None and road_width_m < 1.8:
         hard.append(f"前面道路の幅員が{road_width_m}mで、法上の道路と認められないおそれ")
     if use_district and "工業専用" in use_district:
@@ -419,9 +405,8 @@ def build_land_diagnosis(subj: LandSubject,
         current_year = datetime.date.today().year
 
     cats = [
-        score_buildable(capacity, use_district, subj.frontage_m,
-                        subj.household_size),
-        score_road(subj.road_width_m, subj.road_contact_m, subj.road_type),
+        score_buildable(capacity, use_district, subj.household_size),
+        score_road(subj.road_width_m, subj.frontage_m, subj.road_type),
         _reweight(score_risk(use_district, urbanization, hazard),
                   WEIGHTS["リスク"]),
         _reweight(score_location(subj, use_district, facility, shops),
@@ -432,7 +417,7 @@ def build_land_diagnosis(subj: LandSubject,
     ]
     total = max(0, min(100, int(round(sum(c.points for c in cats)))))
 
-    cap = score_cap(subj.road_width_m, subj.road_contact_m, subj.road_type,
+    cap = score_cap(subj.road_width_m, subj.frontage_m, subj.road_type,
                     use_district, urbanization)
     capped = False
     if cap and total > cap.limit:

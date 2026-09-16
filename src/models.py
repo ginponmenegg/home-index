@@ -90,9 +90,11 @@ class LandSubject:
     land_area_m2: Optional[float] = None        # 敷地面積(㎡)
     building_budget: Optional[int] = None       # 建物の予算(円)。総額の計算に使う
     household_size: Optional[int] = None        # 世帯人数。居住面積水準の基準
-    frontage_m: Optional[float] = None          # 間口(m)
+    # 間口＝道路に接している長さ。整形地では「間口」と「接道の長さ」は
+    # 同じ数字なので、一つしか聞かない。角地や、敷地の一部が水路・他人地に
+    # 接する土地では食い違うが、そのときは前面道路に接している長さを入れる。
+    frontage_m: Optional[float] = None          # 間口＝接道長さ(m)。法43条は2m以上
     road_width_m: Optional[float] = None        # 前面道路の幅員(m)。2つ以上あれば広いほう
-    road_contact_m: Optional[float] = None      # 接道の長さ(m)。法43条は2m以上
     road_type: str = "unknown"                  # 公道 / 私道 / 位置指定 / none / unknown
     station_walk_min: Optional[int] = None      # 駅 or バス停まで徒歩(分)
     bus_min: Optional[int] = None               # バス便：駅までのバス乗車分
