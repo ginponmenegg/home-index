@@ -24,6 +24,10 @@ from .scoring import build_diagnosis, Diagnosis
 from .mansion_price import (analyze_mansion_price, extract_mansion_comparables,
                             is_mansion_txn, same_building_candidates)
 from .mansion_scoring import build_mansion_diagnosis
+from .models import LandSubject
+from .land import build_capacity, BuildCapacity
+from .land_price import analyze_land_market, add_neighbourhood_traits, LandMarket
+from .land_scoring import build_land_diagnosis
 
 
 _DISTRICT_GEO: dict = {}   # (prefix, 町名) -> (lat, lon) プロセス内キャッシュ
@@ -87,6 +91,9 @@ class DiagnosisResult:
         self.warnings: List[str] = []
         # 同じ建物の別住戸かもしれない事例（マンションのみ・断定はしない）
         self.same_building: List = []
+        # 土地のみ。建てられる大きさの計算と、近隣の土地取引の分布。
+        self.capacity: Optional[BuildCapacity] = None
+        self.market: Optional[LandMarket] = None
         self.generated_at = now_iso()
 
 
@@ -255,6 +262,102 @@ def run_mansion_pipeline(subject: MansionSubject,
     e = result.enrichment
     result.diagnosis = build_mansion_diagnosis(
         subject, result.price, result.loan,
+        use_district=(e.use_district if e else None),
+        urbanization=(e.urbanization if e else None),
+        hazard=(e.hazard if e else None),
+        facility=(e.facility if e else None),
+        shops=(e.shops if e else None),
+        pop_change_pct=(e.mesh_pop_change_pct if e else None),
+        current_year=current_year)
+    return result
+
+
+def run_land_pipeline(subject: LandSubject,
+                      reinfolib_key: Optional[str] = None,
+                      google_key: Optional[str] = None,
+                      trade_years: Optional[List[int]] = None,
+                      mock: bool = False,
+                      annual_income: Optional[int] = None,
+                      down_payment: int = 0,
+                      loan_rate: float = 0.0125,
+                      loan_years: int = 35,
+                      estat_appid: Optional[str] = None,
+                      estat_table: str = "0000020201") -> DiagnosisResult:
+    """土地1件を診断する。戸建・マンションとは独立した経路。
+
+    価格分析（result.price）は**通さない**。土地の㎡単価はばらつきが大きく、
+    推定価格を1本の数字で出せるほどの精度が無い。代わりに近隣成約の分布を
+    result.market に入れて、そのまま見せる。
+    """
+    result = DiagnosisResult()
+    result.subject = subject
+    current_year = datetime.date.today().year
+    if trade_years is None:
+        # 土地の成約は戸建より数が少ないので、3年では分布にならない。
+        span = CONFIG.get("land_trade_years", 5)
+        trade_years = [current_year - i for i in range(1, span + 1)]
+
+    # 1) 住所 → 座標
+    if not mock:
+        try:
+            gc = make_geocoder(google_key).geocode(subject.address)
+            result.geocode = gc
+            subject.latitude, subject.longitude = gc.latitude, gc.longitude
+        except Exception as e:
+            result.warnings.append(f"ジオコーディング失敗: {e}")
+
+    # 2) 成約事例の取得
+    txns: List[Transaction] = []
+    if mock:
+        from .mockdata import sample_transactions
+        txns = sample_transactions()
+        result.warnings.append("MOCKモード: サンプルデータを使用（実データではありません）")
+    elif not subject.municipality_code:
+        result.warnings.append("市区町村コードが解決できず取引取得をスキップ")
+    elif not reinfolib_key:
+        result.warnings.append("REINFOLIB_KEY 未設定のため取引取得をスキップ")
+    else:
+        try:
+            client = ReinfolibClient(reinfolib_key)
+            txns = client.get_transactions(subject.municipality_code, trade_years)
+        except Exception as e:
+            result.warnings.append(f"取引取得失敗: {e}")
+    result.transactions_count = len(txns)
+
+    # 3) 近隣の土地取引の分布。点数には使わない（land_price.py 参照）。
+    result.market = analyze_land_market(txns, subject.district_name,
+                                        subject.price, subject.land_area_m2)
+    add_neighbourhood_traits(result.market, txns, subject.district_name)
+    result.warnings.extend(result.market.notes)
+
+    # 4) 用途地域・建ぺい率・容積率・ハザード・周辺施設
+    if not mock:
+        result.enrichment = enrich(subject.latitude, subject.longitude,
+                                   reinfolib_key, estat_appid=estat_appid,
+                                   city_code=subject.municipality_code,
+                                   estat_table=estat_table)
+        if result.enrichment:
+            result.warnings.extend(result.enrichment.notes)
+    e = result.enrichment
+
+    # 5) 何が建てられるか。建ぺい率・容積率は入力があればそちらを優先する
+    #    （非線引き区域などタイルに入っていない土地があるため）。
+    coverage = subject.coverage_ratio or (e.coverage_ratio if e else None)
+    far = subject.floor_area_ratio or (e.floor_area_ratio if e else None)
+    result.capacity = build_capacity(
+        subject.land_area_m2, coverage, far,
+        use_district=(e.use_district if e else None),
+        road_width_m=subject.road_width_m, frontage_m=subject.frontage_m)
+
+    # 6) ローン。土地だけでは家に住めないので、建物の予算を足した総額で見る。
+    #    外構・地盤改良・諸費用は含まない（画面にそう書くこと）。
+    total = (subject.price or 0) + (subject.building_budget or 0)
+    result.loan = compute_loan(total, down_payment, loan_rate, loan_years,
+                               annual_income)
+
+    # 7) 採点
+    result.diagnosis = build_land_diagnosis(
+        subject, result.capacity, result.loan,
         use_district=(e.use_district if e else None),
         urbanization=(e.urbanization if e else None),
         hazard=(e.hazard if e else None),

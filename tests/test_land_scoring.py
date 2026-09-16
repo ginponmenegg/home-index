@@ -279,3 +279,17 @@ def test_a_good_plot_still_scores_well():
     d = _diagnose()
     assert d.total_score >= 55
     assert d.grade in ("A", "B", "C")
+
+
+def test_without_the_zoning_the_category_cannot_reach_full_marks():
+    """建ぺい率・容積率が取れない土地で、間口だけで満点が出てはいけない。
+
+    延床は25点中12点を持つ主役。それを計算できていないのに25/25と出すのは、
+    情報が無いことを good news として売ることになる。
+    """
+    blind = build_capacity(120.0, None, None, None, road_width_m=6.0,
+                           frontage_m=8.0)
+    c = score_buildable(blind, None, 8.0, 4)
+    assert c.raw <= 0.7
+    assert c.points <= 17.5
+    assert "延床の上限を計算できていません" in c.reason

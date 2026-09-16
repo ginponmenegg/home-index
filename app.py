@@ -26,8 +26,10 @@ from src import metrics  # noqa: E402
 _w = mailer.warn_if_shared_sender()
 if _w:
     print(_w)
-from src.models import SubjectProperty, MansionSubject  # noqa: E402
-from src.pipeline import run_pipeline, run_mansion_pipeline  # noqa: E402
+from src.models import (SubjectProperty, MansionSubject,  # noqa: E402
+                        LandSubject)
+from src.pipeline import (run_pipeline, run_mansion_pipeline,  # noqa: E402
+                          run_land_pipeline)
 from src.extract import parse_listing_text, extract_from_url  # noqa: E402
 from src.citycode import CityCodeResolver  # noqa: E402
 from src import structure as structure_mod  # noqa: E402
@@ -289,6 +291,7 @@ BRAND_CSS = (
 MENU_ITEMS = [("/", "トップ"),
               ("/buy", "購入診断（戸建）"),
               ("/mansion", "購入診断（マンション）"),
+              ("/land", "土地診断（注文住宅）"),
               ("/terms", "利用規約"),
               ("/privacy", "プライバシーポリシー")]
 
@@ -339,6 +342,10 @@ def lp_menu_links():
     LPだけ反映されないことがあった（PROの2ページが載っていなかった）。
     同じ取りこぼしを繰り返さないよう、他のページと同じ一覧から組み立てる。
     """
+    # ここで名前を差し替えたページは、LPのメニューだけ他のページと違う名前に
+    # なる。戸建とマンションは最初の一手なので目立たせているが、増やすたびに
+    # 「どのページの話か分からない」メニューになるので、これ以上は足さない。
+    # 土地は本文のボタンで誘導し、メニューでは他ページと同じ名前にしている。
     labels = {"/buy": "無料で診断する（戸建）",
               "/mansion": "無料で診断する（マンション）"}
     out = []
@@ -735,7 +742,7 @@ BRAND_BAR
  <h1>住まいを100点で採点します</h1>
  <p class="aim">「この価格は妥当か」「災害リスクはないか」「無理なく返せるか」。住まい選びで迷う点を<b>公的データ</b>から集め、ルール計算で100点に換算します。</p>
  <p class="lead"><b>住所と売出価格だけで診断できます。</b>分かる項目を足すほど、点の
-  確からしさ（情報充足度）が上がります。金額は<b>万円</b>。<br><a href="/mansion">マンションの診断はこちら</a></p>
+  確からしさ（情報充足度）が上がります。金額は<b>万円</b>。<br><a href="/mansion">マンションの診断はこちら</a>　<a href="/land">土地（注文住宅）の診断はこちら</a></p>
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
 
@@ -1814,6 +1821,7 @@ LP_MENU_PLACEHOLDER
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h11M9 4l4.2 4L9 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </a>
       <a class="btn btn-ghost" href="/mansion">マンションを診断する</a>
+      <a class="btn btn-ghost" href="/land">土地を診断する</a>
     </div>
     <!-- 本文から「物件は売りません」を外したぶん、ここで拾う。中立性は
          このサービスの一番の武器なので、ファーストビューから消せない。 -->
@@ -2004,6 +2012,7 @@ LP_MENU_PLACEHOLDER
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h11M9 4l4.2 4L9 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </a>
         <a class="btn btn-ghost" href="/mansion">マンションを診断する</a>
+        <a class="btn btn-ghost" href="/land">土地を診断する</a>
       </div>
       <p class="sub" style="text-align:center;margin-top:10px">
        会員登録も費用もかかりません。</p>
@@ -2120,6 +2129,7 @@ LP_MENU_PLACEHOLDER
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h11M9 4l4.2 4L9 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </a>
       <a class="btn btn-ghost" href="/mansion">マンションを診断する</a>
+      <a class="btn btn-ghost" href="/land">土地を診断する</a>
     </div>
     <p class="soon">どちらも会員登録は不要です。マンションは管理費・修繕積立金も評価に含めます。</p>
   </div>
@@ -2861,7 +2871,7 @@ def guide_page(slug):
 
 # サイトマップに載せるのはGETで開けるページだけ。
 # 診断結果はPOSTでしか生成されず、固有のURLを持たないのでクロール対象にならない。
-SITEMAP_PATHS = ["/", "/buy", "/mansion", "/copy-guide", "/pro",
+SITEMAP_PATHS = ["/", "/buy", "/mansion", "/land", "/copy-guide", "/pro",
                  # 資金計画の見本。会員でなくても開ける固定のページで、
                  # 外部APIを叩かないので、巡回されても負荷にならない。
                  # 諸費用の内訳を根拠つきで並べた実質的な内容ページでもある。
@@ -2943,9 +2953,10 @@ def metrics_page():
  </div>
  <div class="note" style="margin:14px 0">
   <b>入力画面 → 診断</b>　{rate("diag_kodate", "view_buy")}（戸建）／
-  {rate("diag_mansion", "view_mansion")}（マンション）<br>
+  {rate("diag_mansion", "view_mansion")}（マンション）／
+  {rate("diag_land", "view_land")}（土地）<br>
   <b>診断 → 会員登録</b>　{tot["signup"]}人／
-  診断{tot["diag_kodate"] + tot["diag_mansion"]}件<br>
+  診断{tot["diag_kodate"] + tot["diag_mansion"] + tot["diag_land"]}件<br>
   <b>PRO</b>　開始 {tot["pro_start"]}／解約 {tot["pro_cancel"]}
  </div>
  <div class="tablewrap"><table class="cmp">
@@ -3505,7 +3516,7 @@ BRAND_BAR
  <p class="lead"><b>所在地・売出価格・専有面積の3つで診断できます。</b>分かる項目を
   足すほど、点の確からしさ（情報充足度）が上がります。
   金額は<b>万円</b>（管理費・修繕積立金は<b>円</b>）。
-  <a href="/buy">戸建の診断はこちら</a></p>
+  <a href="/buy">戸建の診断はこちら</a>　<a href="/land">土地の診断はこちら</a></p>
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
 
@@ -3886,6 +3897,632 @@ def _run_mansion_diagnose(f):
                               to_yen(f.get("income"))),
                           edit=_edit_carry("/mansion/edit", f,
                                            _mansion_example_v()))
+
+# ---- 土地診断 -------------------------------------------------------
+# 戸建・マンションと結果の中身が違うので、画面を分けている。
+# 価格の推定は出さない（土地の㎡単価はばらつきが大きく、1本の数字にする
+# 精度が無い）。代わりに「何が建てられるか」と「近隣がいくらで売買されて
+# いるか」を出す。採点は src/land_scoring.py。
+
+LAND_FORM = """
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+FONT_LINK_PLACEHOLDER
+<title>HOME INDEX｜土地診断（注文住宅）</title>
+<style>
+LAND_CSS_PLACEHOLDER
+</style></head><body>
+BRAND_BAR
+<div class="wrap">
+ <h1>この土地に、どんな家が建つか</h1>
+ <p class="aim">注文住宅を建てる土地を100点で採点します。
+  <b>建ぺい率・容積率・前面道路</b>から延床の上限を計算し、
+  近隣の<b>土地の成約事例</b>から㎡単価の分布を出します。</p>
+ <p class="lead"><b>所在地・価格・敷地面積・建物の予算</b>の4つで診断できます。
+  分かる項目を足すほど、点の確からしさ（情報充足度）が上がります。
+  金額は<b>万円</b>。<a href="/buy">戸建（建売）の診断はこちら</a></p>
+
+ {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
+
+ <div class="banner">
+  <b>土地の価格は点数に入れていません。</b>土地の㎡単価はばらつきが大きく
+  （実測で中央値の±40〜55%）、推定価格を1本の数字で出せる精度がありません。
+  近隣でいくらで売買されているかの分布をそのままお見せします。
+ </div>
+
+ <form class="card" method="post" action="/land_diagnose">
+  <label>所在地 <span class="req">必須</span></label>
+  <input name="address" value="{{v.address}}" placeholder="例）〇〇県〇〇市〇〇町2-3-4" required>
+
+  <div class="row">
+   <div><label>土地の価格（万円） <span class="req">必須</span></label>
+    <input name="price" value="{{v.price}}" placeholder="例）1800" required></div>
+   <div><label>敷地面積（㎡） <span class="req">必須</span></label>
+    <input name="area" value="{{v.area}}" placeholder="例）120"
+     required>
+    <div class="hint">坪なら 3.30578 を掛けて㎡にしてください</div></div>
+  </div>
+
+  <div class="row">
+   <div><label>建物の予算（万円）</label>
+    <input name="budget" value="{{v.budget}}" placeholder="例）2500">
+    <div class="hint"><b>本体工事のみの金額で構いません。</b>外構・地盤改良・
+     諸費用は含めずに入れてください（結果で別に注意を出します）</div></div>
+   <div><label>世帯人数</label>
+    <input name="household" value="{{v.household}}" placeholder="例）4">
+    <div class="hint">未入力は4人。延床が足りるかの基準に使います</div></div>
+  </div>
+
+  <h3 class="sec">接道（ここが土地の成否を分けます）</h3>
+  <div class="row">
+   <div><label>前面道路の幅員（m）</label>
+    <input name="road_width" value="{{v.road_width}}" placeholder="例）6">
+    <div class="hint"><b>2つ以上の道路に接しているときは、いちばん広いほう</b>を
+     入れてください。狭いほうを入れると、使えるはずの容積率より小さく出ます</div></div>
+   <div><label>接道の長さ（m）</label>
+    <input name="road_contact" value="{{v.road_contact}}" placeholder="例）8">
+    <div class="hint">敷地が道路に接している長さ。建築基準法は2m以上を求めます</div></div>
+  </div>
+  <div class="row">
+   <div><label>道路の種類</label>
+    <select name="road_type">
+     {% for k, lbl in road_types %}
+     <option value="{{k}}" {{'selected' if v.road_type==k else ''}}>{{lbl}}</option>
+     {% endfor %}
+    </select>
+    <div class="hint">重要事項説明書か、市区町村の道路課で分かります</div></div>
+   <div><label>間口（m・任意）</label>
+    <input name="frontage" value="{{v.frontage}}" placeholder="例）8">
+    <div class="hint">道路に面した幅。駐車と建物の配置に効きます</div></div>
+  </div>
+
+  <details class="more">
+   <summary>もっと詳しく入れる（任意）</summary>
+
+   <div class="row">
+    <div><label>最寄駅まで徒歩（分）</label>
+     <input name="station" value="{{v.station}}" placeholder="例）8"></div>
+    <div><label>駅までバス（分）</label>
+     <input name="bus" value="{{v.bus}}" placeholder="例）12">
+     <div class="hint">バス便のときだけ。徒歩欄にはバス停までの分を入れてください</div></div>
+   </div>
+
+   <div class="row">
+    <div><label>指定建ぺい率（%）</label>
+     <input name="coverage" value="{{v.coverage}}" placeholder="住所から自動判定"></div>
+    <div><label>指定容積率（%）</label>
+     <input name="far" value="{{v.far}}" placeholder="住所から自動判定">
+     <div class="hint">通常は入力不要です。非線引き区域などで自動判定できない
+      ときだけ、販売図面の数字を入れてください</div></div>
+   </div>
+
+   <details class="more" style="margin-top:10px">
+    <summary>住所から自動で判定できないとき</summary>
+    <div class="hint">通常は入力不要です。住所を入れると自動で埋まります。</div>
+    <div class="row">
+     <div><label>市区町村コード</label>
+      <input name="city" value="{{v.city}}" placeholder="住所から自動判定"></div>
+     <div><label>町名</label>
+      <input name="district" value="{{v.district}}" placeholder="住所から自動判定"></div>
+    </div>
+   </details>
+  </details>
+
+  <div class="row">
+   <div><label>世帯年収（万円・任意）</label>
+    <input name="income" value="{{v.income}}" placeholder="例）800"></div>
+   <div><label>頭金（万円・任意）</label>
+    <input name="down" value="{{v.down}}" placeholder="例）500"></div>
+  </div>
+  <div class="row">
+   <div><label>借入年数（年）</label>
+    <input name="loan_years" value="{{v.loan_years}}" placeholder="35">
+    <div class="hint">未入力は35年。土地と建物の<b>合計</b>で計算します</div></div>
+   <div></div>
+  </div>
+
+  <button type="submit">この土地を診断する</button>
+  <div class="hint">押したあと、公的データを集めるのに10〜30秒ほどかかります。
+   診断結果は公的データにもとづく推定です。契約の判断は専門家の確認を
+   前提としてください。</div>
+ </form>
+<script>
+(function(){
+  var form = document.querySelector('form[action="/land_diagnose"]');
+  if(!form) return;
+  var addr = form.querySelector('input[name="address"]');
+  var city = form.querySelector('input[name="city"]');
+  var dist = form.querySelector('input[name="district"]');
+  if(!addr || !city) return;
+  var last = "";
+  function resolve(){
+    var a = (addr.value || "").trim();
+    if(!a || a === last) return;
+    last = a;
+    var fd = new FormData();
+    fd.append("address", a);
+    var ph = city.placeholder;
+    city.placeholder = "自動判定中…";
+    fetch("/resolve_city", {method:"POST", body: fd})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        city.placeholder = ph || "";
+        if(j && j.city){ city.value = j.city; }
+        if(j && j.district && dist && !dist.value){ dist.value = j.district; }
+      })
+      .catch(function(){ city.placeholder = ph || ""; });
+  }
+  addr.addEventListener("change", resolve);
+  addr.addEventListener("blur", resolve);
+})();
+</script>
+</div></body></html>
+"""
+
+# 道路の種類。src/land_scoring.py の ROAD_TYPE_POINTS と同じキーを使う。
+LAND_ROAD_TYPES = [
+    ("unknown", "わからない"),
+    ("公道", "公道（市道・県道・国道）"),
+    ("私道", "私道"),
+    ("位置指定", "位置指定道路"),
+    ("none", "道路に接していない／通路のみ"),
+]
+
+LAND_FORM = (LAND_FORM
+             .replace("LAND_CSS_PLACEHOLDER",
+                      _FORM_CSS + "\n .sec{font-size:15px;margin:22px 0 2px;"
+                      "padding-top:14px;border-top:1px solid #e5e5e5}")
+             .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
+             .replace("BRAND_BAR", brand_bar("土地診断"))
+             .replace("</div></body></html>", FOOTER + "</div></body></html>"))
+
+
+LAND_RESULT = """
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+FONT_LINK_PLACEHOLDER
+<title>HOME INDEX｜{{s.address}}</title>
+<style>
+LAND_RESULT_CSS_PLACEHOLDER
+ .big{font-size:26px;font-weight:800;margin:6px 0 0}
+ .kv{display:flex;flex-wrap:wrap;gap:10px 26px;margin:10px 0 0}
+ .kv div{font-size:14px}
+ .kv b{display:block;font-size:12px;color:var(--sub);font-weight:600}
+ .stop{background:#fef2f2;border:1px solid #fecaca;border-radius:12px;
+   padding:14px 16px;margin-top:16px}
+ .stop h2{color:#991b1b;margin:0 0 6px}
+ .dist{display:flex;align-items:flex-end;gap:2px;height:52px;margin:10px 0 2px}
+ .dist i{flex:1;background:#dbeafe;border-radius:3px 3px 0 0;display:block}
+ .dist i.mid{background:#1d4ed8}
+</style></head><body>
+BRAND_BAR
+<div class="wrap" id="report">
+ <a class="back" href="/land">← 別の土地を診断</a>
+
+ <div class="card hero">
+  BRAND_LOCKUP
+  <p class="sub">{{s.address}}</p>
+  <h1>土地　{{s.price}}{% if s.budget %}　＋　建物予算 {{s.budget}}{% endif %}</h1>
+  <p class="muted">{{s.specs}}</p>
+  {% if edit %}
+  <form method="post" action="{{edit.action}}" class="fixrow no-print">
+   {% for k, val in edit.fields.items() %}
+   <input type="hidden" name="{{k}}" value="{{val}}">
+   {% endfor %}
+   <button type="submit" class="fix">入力を修正する</button>
+   <span class="muted">数字や住所を直して、もう一度診断できます。</span>
+  </form>
+  {% endif %}
+  <div class="hero-score">
+   <div class="ring">
+    <svg viewBox="0 0 132 132" width="132" height="132">
+     <circle cx="66" cy="66" r="58" fill="none" stroke="#e8eef2" stroke-width="12"/>
+     <circle cx="66" cy="66" r="58" fill="none" stroke="{{grade_color}}" stroke-width="12"
+       stroke-linecap="round" stroke-dasharray="{{ring_circ}}" stroke-dashoffset="{{ring_off}}"
+       transform="rotate(-90 66 66)"/>
+    </svg>
+    <div class="num"><b style="color:{{grade_color}}">{{d.total}}</b><small>点 / 100</small></div>
+   </div>
+   <div class="gradebox">
+    <div class="gletter" style="color:{{grade_color}}">{{d.grade}}</div>
+    <div class="gcomment" style="color:{{grade_color}}">{{grade_comment}}</div>
+    <div class="muted">情報充足度 {{d.suff}}%</div>
+    <div class="muted" style="font-size:12px"><b>点数ではありません。</b>採点に
+     使えた情報の割合です。未確認の項目は点数に入れていません</div>
+   </div>
+  </div>
+ </div>
+
+ {% if capped %}
+ <div class="stop">
+  <h2>この土地は、家を建てられない可能性があります</h2>
+  <ul>{% for r in capped.reasons %}<li>{{r}}</li>{% endfor %}</ul>
+  <p style="margin:8px 0 0;font-size:14px">
+   総合点は<b>{{capped.limit}}点を上限</b>としています。減点ではなく頭打ちに
+   しているのは、再建築ができない土地は<b>住宅ローンがまず通らない</b>ためです
+   （金融機関が担保として評価しません）。他がどれほど良くても、
+   家を建てる前提が崩れます。</p>
+  <p style="margin:8px 0 0;font-size:14px">{{capped.escape}}</p>
+ </div>
+ {% endif %}
+
+ <div class="card">
+  <h2>この土地に建てられる家</h2>
+  {% if cap.max_total_floor_m2 %}
+   <p class="big">延床の上限 {{cap.floor_m2}}㎡<span class="muted"
+     style="font-size:15px;font-weight:400">（{{cap.floor_tsubo}}坪）</span></p>
+   <p class="muted">{{s.household}}人世帯の誘導居住面積水準は {{cap.guided}}㎡です
+    （国土交通省・住生活基本計画）。</p>
+   <div class="kv">
+    <div><b>指定建ぺい率</b>{{cap.coverage or "—"}}%</div>
+    <div><b>指定容積率</b>{{cap.designated_far or "—"}}%</div>
+    <div><b>実際に使える容積率</b>{{cap.effective_far or "—"}}%</div>
+    <div><b>建築面積の上限（1階）</b>{{cap.footprint_m2 or "—"}}㎡</div>
+   </div>
+   {% if cap.far_limited_by_road %}
+   <div class="rsk" style="margin-top:12px">
+    <b>前面道路で容積率が頭打ちになっています。</b>
+    指定容積率は{{cap.designated_far}}%ですが、前面道路{{s.road_width}}mのため
+    実際に使えるのは{{cap.road_far}}%までです（建築基準法52条2項）。
+    広告に出ているのは指定容積率のほうなので、ここで落ちることを
+    知らずに買う人がいます。
+   </div>
+   {% endif %}
+   {% if cap.setback_m2 %}
+   <div class="rsk">
+    <b>セットバックが要ります。</b>前面道路が4m未満のため、
+    およそ{{cap.setback_m2}}㎡が敷地として使えません
+    （道の中心から2m下がる前提の概算）。上の数字はこれを引いたあとの値です。
+   </div>
+   {% endif %}
+  {% else %}
+   <p class="muted">建ぺい率・容積率が取得できなかったため、建てられる大きさを
+    計算していません。販売図面の数字を「もっと詳しく入れる」に入れると計算できます。</p>
+  {% endif %}
+  <div class="foot">高さ制限（絶対高さ・斜線・日影）、角地の建ぺい率緩和、
+   防火地域の緩和は計算に入れていません。いずれも地点ごとの条件が要り、
+   公的データからは取れないためです。実際の設計はこれより小さくなることがあります。</div>
+ </div>
+
+ {% if mk.count %}
+ <div class="card">
+  <h2>近隣の土地取引</h2>
+  {% if mk.unit_mid %}
+   <p class="big">㎡単価 {{mk.low}} 〜 {{mk.high}}<span class="muted"
+     style="font-size:15px;font-weight:400">（中央値 {{mk.mid}}）</span></p>
+   <p class="muted">{{mk.where}}の成約 {{mk.count}}件{{mk.years}}。
+    ばらつきは中央値の±{{mk.spread}}%です。</p>
+   {% if mk.subject_unit %}
+   <p style="font-size:15px;margin:10px 0 0">この土地の㎡単価は
+    <b>{{mk.subject_unit}}</b>（{{mk.position}}）</p>
+   {% endif %}
+   <div class="foot"><b>点数には使っていません。</b>同じ町でも、角地か、
+    間口が広いか、形がいびつか、道路が何mかで単価は大きく動きます。
+    分布をそのままお見せするので、判断はご自身でなさってください。</div>
+  {% else %}
+   <p class="muted">{{mk.note}}</p>
+  {% endif %}
+
+  {% if mk.traits %}
+  <h3 style="font-size:14px;margin:16px 0 2px">この地域の土地の傾向</h3>
+  <div class="kv">
+   {% for t in mk.traits %}<div><b>{{t.k}}</b>{{t.v}}</div>{% endfor %}
+  </div>
+  <div class="foot"><b>対象地がそうだという意味ではありません。</b>
+   近隣の成約にその条件がどれくらい含まれていたか、という数字です。
+   何を確かめるべきかの見当をつけるためにお使いください。</div>
+  {% endif %}
+ </div>
+ {% endif %}
+
+ <div class="card">
+  <h2>スコア内訳</h2>
+  {% for c in cats %}
+  <div class="cat"><div class="top"><span>{{c.name}}</span>
+    <span class="muted">{{c.points}} / {{c.weight}}</span></div>
+   <div class="bar"><span style="width:{{c.pct}}%;background:{{c.color}}"></span></div>
+   <div class="muted">{{c.reason}}</div></div>
+  {% endfor %}
+  <div class="foot">{{d.comment}}</div>
+ </div>
+
+ {% if d.strengths or d.weaknesses %}
+ <div class="card">
+  {% if d.strengths %}<h2 style="color:#dc2626">◎ 強み</h2><ul class="strong">
+   {% for t in d.strengths %}<li>{{t}}</li>{% endfor %}</ul>{% endif %}
+  {% if d.weaknesses %}<h2 style="margin-top:12px;color:#0ea5e9">△ 弱み</h2>
+   <ul class="weak">
+   {% for t in d.weaknesses %}<li>{{t}}</li>{% endfor %}</ul>{% endif %}
+ </div>
+ {% endif %}
+
+ {% if d.risks %}
+ <div class="card">
+  <h2>注意すること</h2>
+  {% for r in d.risks %}
+  <span class="rsk"><b>{{r.type}}</b>（{{r.sevja}}）　{{r.ev}}</span>
+  {% endfor %}
+ </div>
+ {% endif %}
+
+ <div class="card">
+  <h2>資金</h2>
+  <p class="big">総額 {{loan.total}}</p>
+  <p class="muted">土地 {{s.price}} ＋ 建物予算 {{s.budget or "未入力"}}</p>
+  <div class="kv">
+   <div><b>借入額</b>{{loan.principal}}</div>
+   <div><b>頭金</b>{{loan.down}}</div>
+   <div><b>月々返済</b>{{loan.monthly}}</div>
+   <div><b>返済負担率</b>{% if loan.burden %}{{loan.burden}}%{% else %}—{% endif %}</div>
+  </div>
+  <div class="foot"><b>この総額には、外構・地盤改良・付帯工事・諸費用が
+   入っていません。</b>注文住宅ではこれらが数百万円単位でかかります。
+   特に地盤改良は、地盤調査をするまで金額が分かりません。
+   金利は年1.25%・元利均等で試算しています。</div>
+ </div>
+
+ {% if d.confirm %}
+ <div class="card">
+  <h2>確認すること</h2>
+  <ul>{% for t in d.confirm %}<li>{{t}}</li>{% endfor %}</ul>
+ </div>
+ {% endif %}
+
+ {% if warnings %}
+ <div class="card">
+  <h2>データについて</h2>
+  <ul>{% for w in warnings %}<li class="muted">{{w}}</li>{% endfor %}</ul>
+ </div>
+ {% endif %}
+</div></body></html>
+"""
+
+_RESULT_CSS = RESULT[RESULT.index("<style>") + len("<style>"):
+                     RESULT.index("</style>")]
+LAND_RESULT = (LAND_RESULT
+               .replace("LAND_RESULT_CSS_PLACEHOLDER", _RESULT_CSS)
+               .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
+               .replace("BRAND_BAR", brand_bar("土地診断"))
+               .replace("BRAND_LOCKUP", brand_lockup("landlock"))
+               .replace("</div></body></html>", FOOTER + "</div></body></html>"))
+
+
+def _land_example_v():
+    return dict(address="", price="", area="", budget="", household="",
+                road_width="", road_contact="", road_type="unknown",
+                frontage="", station="", bus="", coverage="", far="",
+                city="", district="", income="", down="", loan_years="35")
+
+
+def _land_form_values(f):
+    v = _land_example_v()
+    for k in v:
+        if f.get(k) is not None:
+            v[k] = f.get(k)
+    return v
+
+
+@app.route("/land")
+def land():
+    """土地診断の入力フォーム。"""
+    _seen("view_land")
+    return render_template_string(LAND_FORM, v=_land_example_v(),
+                                  road_types=LAND_ROAD_TYPES, banner=None)
+
+
+@app.route("/land/edit", methods=["POST"])
+def land_edit():
+    return render_template_string(
+        LAND_FORM, v=_land_form_values(request.form),
+        road_types=LAND_ROAD_TYPES,
+        banner="入力を読み込みました。直してから、もう一度診断してください。")
+
+
+@app.route("/land_diagnose", methods=["POST"])
+def land_diagnose():
+    f = request.form
+    if not _rate_ok(_client_ip()):
+        return render_template_string(
+            LAND_FORM, v=_land_form_values(f), road_types=LAND_ROAD_TYPES,
+            banner=(f"本日の診断回数の上限（{_RATE_LIMIT}回）に達しました。"
+                    "時間をおいて再度お試しください。")), 429
+    if not _SEM.acquire(timeout=25):
+        return render_template_string(
+            LAND_FORM, v=_land_form_values(f), road_types=LAND_ROAD_TYPES,
+            banner="ただいまアクセスが集中しています。"
+                   "少し時間をおいて再度お試しください。"), 503
+    try:
+        return _run_land_diagnose(f)
+    finally:
+        _SEM.release()
+
+
+def _run_land_diagnose(f):
+    address = (f.get("address") or "").strip()
+    city = (f.get("city") or "").strip()
+    district = (f.get("district") or "").strip()
+    if not city and address:
+        try:
+            code, _nm, dist = _resolve_city(address)
+            if code:
+                city = code
+            if dist and not district:
+                district = dist
+        except Exception:
+            pass
+
+    area = to_float(f.get("area"))
+    if not area or area <= 0:
+        return render_template_string(
+            LAND_FORM, v=_land_form_values(f), road_types=LAND_ROAD_TYPES,
+            banner="敷地面積を入力してください。"
+                   "建てられる家の大きさを計算するのに必要です。")
+
+    road_type = (f.get("road_type") or "unknown").strip()
+    if road_type not in dict(LAND_ROAD_TYPES):
+        road_type = "unknown"
+
+    subject = LandSubject(
+        address=address,
+        price=to_yen(f.get("price")) or 0,
+        land_area_m2=area,
+        building_budget=to_yen(f.get("budget")),
+        household_size=to_int(f.get("household")),
+        frontage_m=to_float(f.get("frontage")),
+        road_width_m=to_float(f.get("road_width")),
+        road_contact_m=to_float(f.get("road_contact")),
+        road_type=road_type,
+        station_walk_min=to_int(f.get("station")),
+        bus_min=to_int(f.get("bus")),
+        municipality_code=city or None,
+        district_name=district or None,
+        coverage_ratio=to_int(f.get("coverage")),
+        floor_area_ratio=to_int(f.get("far")))
+
+    loan_years = max(1, min(50, to_int(f.get("loan_years")) or 35))
+    down_yen = to_yen(f.get("down")) or 0
+
+    res = run_land_pipeline(
+        subject, reinfolib_key=os.environ.get("REINFOLIB_KEY"),
+        google_key=os.environ.get("GOOGLE_KEY"),
+        mock=(os.environ.get("SHINDAN_MOCK") == "1"),
+        annual_income=to_yen(f.get("income")), down_payment=down_yen,
+        loan_years=loan_years,
+        estat_appid=os.environ.get("ESTAT_APPID"),
+        estat_table=os.environ.get("ESTAT_TABLE", "0000020201"))
+    metrics.bump("diag_land")
+    return _render_land_result(res, subject, f, down_yen, loan_years)
+
+
+# 重大度は high / medium / low で持っているが、そのまま画面に出さない。
+_SEVERITY_JA = {"high": "重大", "medium": "中", "low": "軽微"}
+
+
+def _public_warnings(warnings):
+    """画面に出してよい注記だけにする。
+
+    パイプラインの warnings には、例外をそのまま文字列にしたものが混ざる
+    （接続エラーのURLやSSLの内部メッセージ）。読む人には意味が無いうえ、
+    こちらの作りが漏れる。取れなかったという事実だけを一行で伝える。
+    """
+    out, failed = [], False
+    for w in warnings:
+        if ("失敗" in w) or ("http" in w.lower()) or ("Error" in w):
+            failed = True
+            continue
+        out.append(w)
+    if failed:
+        out.insert(0, "一部の公的データを取得できませんでした。"
+                      "取れなかった項目は点数に入れず、情報充足度を下げています。")
+    return out[:6]
+
+
+def _land_position(unit, low, mid, high):
+    """対象地の㎡単価が分布のどこにいるか。断定的な言葉は使わない。"""
+    if unit is None or mid is None:
+        return ""
+    if unit < low:
+        return "近隣の成約より安いほうです"
+    if unit > high:
+        return "近隣の成約より高いほうです"
+    return "近隣の成約の真ん中あたりです"
+
+
+def _render_land_result(res, subject, f, down_yen, loan_years):
+    from src.land import tsubo
+    from src.land_scoring import guided_area_m2, DEFAULT_HOUSEHOLD, score_cap
+
+    d = res.diagnosis
+    c = res.capacity
+    mkt = res.market
+    e = res.enrichment
+
+    household = subject.household_size or DEFAULT_HOUSEHOLD
+    bits = [f"敷地 {subject.land_area_m2:.0f}㎡（{tsubo(subject.land_area_m2)}坪）"]
+    if e and e.use_district:
+        bits.append(e.use_district)
+    if subject.road_width_m:
+        bits.append(f"前面道路 {subject.road_width_m}m")
+    if subject.road_type != "unknown":
+        bits.append(dict(LAND_ROAD_TYPES)[subject.road_type])
+    if subject.bus_min:
+        bits.append(f"駅までバス{subject.bus_min}分")
+    elif subject.station_walk_min is not None:
+        bits.append(f"駅徒歩{subject.station_walk_min}分")
+    sctx = dict(address=subject.address, price=man(subject.price),
+                budget=(man(subject.building_budget)
+                        if subject.building_budget else None),
+                household=household, road_width=subject.road_width_m,
+                specs=" ・ ".join(bits))
+
+    cap_ctx = dict(
+        coverage=c.coverage_ratio, designated_far=c.designated_far,
+        effective_far=c.effective_far, road_far=c.road_far,
+        far_limited_by_road=c.far_limited_by_road,
+        setback_m2=c.setback_m2,
+        max_total_floor_m2=c.max_total_floor_m2,
+        floor_m2=(f"{c.max_total_floor_m2:.0f}" if c.max_total_floor_m2 else None),
+        floor_tsubo=tsubo(c.max_total_floor_m2),
+        footprint_m2=(f"{c.max_footprint_m2:.0f}" if c.max_footprint_m2 else None),
+        guided=f"{guided_area_m2(household):.0f}")
+
+    mk = dict(count=mkt.count if mkt else 0)
+    if mkt and mkt.unit_mid:
+        traits = []
+        if mkt.private_road_pct is not None:
+            traits.append(dict(k="私道に接していた割合", v=f"{mkt.private_road_pct}%"))
+        if mkt.narrow_road_pct is not None:
+            traits.append(dict(k="幅員4m未満だった割合", v=f"{mkt.narrow_road_pct}%"))
+        if mkt.irregular_pct is not None:
+            traits.append(dict(k="不整形だった割合", v=f"{mkt.irregular_pct}%"))
+        mk.update(
+            low=f"{mkt.unit_low:,}円", mid=f"{mkt.unit_mid:,}円",
+            high=f"{mkt.unit_high:,}円", spread=mkt.spread_pct,
+            where=(mkt.district or "市区町村全体"),
+            years=(f"（{mkt.years[0]}〜{mkt.years[-1]}年）" if mkt.years else ""),
+            subject_unit=(f"{mkt.subject_unit:,}円/㎡" if mkt.subject_unit else None),
+            position=_land_position(mkt.subject_unit, mkt.unit_low,
+                                    mkt.unit_mid, mkt.unit_high),
+            traits=traits)
+    elif mkt:
+        mk["note"] = (mkt.notes[0] if mkt.notes
+                      else "近隣の土地取引が見つかりませんでした")
+
+    sc = score_cap(subject.road_width_m, subject.road_contact_m,
+                   subject.road_type,
+                   (e.use_district if e else None),
+                   (e.urbanization if e else None))
+    capped = None
+    if sc and d.total_score >= sc.limit:
+        capped = dict(
+            limit=sc.limit, reasons=sc.reasons,
+            escape=(d.to_confirm[0] if d.to_confirm else ""))
+
+    cats = [dict(name=x.name, points=x.points, weight=x.weight,
+                 pct=int(round(x.raw * 100)), color=_catcolor(x.raw),
+                 reason=x.reason) for x in d.categories]
+    dctx = dict(total=d.total_score, grade=d.grade, suff=d.data_sufficiency,
+                comment=d.comment, strengths=d.strengths,
+                weaknesses=d.weaknesses, confirm=d.to_confirm,
+                risks=[dict(sev=r.severity, type=r.type, ev=r.evidence,
+                            sevja=_SEVERITY_JA.get(r.severity, r.severity))
+                       for r in d.critical_risks])
+    L = res.loan
+    total_yen = (subject.price or 0) + (subject.building_budget or 0)
+    loan = dict(total=man(total_yen), principal=man(L.principal),
+                down=man(down_yen), monthly=f"{L.monthly_payment:,}円",
+                burden=L.burden_ratio)
+
+    circ = 2 * 3.14159265 * 58
+    return render_template_string(
+        LAND_RESULT, s=sctx, d=dctx, cats=cats, cap=cap_ctx, mk=mk,
+        loan=loan, capped=capped, warnings=_public_warnings(res.warnings),
+        ring_circ=round(circ, 1),
+        ring_off=round(circ * (1 - d.total_score / 100.0), 1),
+        grade_color=GRADE_COLOR.get(d.grade, "#0d9488"),
+        grade_comment=GRADE_COMMENT.get(d.grade, ""),
+        edit=_edit_carry("/land/edit", f, _land_example_v()))
+
 
 # ---- PRO 購入診断（たたき台・戸建）--------------------------------
 # 仕様書§4-A/§4-C。ここで受けた詳細は物件スコアとリスクにだけ反映し、

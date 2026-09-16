@@ -75,8 +75,16 @@ class BuildCapacity:
 
 
 def far_multiplier(use_district: Optional[str]) -> float:
-    """前面道路の幅員に掛ける乗数。住居系は4/10、それ以外は6/10。"""
-    if use_district and any(t in use_district for t in RESIDENTIAL_TOKENS):
+    """前面道路の幅員に掛ける乗数。住居系は4/10、それ以外は6/10。
+
+    **用途地域が分からないときは住居系の4/10を使う。**この乗数は上限を
+    決めるものなので、大きいほうを当てると「建てられない家を建てられる」
+    と言うことになる。分からないときは厳しいほうに寄せる。
+    注文住宅の土地は住居系が大半でもある。
+    """
+    if use_district is None:
+        return FAR_MULTIPLIER_RESIDENTIAL
+    if any(t in use_district for t in RESIDENTIAL_TOKENS):
         return FAR_MULTIPLIER_RESIDENTIAL
     return FAR_MULTIPLIER_OTHER
 
@@ -119,16 +127,22 @@ def build_capacity(site_area_m2: Optional[float],
             f"前面道路{road_width_m}mによる基準容積率は"
             f"{c.road_far}%（幅員×{m:.1f}）")
 
-    fars = [f for f in (designated_far, c.road_far) if f]
-    if fars:
-        c.effective_far = min(fars)
+    # 法52条2項は「これを超えてはならない」であって「これだけ建ててよい」
+    # ではない。指定容積率が分からないまま道路の数値を採ると、上限を
+    # 許可と読み替えることになる。幅員6mの道に接した土地というだけで
+    # 「容積率360%」と出してしまう。だから指定容積率が無いときは計算しない。
+    if designated_far:
+        c.effective_far = min(designated_far, c.road_far or designated_far)
         c.far_limited_by_road = (c.road_far is not None
-                                 and designated_far is not None
                                  and c.road_far < designated_far)
         if c.far_limited_by_road:
             c.notes.append(
                 f"指定容積率{designated_far}%より道路の{c.road_far}%が小さいので、"
                 f"使えるのは{c.road_far}%まで")
+    elif c.road_far:
+        c.notes.append(
+            f"指定容積率が分からないため、延床の上限は出していません"
+            f"（前面道路による上限は{c.road_far}%です）")
 
     # ---- セットバック ----
     lost = setback_area_m2(site_area_m2, frontage_m, road_width_m)

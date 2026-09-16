@@ -271,16 +271,33 @@ def fetch_zoning(lat, lon, key, zoom=15):
                 _ratio(p, "u_building_coverage_ratio_ja"),
                 _ratio(p, "u_floor_area_ratio_ja"))
 
+    # 地点を含む面を最優先で採る。**名前が空でも捨てない。**実データで
+    # 船橋市前原西6丁目を引くと、地点を含む面は use_area_ja が空のまま
+    # 建ぺい率60%・容積率200%だけ入っている。名前の有無で捨てていたため、
+    # 正しい建ぺい率・容積率を捨てて、隣の面の数字を返していた。
+    hit = None
     for f in feats:
         if point_in_geometry(lon, lat, f.get("geometry") or {}):
-            ud, cov, far = pick(f)
-            if ud:
-                return ud, cov, far
-    for f in feats:  # 内包判定不能時はタイル代表値
-        ud, cov, far = pick(f)
-        if ud:
-            return ud, cov, far
-    return None, None, None
+            got = pick(f)
+            if any(v is not None for v in got):
+                hit = got
+                break
+
+    # 用途地域の名前だけは、内包する面に無ければタイル代表値で補う。
+    # 名前は表示とスコアの目安に使うもので、面積の計算には効かない。
+    rep_name = None
+    for f in feats:
+        nm = pick(f)[0]
+        if nm:
+            rep_name = nm
+            break
+
+    if hit:
+        ud, cov, far = hit
+        return (ud or rep_name), cov, far
+    # **建ぺい率・容積率はタイル代表値で埋めない。**別の面の数字を使うと、
+    # この土地に建てられる延床として、違う土地の数字を出すことになる。
+    return rep_name, None, None
 
 
 # ---------- 区域区分（市街化区域／市街化調整区域） ----------

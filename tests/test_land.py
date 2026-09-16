@@ -101,3 +101,36 @@ def test_the_road_requirement_is_four_metres():
 def test_tsubo_is_there_because_meetings_happen_in_tsubo():
     assert tsubo(33.0578) == 10.0
     assert tsubo(None) is None
+
+
+# ---- 上限を許可と読み替えない ----
+def test_a_road_width_on_its_own_never_grants_floor_area():
+    """法52条2項は「これを超えてはならない」であって「これだけ建ててよい」
+    ではない。
+
+    指定容積率が取れなかった土地で道路の数値だけを採ると、幅員6mの道に
+    接しているというだけで「容積率360%・延床432㎡」と出てしまう。
+    120㎡の土地に43坪×3の家が建つと言うことになる。
+    """
+    c = build_capacity(120.0, None, None, None, road_width_m=6.0,
+                       frontage_m=8.0)
+    assert c.road_far is not None          # 上限そのものは出す
+    assert c.effective_far is None         # 使ってよい容積率にはしない
+    assert c.max_total_floor_m2 is None    # だから延床も出さない
+    assert any("指定容積率が分からない" in n for n in c.notes)
+
+
+def test_an_unknown_use_district_takes_the_stricter_multiplier():
+    # 乗数は上限を決めるもの。大きいほうを当てると、建てられない家を
+    # 建てられると言うことになる。分からないときは厳しいほうへ。
+    assert far_multiplier(None) == 0.4
+    assert far_multiplier("商業地域") == 0.6
+    assert far_multiplier("第一種住居地域") == 0.4
+
+
+def test_a_designated_ratio_still_wins_when_the_road_is_generous():
+    # 幅員6m・住居系なら道路の上限は240%。指定200%のほうが小さいので200%。
+    c = build_capacity(120.0, 60, 200, "第一種住居地域", road_width_m=6.0)
+    assert c.road_far == 240
+    assert c.effective_far == 200
+    assert c.far_limited_by_road is False

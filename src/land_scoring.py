@@ -206,6 +206,12 @@ def score_buildable(capacity: BuildCapacity,
     total_w = sum(BUILDABLE_PARTS[k] for k in known)
     raw = sum(BUILDABLE_PARTS[k] * v for k, v in known.items()) / total_w
     coverage = total_w / sum(BUILDABLE_PARTS.values())
+    # 延床は25点中12点を持つ主役。それが計算できていないのに、間口だけで
+    # 満点が出てはいけない。score_risk がハザード未確認で 0.7 に頭を
+    # 押さえるのと同じ扱いにする。
+    if parts["延床"] is None:
+        raw = min(raw, 0.7)
+        bits.append("建ぺい率・容積率が取れず、延床の上限を計算できていません")
 
     n = household or DEFAULT_HOUSEHOLD
     if capacity.max_total_floor_m2:

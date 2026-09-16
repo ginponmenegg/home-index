@@ -102,6 +102,10 @@ class LandSubject:
     municipality_code: Optional[str] = None
     district_name: Optional[str] = None
     city_planning: Optional[str] = None
+    # 建ぺい率・容積率は住所から自動で取れるが、非線引き区域などタイルに
+    # 入っていない土地がある。入力があればそちらを優先する。
+    coverage_ratio: Optional[int] = None        # 指定建ぺい率(%)
+    floor_area_ratio: Optional[int] = None      # 指定容積率(%)
     building_area_m2: Optional[float] = None    # 常に None。score_asset が読む
 
 

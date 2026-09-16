@@ -34,6 +34,9 @@ DEFAULTS = {
                               "立地": 15, "資産性": 10, "資金": 10},
     "mansion_sim_weights": {"location": 0.35, "build_year": 0.30,
                             "recency": 0.20, "area": 0.15},
+    # 土地の成約は戸建より数が少ない。3年では分布にならないので長めに遡る。
+    # 1年につきAPIを1回叩くので、増やすとその分だけ遅く・重くなる。
+    "land_trade_years": 5,
     "neighbor_radius_m": 2000,   # 類似物件の近接半径(m)
     "k_nearest": 6,              # 価格算出に使う最類似件数
     "max_year_gap": 25,          # 築年が離れすぎた事例を除外(年)

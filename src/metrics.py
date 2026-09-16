@@ -42,6 +42,7 @@ EVENTS = {
     "view_lp":      "トップを見た",
     "view_buy":     "戸建の入力画面を見た",
     "view_mansion": "マンションの入力画面を見た",
+    "view_land":    "土地の入力画面を見た",
     "view_guide":   "解説記事を見た",
     "view_sample":  "見本の結果を見た",
     # 資金計画の見本。PROの中身を見せる唯一の公開ページなので、
@@ -52,6 +53,7 @@ EVENTS = {
     "paste_used":   "貼り付けから自動入力した",
     "diag_kodate":  "戸建の診断が出た",
     "diag_mansion": "マンションの診断が出た",
+    "diag_land":    "土地の診断が出た",
     "pro_diag":     "PROの詳細診断が出た",
     "signup":       "会員登録",
     "saved":        "診断を保存",
