@@ -2882,7 +2882,8 @@ def guide_page(slug):
 
 # サイトマップに載せるのはGETで開けるページだけ。
 # 診断結果はPOSTでしか生成されず、固有のURLを持たないのでクロール対象にならない。
-SITEMAP_PATHS = ["/", "/buy", "/mansion", "/land", "/copy-guide", "/pro",
+SITEMAP_PATHS = ["/", "/buy", "/mansion", "/land", "/sample/land",
+                 "/copy-guide", "/pro",
                  # 資金計画の見本。会員でなくても開ける固定のページで、
                  # 外部APIを叩かないので、巡回されても負荷にならない。
                  # 諸費用の内訳を根拠つきで並べた実質的な内容ページでもある。
@@ -4133,6 +4134,18 @@ BRAND_BAR
 <div class="wrap" id="report">
  <a class="back" href="/land">← 別の土地を診断</a>
 
+ {% if sample %}
+ <div class="card no-print" style="border-color:#111;background:#fffbea">
+  <h2 style="margin-top:0">これは見本の土地です</h2>
+  <p class="muted" style="margin:6px 0 10px">
+   実在の住所（丁目まで）で公的データを引いていますが、<b>価格・面積・
+   接道の条件は説明のための数字</b>で、実際に売られている土地では
+   ありません。採点の中身と出典の見え方を、そのままご覧いただくための
+   ものです。</p>
+  <p style="margin:0"><a class="btn" href="/land">自分の土地で診断する</a></p>
+ </div>
+ {% endif %}
+
  <div class="card hero">
   BRAND_LOCKUP
   <p class="sub">{{s.address}}</p>
@@ -4435,6 +4448,29 @@ BRAND_BAR
    金利は年1.25%・元利均等で試算しています。</div>
  </div>
 
+ {% if disc %}
+ <div class="card">
+  <h2>重要事項説明書の、どこを見るか（{{disc|length}}件）</h2>
+  <p class="muted" style="margin:6px 0 10px">
+   重要事項説明書は契約の直前に渡され、その場で読み上げられます。
+   30ページ近いものを初めて見て、聞きながら判断するのは無理があります。
+   <b>この土地で効く欄を、根拠の条文つきで先に並べます。</b></p>
+  {% for x in disc %}
+  <div class="cat" style="border-top:1px solid var(--line);padding-top:10px">
+   <div style="font-weight:700;font-size:14px">{{x.where}}</div>
+   <div class="muted" style="font-size:12px">{{x.law}}</div>
+   <div class="muted" style="margin-top:4px">{{x.why}}</div>
+  </div>
+  {% endfor %}
+  <div class="foot"><b>良し悪しは書いていません。</b>どこに何が書かれるか
+   までです。条文は e-Gov 法令検索で確かめています。担当者にそのまま
+   「第何号の欄を見せてください」と言えます。<br>
+   <b>更地では、石綿・耐震診断・住宅性能評価は説明事項ではありません</b>
+   （規則第16条の4の3。宅地の売買は第1号から第3号の2まで）。
+   並べていないのはそのためです。</div>
+ </div>
+ {% endif %}
+
  {% if d.confirm %}
  <div class="card" id="ask">
   <h2 style="margin-top:0">確認すること（{{d.confirm|length}}件）</h2>
@@ -4457,6 +4493,43 @@ BRAND_BAR
  {% endif %}
 
  {% if handover %}
+ <div class="card" data-html2canvas-ignore style="border-color:#111">
+  <h2 style="margin-top:0">無料でここまで／PROでここまで</h2>
+  <div class="tablewrap">
+   <table class="pc">
+    <thead><tr><th></th><th>無料</th><th>PRO</th></tr></thead>
+    <tbody>
+     <tr><th>100点の採点・近隣の坪単価の分布</th>
+      <td class="free">○</td><td>○</td></tr>
+     <tr><th>情報充足度</th>
+      <td class="free">{{d.suff}}%</td><td>上がる</td></tr>
+     <tr><th>つなぎ融資の利息と、支払いの時系列</th>
+      <td class="free">—</td><td>○</td></tr>
+     <tr><th>総額の積み上げ</th><td class="free">—</td><td>○</td></tr>
+     <tr><th>現地と書類の確認（19項目）</th>
+      <td class="free">—</td><td>○</td></tr>
+     <tr><th>重要事項説明書の、どこを見るか</th>
+      <td class="free">—</td><td>○</td></tr>
+     <tr><th>条件を揃えた成約の分布</th>
+      <td class="free">—</td><td>○</td></tr>
+    </tbody>
+   </table>
+  </div>
+  <p class="muted" style="margin:10px 0 0">
+   「無料」の列は、いまのこの診断で実際に出ている数字です。
+   <b>情報充足度</b>は、上で「未確認」として点数に入れていない項目に
+   答えた分だけ上がります。<br>
+   <b>角地の指定</b>が確認できると、建ぺい率が10%上がって、建てられる
+   1階の広さが変わります（建築基準法53条3項2号）。<br>
+   採点のしかたは無料もPROも同じで、PROで点数の出し方が変わることは
+   ありません。</p>
+  {% if plan_price %}
+  <p class="muted" style="margin:10px 0 0"><b>PRO　{{plan_price}}</b>
+   ／ お申し込みにはメールアドレスでのログインが必要です。いつでも解約できます。</p>
+  {% endif %}
+  PLAN_LINKS_PLACEHOLDER
+ </div>
+
  <div class="card" data-html2canvas-ignore style="border-color:#111">
   <h2 style="margin-top:0">つなぎ融資の利息は、この診断に入っていません</h2>
   <p style="font-size:14px;margin:6px 0">注文住宅は、土地の決済から建物の
@@ -4545,6 +4618,7 @@ _RESULT_CSS = RESULT[RESULT.index("<style>") + len("<style>"):
 # タグの並びに頼らず、置き場所を自分で書いておく。
 assert "LAND_FOOTER_PLACEHOLDER" in LAND_RESULT
 LAND_RESULT = (LAND_RESULT
+               .replace("PLAN_LINKS_PLACEHOLDER", _PLAN_LINKS)
                .replace("LAND_RESULT_CSS_PLACEHOLDER", _RESULT_CSS)
                .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
                .replace("BRAND_BAR", brand_bar("土地診断"))
@@ -4574,6 +4648,43 @@ def land():
     _seen("view_land")
     return render_template_string(LAND_FORM, v=_land_example_v(),
                                   road_types=LAND_ROAD_TYPES, conditions=LAND_CONDITIONS, banner=None)
+
+
+# 見本の土地。実在の住所で公的データを引くが、価格と条件は説明用の数字。
+# 船橋市前原西を選んだのは、土地の成約が5年で26件あり、私道23%・
+# 幅員4m未満19%と、近隣の傾向まで出せる町だから（実測）。
+SAMPLE_LAND = {
+    "address": "千葉県船橋市前原西6丁目",
+    "price": "2100", "area": "125", "budget": "2600", "household": "4",
+    "road_width": "4", "road_type": "公道", "frontage": "9",
+    "station": "12", "condition": "none",
+    "loan_years": "35", "income": "700", "down": "500",
+    "sample": "1",
+}
+_SAMPLE_LAND_CACHE = {"html": None, "at": 0.0}
+
+
+@app.route("/sample/land")
+def sample_land():
+    """見本の土地を1件、そのまま採点して見せる。
+
+    土地を持っていない人が、採点の中身と出典の見え方を確かめる入口。
+    URLで開けるのは、SNSに貼れるようにするため。
+    """
+    _seen("view_sample")
+    now = time.time()
+    if _SAMPLE_LAND_CACHE["html"] and now - _SAMPLE_LAND_CACHE["at"] < _SAMPLE_TTL:
+        return _SAMPLE_LAND_CACHE["html"]
+    from werkzeug.datastructures import ImmutableMultiDict
+    if not _SEM.acquire(timeout=25):
+        return redirect("/land")
+    try:
+        html_ = _run_land_diagnose(ImmutableMultiDict(SAMPLE_LAND))
+    finally:
+        _SEM.release()
+    if isinstance(html_, str):
+        _SAMPLE_LAND_CACHE.update(html=html_, at=now)
+    return html_
 
 
 @app.route("/land/edit", methods=["POST"])
@@ -4734,7 +4845,8 @@ def _matched_ctx(m):
 
 
 def _render_land_result(res, subject, f, down_yen, loan_years,
-                        fin=None, pro=False, procedures=None, matched=None):
+                        fin=None, pro=False, procedures=None, matched=None,
+                        disclosure_points=None):
     from src.land import tsubo
     from src.land_scoring import guided_area_m2, DEFAULT_HOUSEHOLD, score_cap
 
@@ -4874,7 +4986,10 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
         LAND_RESULT, s=sctx, d=dctx, cats=cats, cap=cap_ctx, mk=mk,
         loan=loan, capped=capped, warnings=_public_warnings(res.warnings),
         fin=fin, pro=pro, handover=handover, procedures=procedures,
-        matched=matched, save=save,
+        matched=matched, save=save, sample=bool(f.get("sample")),
+        plan_price=(price_now()[1] if billing_on() else None),
+        disc=[dict(where=x.where, law=x.law, why=x.why)
+              for x in (disclosure_points or [])],
         ring_circ=round(circ, 1),
         ring_off=round(circ * (1 - d.total_score / 100.0), 1),
         grade_color=GRADE_COLOR.get(d.grade, "#0d9488"),
@@ -5354,6 +5469,7 @@ def _run_land_pro(f):
         subject.district_name)
 
     urban = res.enrichment.urbanization if res.enrichment else None
+    disc = disclosure.sheet(subject, res.enrichment, "", urban, land=True)
     procedures = [x for x in (lps.farmland_procedure(legal, urban),
                               lps.heritage_notice(legal)) if x]
 
@@ -5361,7 +5477,8 @@ def _run_land_pro(f):
     return _render_land_result(res, subject, f, down_yen, loan_years,
                                fin=_land_fin_ctx(bridge, total, events),
                                pro=True, procedures=procedures,
-                               matched=_matched_ctx(matched))
+                               matched=_matched_ctx(matched),
+                               disclosure_points=disc)
 
 
 def _land_fin_ctx(bridge, total, events):
@@ -7212,6 +7329,9 @@ PLAN_PAGE = """
      style="display:block;font-weight:400"><a href="#tochi">中身を見る</a></span></th>
     <td>—</td><td>○</td></tr>
    <tr><th class="rowlbl">土地：現地と書類の確認（19項目）</th><td>—</td><td>○</td></tr>
+   <tr><th class="rowlbl">土地：重要事項説明書の、どこを見るか<span class="sub"
+     style="display:block;font-weight:400"><a href="/sample/land">見本の診断を見る</a></span></th>
+    <td>—</td><td>○</td></tr>
    <tr><th class="rowlbl">仲介業者に聞くことの一覧</th><td>—</td><td>○</td></tr>
    <tr><th class="rowlbl">重要事項説明書で確認すること<span class="sub"
      style="display:block;font-weight:400"><a href="#juyo">中身を見る</a></span></th>

@@ -349,10 +349,16 @@ def test_the_private_road_consents_move_access_only_on_a_private_road(client):
     assert _access(public_a) == _access(public_b)
 
 
-def test_a_public_road_never_mentions_the_dig_consent(client):
-    """関係のない項目を未確認として並べない。自分に要ることだと思われる。"""
+def test_a_public_road_never_asks_about_the_dig_consent(client):
+    """関係のない項目を未確認として並べない。自分に要ることだと思われる。
+
+    重要事項説明書の案内には「私道に関する負担」が必ず載る（法35条1項3号は
+    宅地の売買で必ず説明される欄で、負担が無ければ無いと書かれる）。
+    ここで見るのは、確認事項として掘削の承諾を聞いていないこと。
+    """
     h = _post(client, road_type="公道")
-    assert "掘削" not in h
+    assert "掘削・通行の承諾が書面で" not in h
+    assert "私道の承諾:" not in h
 
 
 def test_a_surveyed_setback_replaces_the_estimate(client):
@@ -420,3 +426,76 @@ def test_the_pro_edit_button_goes_back_to_the_pro_form(client):
 def test_the_free_edit_button_still_goes_to_the_free_form(client):
     h = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
     assert 'action="/land/edit"' in h
+
+
+# ---- 重要事項説明書（PROだけ）----
+def test_the_disclosure_sheet_is_pro_only(client):
+    # 見出しで見る。無料の比較表にも同じ言葉が1行あるため。
+    head = "<h2>重要事項説明書の、どこを見るか（"
+    assert head in _post(client)
+    assert head not in client.post("/land_diagnose",
+                                   data=PRO).get_data(as_text=True)
+
+
+def test_the_land_sheet_leaves_out_what_is_not_disclosed_for_land(client):
+    """規則第16条の4の3は、宅地の売買を第1号から第3号の2までと定めている。
+
+    石綿（4号）・耐震診断（5号）・住宅性能評価（6号）は建物の売買だけ。
+    土地の一覧に並べると、現場で「そんな欄はない」と言われる。
+    """
+    import re as _re
+    h = _post(client)
+    i = h.index("<h2>重要事項説明書の、どこを見るか（")
+    j = h.index('<div class="card" id="ask">', i)
+    # 並んでいる欄の名前だけを見る。カードの末尾には「石綿・耐震診断・
+    # 住宅性能評価は説明事項ではありません」という説明を書いてあるので、
+    # カード全体を検索すると、その説明文に当たってしまう。
+    titles = _re.findall(r'<div style="font-weight:700;font-size:14px">([^<]+)',
+                         h[i:j])
+    assert titles, "欄が1つも並んでいない"
+    for ng in ("石綿", "耐震診断", "建物状況調査", "住宅性能評価"):
+        assert not [t for t in titles if ng in t], ng
+
+
+def test_the_land_sheet_covers_what_matters_on_a_plot(client):
+    h = _post(client)
+    for where in ("私道に関する負担", "飲用水・電気・ガス・排水",
+                  "代金以外に授受される金銭"):
+        assert where in h, where
+    assert "法第35条第1項第3号" in h
+
+
+# ---- 比較表（無料だけ）----
+def test_the_free_result_shows_what_pro_adds(client):
+    free = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
+    assert "無料でここまで／PROでここまで" in free
+    assert "つなぎ融資の利息と、支払いの時系列" in free
+    assert "条件を揃えた成約の分布" in free
+    # いまの診断の実数を「無料」の列に出す
+    assert "情報充足度" in free
+
+
+def test_the_pro_result_does_not_repeat_the_comparison(client):
+    assert "無料でここまで／PROでここまで" not in _post(client)
+
+
+# ---- 見本 ----
+def test_the_sample_plot_opens_without_any_input(client):
+    h = client.get("/sample/land").get_data(as_text=True)
+    assert "これは見本の土地です" in h
+    assert "自分の土地で診断する" in h
+    # 建てられる家のカードは必ず出る。中の数字は用途地域のAPIが
+    # 取れたかどうかで変わるので、ここでは見出しまでを見る。
+    assert "この土地に建てられる家" in h
+    assert "近隣の土地取引" in h
+
+
+def test_the_sample_says_the_numbers_are_made_up(client):
+    """実在の住所で公的データを引くが、価格と条件は説明用の数字。"""
+    h = client.get("/sample/land").get_data(as_text=True)
+    assert "実際に売られている土地では" in h
+
+
+def test_the_sample_is_in_the_sitemap(client):
+    assert b"<loc>http://localhost/sample/land</loc>" in \
+        client.get("/sitemap.xml").data

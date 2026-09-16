@@ -167,8 +167,40 @@ _ASBESTOS = Point(
     "調査そのものを行う義務はないため、記載が無いことは"
     "「使われていない」という意味にはなりません。")
 
+# ---------------------------------------------------------------------------
+# 土地（更地・注文住宅用）
+# ---------------------------------------------------------------------------
+# 規則第16条の4の3を e-Gov で引いて確かめた。冒頭にこう書いてある。
+#
+#   「宅地の売買又は交換の契約にあつては第一号から第三号の二までに掲げるもの、
+#    建物の売買又は交換の契約にあつては第一号から第六号までに掲げるもの」
+#
+# つまり石綿（4号）・耐震診断（5号）・住宅性能評価（6号）は建物の売買だけで、
+# 宅地の売買では説明事項ではない。土地の一覧に並べてはいけない。
+# 現場で「そんな欄はない」と言われる。
+
+# 法第35条第1項第5号（造成工事完了前の土地の、完了時の形状・構造）は
+# 入れていない。**造成中かどうかを聞いていないため。**聞かずに並べると、
+# 更地を買う人全員に「工事完了時の形状を確かめてください」と出すことになる。
+# 聞く項目を足すときに、ここも足す。
+
+_LAND_MONEY = Point(
+    "代金以外に授受される金銭と、契約の解除",
+    "法第35条第1項第7号・第8号",
+    "手付金の額と、どういうときに契約を解除できるかが書かれます。"
+    "建築条件付きなら、期限までに建築請負契約を結べなかったときに"
+    "白紙解除になるか、預けたお金が全額返るかを、ここで確かめてください。")
+
+_LAND_WATER = Point(
+    "飲用水・電気・ガス・排水の整備の見通しと、特別の負担",
+    "法第35条第1項第4号",
+    "未整備なら、整備の見通しと自己負担の額まで書かれます。"
+    "更地では、ここが数十万円から数百万円の差になります。"
+    "前面道路に本管があるか、敷地まで引き込み済みかを確かめてください。")
+
 _CONDITIONAL = [_URBANIZATION, _SEDIMENT, _FLOOD, _TSUNAMI, _OTHER_ZONES,
-                _EMBANKMENT, _QUAKE, _ASBESTOS]
+                _EMBANKMENT, _QUAKE, _ASBESTOS,
+                _LAND_MONEY, _LAND_WATER]
 
 
 def catalogue():
@@ -193,16 +225,24 @@ def _hz(enr, name, default=None):
 
 
 def sheet(subject, enrichment=None, kind: str = "",
-          urbanization: Optional[str] = None) -> List[Point]:
+          urbanization: Optional[str] = None,
+          land: bool = False) -> List[Point]:
     """この物件で見る欄を並べる。上から順に読める順番にする。"""
     out: List[Point] = list(_ALWAYS)
-    is_mansion = "mansion" in (kind or "") or \
-        getattr(subject, "exclusive_area_m2", None) is not None
+    is_mansion = (not land) and ("mansion" in (kind or "") or \
+                        getattr(subject, "exclusive_area_m2", None)
+                        is not None)
     newbuild = "shinchiku" in (kind or "")
 
     if not is_mansion:
         out.append(_ROAD)
-    if not newbuild:
+    if land:
+        # 更地は水道・ガス・排水の負担がいちばん重い。_ALWAYS の一般的な
+        # 一文を、更地向けの言い方に差し替える。
+        out = [_LAND_WATER if x.law == "法第35条第1項第4号" else x
+               for x in out]
+        out.append(_LAND_MONEY)
+    elif not newbuild:
         out.append(_EXISTING)
 
     # ---- 区域・ハザード。診断で該当が出たものだけを足す ----
@@ -232,6 +272,8 @@ def sheet(subject, enrichment=None, kind: str = "",
         out.append(_EMBANKMENT)
 
     # ---- 建物 ----
+    if land:
+        return out
     byear = getattr(subject, "build_year", None)
     if byear and byear <= 1981:
         out.append(_QUAKE)

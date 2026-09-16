@@ -200,6 +200,11 @@ def test_the_catalogue_cannot_drift_from_the_sheet():
     # 戸建でしか出ない欄は、戸建の側で拾う
     produced |= {p.where for p in disclosure.sheet(
         _house(), _enr(), "chuko_kodate")}
+    # 更地でしか出ない欄も拾う。ここを足さないと、土地の項目を増やした
+    # ときに「料金表には載るが結果には一度も出ない」項目を見逃す。
+    from src.models import LandSubject
+    produced |= {p.where for p in disclosure.sheet(
+        LandSubject(address="x"), _enr(), "", land=True)}
     for _group, items in disclosure.catalogue():
         for it in items:
             assert it in produced, it
