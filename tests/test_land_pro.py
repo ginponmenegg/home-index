@@ -394,3 +394,29 @@ def test_the_matched_distribution_does_not_claim_more_accuracy(client):
 def test_the_dropped_filters_are_named(client):
     h = _post(client)
     assert ("条件は外しています" in h) or ("をこの土地に合わせた成約" in h)
+
+
+def test_the_pro_edit_button_goes_back_to_the_pro_form(client):
+    """PROの結果から修正を押したら、PROのフォームへ戻ること。
+
+    無料のフォームへ落としていたため、日付・現地の答え・都市計画の選択が
+    すべて消えていた。戸建とマンションは正しくPROのフォームへ戻る。
+    """
+    h = _post(client, **GOOD_SITE, corner="designated", chimoku="takuchi")
+    assert 'action="/pro/land/start"' in h
+    assert 'action="/land/edit"' not in h
+
+    # 押したあと、PROの入力が残っていること
+    import re as _re
+    fields = dict(_re.findall(
+        r'<input type="hidden" name="(\w+)" value="([^"]*)"',
+        h[h.index('action="/pro/land/start"'):]))
+    assert fields.get("settlement") == "2026-04-10"
+    assert fields.get("water") == "done20"
+    assert fields.get("corner") == "designated"
+    assert fields.get("bridge_rate") == "2.8"
+
+
+def test_the_free_edit_button_still_goes_to_the_free_form(client):
+    h = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
+    assert 'action="/land/edit"' in h

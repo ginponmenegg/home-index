@@ -4770,7 +4770,12 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
         ring_off=round(circ * (1 - d.total_score / 100.0), 1),
         grade_color=GRADE_COLOR.get(d.grade, "#0d9488"),
         grade_comment=GRADE_COMMENT.get(d.grade, ""),
-        edit=_edit_carry("/land/edit", f, _land_example_v()))
+        # PROの結果から「入力を修正する」を押したら、PROのフォームへ戻す。
+        # 無料のフォームへ落としていたため、日付・現地の答え・都市計画の
+        # 選択がすべて消えていた。戸建とマンションは /pro/start と
+        # /pro/mansion_start へ正しく戻している。
+        edit=_edit_carry("/pro/land/start" if pro else "/land/edit", f,
+                         _land_pro_defaults() if pro else _land_example_v()))
 
 
 # ---- PRO 土地診断 ---------------------------------------------------
@@ -7065,11 +7070,20 @@ PLAN_PAGE = """
  <div class="tablewrap"><table class="cmp">
   <thead><tr><th class="rowlbl">できること</th><th>無料</th><th>PRO</th></tr></thead>
   <tbody>
-   <tr><th class="rowlbl">購入診断（戸建・マンション）</th><td>○</td><td>○</td></tr>
+   <tr><th class="rowlbl">購入診断（戸建・マンション・土地）</th><td>○</td><td>○</td></tr>
    <tr><th class="rowlbl">診断結果の保存</th><td>{{ free_limit }}件</td>
     <td>{% if pro_limit %}{{ pro_limit }}件{% else %}無制限{% endif %}</td></tr>
    <tr><th class="rowlbl">保存した物件の比較</th><td>○</td><td>○</td></tr>
+   <tr><th class="rowlbl">土地：建てられる家の大きさ<span class="sub"
+     style="display:block;font-weight:400">延床と建築面積の上限・前面道路による容積率の制限</span></th>
+    <td>○</td><td>角地・地区計画も</td></tr>
+   <tr><th class="rowlbl">土地：近隣の坪単価の分布</th>
+    <td>町名で</td><td>条件を揃えて</td></tr>
    <tr><th class="rowlbl">詳細診断（PRO）</th><td>—</td><td>○</td></tr>
+   <tr><th class="rowlbl">土地：つなぎ融資の利息と、支払いの時系列<span class="sub"
+     style="display:block;font-weight:400"><a href="#tochi">中身を見る</a></span></th>
+    <td>—</td><td>○</td></tr>
+   <tr><th class="rowlbl">土地：現地と書類の確認（19項目）</th><td>—</td><td>○</td></tr>
    <tr><th class="rowlbl">仲介業者に聞くことの一覧</th><td>—</td><td>○</td></tr>
    <tr><th class="rowlbl">重要事項説明書で確認すること<span class="sub"
      style="display:block;font-weight:400"><a href="#juyo">中身を見る</a></span></th>
@@ -7079,6 +7093,41 @@ PLAN_PAGE = """
     <td>—</td><td>○</td></tr>
   </tbody>
  </table></div>
+
+ <div class="card" id="tochi" style="margin-top:14px">
+  <h2 style="margin-top:0">土地（注文住宅）で、PROが足すもの</h2>
+  <p class="lead">建売やマンションは、決済の日に住宅ローンが実行されて
+   その日に終わります。<b>注文住宅は終わりません。</b>土地の決済から
+   建物の完成まで半年〜1年あり、その間は住宅ローンが実行されないので、
+   土地代金と工事の前払い金を<b>つなぎ融資で立て替える</b>ことになります。
+   その利息は、住宅ローンの返済とは別にかかります。</p>
+
+  <p style="margin:14px 0 4px"><b>お金の流れ</b></p>
+  <ul style="margin:0;padding-left:1.2em">
+   <li>つなぎ融資の利息（実行ごとの金額・日数・利息）</li>
+   <li>いつ・いくら手元から出ていくかの時系列。<b>手付金は融資の前に
+    現金で払う</b>ことも並べます</li>
+   <li>総額の積み上げ（土地＋本体＋付帯＋外構＋諸費用＋つなぎ利息）</li>
+  </ul>
+
+  <p style="margin:14px 0 4px"><b>現地と書類で確かめること</b></p>
+  <ul style="margin:0;padding-left:1.2em">
+   <li>ライフライン … 上下水道・ガスが引き込み済みか、本管が来ているか</li>
+   <li>地盤と造成 … 地盤調査の結果、擁壁の検査済証、道路との高低差</li>
+   <li>建てられる形 … 角地の指定、防火の指定、高度地区、地区計画</li>
+   <li>買えるかどうか … 地目、埋蔵文化財包蔵地、私道の掘削承諾、境界確定</li>
+  </ul>
+  <p class="sub" style="margin-top:10px">
+   <b>地目が農地なら、届出で済むのか許可が要るのかまで出します</b>
+   （農地法4条・5条。市街化区域かどうかで変わります）。埋蔵文化財包蔵地は
+   着工の60日前までに届出が要ります（文化財保護法93条）。どちらも、
+   いつ着工できるかに直接効きます。</p>
+  <p class="sub" style="margin-top:10px">
+   <b>費用の目安は出しません。</b>地盤改良・解体・引き込みの費用には
+   公的な統計がありません。探したうえで見つからなかったので、
+   根拠のない相場を書く代わりに「いまは誰にも分からない」と出し、
+   確認先だけをお伝えします。</p>
+ </div>
 
  <div class="card" id="juyo" style="margin-top:14px">
   <h2 style="margin-top:0">「重要事項説明書で確認すること」の中身</h2>
@@ -7100,7 +7149,8 @@ PLAN_PAGE = """
 {% if not billing %}
  <div class="note warn" style="margin-top:14px">
   <b>PROは試験公開中です。</b>いまのところ料金はいただいていません。
-  どなたでも<a href="/pro/diagnose">戸建</a>・<a href="/pro/mansion">マンション</a>の
+  どなたでも<a href="/pro/diagnose">戸建</a>・<a href="/pro/mansion">マンション</a>・
+  <a href="/pro/land">土地</a>の
   詳細診断をお試しいただけます。<br>
   有料でのご提供を始めるときは、事前にこのページでご案内します。
  </div>
