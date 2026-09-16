@@ -1,0 +1,137 @@
+# -*- coding: utf-8 -*-
+"""PROの土地診断で聞く「現地と書類」の採点。ネットワーク不要。
+
+この層でいちばん大事なのは、**調べていない人を悪い土地として採点しない**こと。
+点を動かすのは土地の事実だけで、調べたかどうかは充足度の話。
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.land_pro_scoring import (ADJUST, CHOICES, MAX_DOWN, MAX_UP,
+                                  answered_ratio, cost_needs, detail_from,
+                                  score_land_site)
+from src.scoring import CategoryScore
+
+GOOD = dict(water="done20", sewer="connected", gas="city_done", ground="ok",
+            retaining="none", level="flat", oldhouse="none", leftovers="none")
+BAD = dict(water="none", sewer="septic", gas="lpg", ground="needed",
+           retaining="uncertified", level="lower", oldhouse="buyer",
+           leftovers="exists")
+
+
+def _base(hazard_checked=True, raw=1.0, suff=0.9):
+    return CategoryScore("リスク", 25, raw, round(25 * raw, 1), suff,
+                         "ハザード",
+                         ["reinfolib:XKT(hazard)"] if hazard_checked else [])
+
+
+def _score(answers, **kw):
+    return score_land_site(_base(**kw), detail_from(answers))
+
+
+# ---- 調べていないことを減点にしない ----
+def test_leaving_everything_unanswered_never_moves_the_score():
+    cat, confirm = _score({})
+    assert cat.points == _base().points
+    assert len(confirm) == len(CHOICES)      # 代わりに確認先を全部出す
+
+
+def test_a_survey_not_yet_done_is_not_a_penalty():
+    """地盤調査が未実施なのは、土地の性質ではなく段取りの話。"""
+    assert ADJUST[("ground", "not_done")] == 0.0
+    cat, confirm = _score(dict(GOOD, ground="not_done"))
+    done, _ = _score(GOOD)
+    assert cat.points >= done.points - 2.5   # ok の加点ぶんだけ下がる
+    assert any("地盤調査をするまで" in c for c in confirm)
+
+
+def test_facts_about_the_land_do_move_the_score():
+    good, _ = _score(GOOD)
+    bad, _ = _score(BAD)
+    assert bad.points < good.points
+
+
+# ---- 積み上がりすぎない ----
+def test_the_penalties_are_bounded():
+    """8項目の減点が積み上がって、リスクが1.5点まで落ちたことがある。
+
+    未引込・浄化槽・プロパン・改良要・無検査擁壁・低い土地・買主解体・
+    残置物の土地は確かに悪いが、壊滅ではない。数百万円の出費とひと手間で
+    あって、再建築不可のような前提の崩壊ではない。
+    """
+    assert sum(ADJUST[("water", "none")] for _ in range(1)) < 0
+    bad, _ = _score(BAD)
+    assert bad.raw == round(_base().raw + MAX_DOWN, 3)
+    assert bad.points > 15                   # 25 * 0.65
+
+
+def test_the_bonuses_are_bounded_more_tightly_than_the_penalties():
+    # 引込済み・平坦はこの国の土地では普通。普通に大きな加点はしない。
+    assert 0 < MAX_UP < abs(MAX_DOWN)
+
+
+# ---- ハザードの天井を押し上げない ----
+def test_good_plumbing_cannot_undo_an_unchecked_hazard():
+    """score_risk はハザード未確認のとき raw を 0.7 で頭打ちにしている。
+
+    水道やガスの答えで、その上限を押し上げてはいけない。別の話なので。
+    """
+    cat, _ = _score(GOOD, hazard_checked=False, raw=0.7, suff=0.3)
+    assert cat.raw <= 0.7
+
+
+def test_the_ceiling_lifts_once_the_hazards_were_checked():
+    cat, _ = _score(GOOD, hazard_checked=True, raw=0.9)
+    assert cat.raw > 0.9
+
+
+# ---- 充足度は分母が広がる ----
+def test_answering_nothing_lowers_sufficiency_below_the_free_diagnosis():
+    """PROは聞く項目が増える。答えていなければ、無料より下がるのが正しい。"""
+    cat, _ = _score({})
+    assert cat.sufficiency < _base().sufficiency
+
+
+def test_answering_everything_raises_it():
+    assert _score(GOOD)[0].sufficiency > _score({})[0].sufficiency
+
+
+def test_an_unclear_answer_does_not_count_as_answered():
+    # 「擁壁あり・検査済証があるか分からない」は答えたことにしない
+    assert answered_ratio(detail_from(dict(GOOD, retaining="unclear"))) < 1.0
+
+
+# ---- 言葉 ----
+def test_the_uncertified_retaining_wall_is_spelled_out():
+    cat, _ = _score(BAD)
+    assert any("検査済証がありません" in m for m in cat.minus)
+
+
+def test_the_thirteen_millimetre_pipe_is_explained_not_just_flagged():
+    cat, _ = _score(dict(GOOD, water="done13"))
+    assert any("増径" in m for m in cat.minus)
+
+
+def test_an_unknown_value_falls_back_to_unconfirmed():
+    d = detail_from({"water": "でたらめ"})
+    assert d.water == "unknown"
+
+
+# ---- 費用の要否 ----
+def test_the_costs_are_derived_from_the_answers():
+    assert cost_needs(detail_from(BAD)) == {
+        "地盤改良": True, "古家の解体": True, "上下水道・ガスの引き込み": True}
+    assert cost_needs(detail_from(GOOD)) == {
+        "地盤改良": False, "古家の解体": False, "上下水道・ガスの引き込み": False}
+
+
+def test_unanswered_costs_stay_unknown_rather_than_assumed_absent():
+    assert cost_needs(detail_from({})) == {
+        "地盤改良": None, "古家の解体": None, "上下水道・ガスの引き込み": None}
+
+
+def test_a_seller_paid_demolition_is_not_the_buyers_cost():
+    assert cost_needs(detail_from(dict(GOOD, oldhouse="seller")))["古家の解体"] \
+        is False

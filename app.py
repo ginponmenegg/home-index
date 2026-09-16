@@ -4853,22 +4853,28 @@ BRAND_BAR
    <div></div>
   </div>
 
-  <h3 class="sec">金額がまだ読めない工事</h3>
+  <h3 class="sec">現地と書類</h3>
   <div class="hint" style="margin-bottom:8px">
-   要るか要らないかだけ選んでください。<b>金額は出しません。</b>
-   公的な費用統計が無く、根拠のない相場を出さない方針のためです。
-   要ると分かっているものは、合計に混ぜずに「まだ金額の出ていない項目」
-   として残します。</div>
-  {% for key, label in needs %}
+   買ったあとに出ていくお金は、ここでほぼ決まります。
+   <b>未確認のままでも診断できます</b>が、そのぶん情報充足度は上がりません。
+   分からない項目は「未確認」のままにして、確認先だけ受け取ってください。<br>
+   <b>金額は出しません。</b>公的な費用統計が無く、根拠のない相場を
+   出さない方針のためです。</div>
+
+  {% for title, note, keys in site_sections %}
+  <h4 style="font-size:14px;margin:16px 0 2px">{{title}}</h4>
+  <div class="hint" style="margin-bottom:6px">{{note}}</div>
+  {% for key in keys %}
   <div class="row">
-   <div><label>{{label}}</label>
+   <div><label>{{site_labels[key]}}</label>
     <select name="{{key}}">
-     <option value="unknown" {{'selected' if v[key]=='unknown' else ''}}>まだ分からない</option>
-     <option value="yes" {{'selected' if v[key]=='yes' else ''}}>要る</option>
-     <option value="no" {{'selected' if v[key]=='no' else ''}}>要らない</option>
+     {% for val, lbl in site_choices[key] %}
+     <option value="{{val}}" {{'selected' if v[key]==val else ''}}>{{lbl}}</option>
+     {% endfor %}
     </select></div>
    <div></div>
   </div>
+  {% endfor %}
   {% endfor %}
 
   <h3 class="sec">住宅ローン本体</h3>
@@ -4912,10 +4918,7 @@ BRAND_BAR
 </div></body></html>
 """
 
-# 金額の出せない工事。src/land_finance.py の NO_SOURCE_ITEMS と対にする。
-LAND_NEEDS = [("need_ground", "地盤改良"),
-              ("need_demolition", "古家の解体"),
-              ("need_utilities", "上下水道・ガスの引き込み")]
+from src import land_pro_scoring as lps  # noqa: E402
 
 LAND_PRO_FORM = (LAND_PRO_FORM
                  .replace("LAND_PRO_CSS_PLACEHOLDER", _FORM_CSS)
@@ -4931,8 +4934,8 @@ def _land_pro_defaults():
              start_date="", framing_date="", bridge_rate="", own_funds="",
              start_pct="", framing_pct="", extra_work="", exterior="",
              other_costs="")
-    for key, _label in LAND_NEEDS:
-        v[key] = "unknown"
+    for key in lps.CHOICES:
+        v[key] = lps.UNKNOWN
     return v
 
 
@@ -4948,7 +4951,9 @@ def _land_pro_page(v, banner=None):
     return render_template_string(LAND_PRO_FORM, v=v, banner=banner,
                                   road_types=LAND_ROAD_TYPES,
                                   conditions=LAND_CONDITIONS,
-                                  needs=LAND_NEEDS)
+                                  site_sections=lps.SECTIONS,
+                                  site_choices=lps.CHOICES,
+                                  site_labels=lps.LABELS)
 
 
 @app.route("/pro/land/start", methods=["POST"])
@@ -4985,17 +4990,13 @@ def pro_land():
         _SEM.release()
 
 
-def _needs_from_form(f):
-    """要否の回答を {費目名: True/False/None} にする。"""
-    out = {}
-    for key, label in LAND_NEEDS:
-        a = (f.get(key) or "unknown").strip()
-        out[label] = True if a == "yes" else (False if a == "no" else None)
-    return out
+
 
 
 def _run_land_pro(f):
     from src.land_finance import bridge_loan, cash_timeline, land_total
+    from src.land_scoring import score_cap
+    from src.scoring import grade_of, highlights
 
     subject, city, district, err = _land_subject_from(f)
     if err:
@@ -5012,6 +5013,7 @@ def _run_land_pro(f):
         estat_appid=os.environ.get("ESTAT_APPID"),
         estat_table=os.environ.get("ESTAT_TABLE", "0000020201"))
 
+    detail = lps.detail_from(f)
     own = to_yen(f.get("own_funds")) or 0
     bridge = bridge_loan(
         land_price=subject.price or 0,
@@ -5028,12 +5030,34 @@ def _run_land_pro(f):
         exterior=to_yen(f.get("exterior")),
         other_costs=to_yen(f.get("other_costs")),
         bridge_interest=bridge.interest,
-        needs=_needs_from_form(f))
+        needs=lps.cost_needs(detail))
     events = cash_timeline(
         bridge, subject.price or 0, subject.building_budget or 0,
         own_funds=own, deposit=to_yen(f.get("deposit")),
         contract_date=f.get("contract_date"), settlement=f.get("settlement"),
         completion=f.get("completion"))
+
+    # 無料のリスク（25点）を、現地と書類の答えで上書きする。
+    # 配点は変えない。戸建PROと同じで、raw を差し替えて充足度を上げる。
+    d = res.diagnosis
+    for i, c in enumerate(d.categories):
+        if c.name == "リスク":
+            d.categories[i], confirm = lps.score_land_site(c, detail)
+            d.to_confirm = list(d.to_confirm) + confirm
+            break
+    d.total_score = max(0, min(100, int(round(
+        sum(c.points for c in d.categories)))))
+    cap = score_cap(subject.road_width_m, subject.frontage_m,
+                    subject.road_type,
+                    (res.enrichment.use_district if res.enrichment else None),
+                    (res.enrichment.urbanization if res.enrichment else None))
+    if cap and d.total_score > cap.limit:
+        d.total_score = cap.limit
+    d.grade = grade_of(d.total_score)
+    d.data_sufficiency = int(round(
+        sum(c.sufficiency * c.weight for c in d.categories)
+        / sum(c.weight for c in d.categories) * 100))
+    d.strengths, d.weaknesses = highlights(d.categories)
 
     metrics.bump("pro_diag")
     return _render_land_result(res, subject, f, down_yen, loan_years,

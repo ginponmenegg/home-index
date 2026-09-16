@@ -18,8 +18,14 @@ PRO = dict(address="神奈川県小田原市南町1-1", price="1800", area="120"
            contract_date="2026-03-01", deposit="100",
            settlement="2026-04-10", completion="2027-02-28",
            bridge_rate="2.8", own_funds="300",
-           extra_work="300", exterior="150", other_costs="250",
-           need_ground="unknown", need_demolition="no", need_utilities="yes")
+           extra_work="300", exterior="150", other_costs="250")
+
+GOOD_SITE = dict(water="done20", sewer="connected", gas="city_done",
+                 ground="ok", retaining="none", level="flat",
+                 oldhouse="none", leftovers="none")
+BAD_SITE = dict(water="none", sewer="septic", gas="lpg", ground="needed",
+                retaining="uncertified", level="lower", oldhouse="buyer",
+                leftovers="exists")
 
 
 @pytest.fixture(autouse=True)
@@ -99,14 +105,58 @@ def test_costs_with_no_public_source_show_a_dash_not_a_number(client):
 
 
 def test_an_item_answered_as_unnecessary_disappears(client):
-    h = _post(client)                      # need_demolition="no"
+    h = _post(client, **GOOD_SITE)         # 古家なし → 解体は出さない
     assert "古家の解体" not in h
 
 
 def test_an_item_answered_as_needed_loses_the_uncertain_label(client):
-    h = _post(client)                      # need_utilities="yes"
+    h = _post(client, **BAD_SITE)          # 未引込 → 引き込みが要る
     assert "上下水道・ガスの引き込み（要否も未確認）" not in h
     assert "上下水道・ガスの引き込み" in h
+
+
+# ---- 現地と書類（A群）----
+def test_the_site_questions_are_on_the_form(client):
+    h = client.get("/pro/land").get_data(as_text=True)
+    for label in ("上水道の引き込み", "下水道", "ガス", "地盤調査", "擁壁",
+                  "道路との高低差", "古家", "残置物・工作物"):
+        assert label in h, label
+    assert "引き込み済み（口径13mm）" in h
+    assert "擁壁あり・検査済証がない" in h
+
+
+def test_the_site_answers_move_the_risk_score(client):
+    def risk(h):
+        m = re.search(r"リスク</span>\s*<span class=\"muted\">([\d.]+) / 25", h)
+        return float(m.group(1))
+    assert risk(_post(client, **BAD_SITE)) < risk(_post(client, **GOOD_SITE))
+
+
+def test_leaving_the_site_questions_blank_does_not_dock_the_score(client):
+    """調べていないことを、悪い土地として採点しない。"""
+    def risk(h):
+        m = re.search(r"リスク</span>\s*<span class=\"muted\">([\d.]+) / 25", h)
+        return float(m.group(1))
+    blank = risk(_post(client))
+    free = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
+    assert risk(free) == blank
+
+
+def test_the_unanswered_questions_come_back_as_things_to_check(client):
+    h = _post(client)
+    assert "地盤調査をするまで" in h
+    assert "検査済証" in h
+
+
+def test_a_bad_site_is_spelled_out_in_words(client):
+    h = _post(client, **BAD_SITE)
+    assert "検査済証がありません" in h
+    assert "浄化槽" in h
+
+
+def test_a_thirteen_millimetre_supply_explains_the_catch(client):
+    h = _post(client, water="done13")
+    assert "増径" in h
 
 
 # ---- 前提を隠さない ----
@@ -164,8 +214,12 @@ def test_pro_land_is_listed_with_the_other_pro_tools():
     assert "/pro/land" in webapp._PRO_LINKS_MEMBER
 
 
-def test_the_score_is_the_same_free_and_pro(client):
-    """資金の見せ方を足しただけで、点数の出し方は変えていない。"""
+def test_the_score_is_the_same_when_the_site_is_unanswered(client):
+    """現地の答えが無いあいだは、無料とPROで同じ点になること。
+
+    資金の見せ方を足しただけでは点は動かない。動くのは、現地と書類に
+    答えてもらったときだけ。
+    """
     def score(h):
         return int(re.search(r'<b style="color:[^"]+">(\d+)</b><small>点',
                              h).group(1))
