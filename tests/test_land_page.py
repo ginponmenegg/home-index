@@ -174,6 +174,52 @@ def test_the_neighbourhood_traits_are_not_claimed_about_this_plot(client):
     assert "対象地がそうだという意味ではありません" in h
 
 
+# ---- 建築条件付き ----
+def test_a_conditional_plot_is_called_out_but_not_docked(client):
+    """建築条件付きは点数に入れない。土地の欠点ではなく買い方の制約。
+
+    ただし注文住宅を探している人には決定的なので、はっきり出す。
+    """
+    plain = client.post("/land_diagnose",
+                        data=dict(FORM, condition="none")).get_data(as_text=True)
+    tied = client.post("/land_diagnose",
+                       data=dict(FORM, condition="attached")).get_data(as_text=True)
+
+    def score(h):
+        import re
+        return int(re.search(r'<b style="color:[^"]+">(\d+)</b><small>点', h).group(1))
+
+    assert score(plain) == score(tied)          # 点は動かさない
+    assert "この土地は建築条件付きです" in tied
+    assert "他の工務店では" in tied
+    assert "点数に入れていません" in tied
+    assert "この土地は建築条件付きです" not in plain
+
+
+def test_an_unanswered_building_condition_is_asked_about(client):
+    h = client.post("/land_diagnose",
+                    data=dict(FORM, condition="unknown")).get_data(as_text=True)
+    assert "建築条件付きかどうかを確認" in h
+
+
+def test_the_form_asks_about_the_building_condition(client):
+    h = client.get("/land").get_data(as_text=True)
+    assert 'name="condition"' in h
+    assert "建てる会社を選べません" in h
+
+
+# ---- メニューの並び ----
+def test_the_three_diagnoses_stay_together_and_in_order(client):
+    """診断の3つは、上から戸建・マンション・土地で、続けて並ぶこと。
+
+    番号で /plan と /mypage を差し込んでいたため、土地を足したときに
+    戸建・マンションと土地の間に割り込んで並びが崩れた。
+    """
+    hrefs = [h for h, _ in webapp.MENU_ITEMS]
+    i = hrefs.index("/buy")
+    assert hrefs[i:i + 3] == ["/buy", "/mansion", "/land"]
+
+
 def test_the_land_page_is_reachable_from_everywhere(client):
     for path in ("/", "/buy", "/mansion"):
         assert 'href="/land"' in client.get(path).get_data(as_text=True), path

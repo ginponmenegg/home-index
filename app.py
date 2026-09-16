@@ -288,21 +288,26 @@ BRAND_CSS = (
 # ログインも課金もまだ噛ませていないので、メニューに常設すると課金前提の
 # 機能を誰にでも開いたままにすることになる。無料診断を終えた人にだけ、
 # 結果画面の導線から案内する。課金の仕組みが入ったら戻す。
-MENU_ITEMS = [("/", "トップ"),
-              ("/buy", "購入診断（戸建）"),
-              ("/mansion", "購入診断（マンション）"),
-              ("/land", "土地診断（注文住宅）"),
-              ("/terms", "利用規約"),
-              ("/privacy", "プライバシーポリシー")]
+# 診断の3つは必ずこの順で、必ず続けて並べる。番号で差し込む書き方をして
+# いたため、土地を足したときに /plan と /mypage が戸建・マンションと土地の
+# 間に割り込んで、並びが崩れた。グループで持てば、診断を増やしても崩れない。
+DIAGNOSIS_ITEMS = [("/buy", "購入診断（戸建）"),
+                   ("/mansion", "購入診断（マンション）"),
+                   ("/land", "土地診断（注文住宅）")]
+
+MENU_ITEMS = ([("/", "トップ")] + DIAGNOSIS_ITEMS
+              + [("/terms", "利用規約"),
+                 ("/privacy", "プライバシーポリシー")])
 
 if db.enabled():
     # 料金表（/plan）は、無料とPROの違いを並べた唯一のページ。ここに入れるまで、
     # マイページとPROロック画面からしか辿り着けなかった。つまり「まだ払って
     # いない人」には見えないところに、払う理由が置かれていた。
     # ラベルを「料金」にしないのは、違いを知りたい人は料金を探さないため。
-    MENU_ITEMS.insert(3, ("/plan", "無料とPROのちがい"))
-    # 未ログインで開けばログイン画面に回るので、1項目で足りる。
-    MENU_ITEMS.insert(4, ("/mypage", "マイページ"))
+    # 未ログインでマイページを開けばログイン画面に回るので、1項目で足りる。
+    _at = 1 + len(DIAGNOSIS_ITEMS)      # 診断3つのすぐ下
+    MENU_ITEMS[_at:_at] = [("/plan", "無料とPROのちがい"),
+                           ("/mypage", "マイページ")]
 
 
 # ---- 会員にだけ見せるリンク -------------------------------------------
@@ -325,12 +330,13 @@ def _menu_links() -> str:
     末尾に置くと利用規約より下になって埋もれる。診断の並びの直後が、
     探しに来た人の目が行く場所。
     """
+    last_diagnosis = DIAGNOSIS_ITEMS[-1][0] if DIAGNOSIS_ITEMS else None
     out = []
     for href, label in MENU_ITEMS:
         out.append(f'<a href="{href}">{label}</a>')
-        if href == "/mansion":
+        if href == last_diagnosis:
             out.append(_PRO_MENU_MARK)
-    if _PRO_MENU_MARK not in out:   # /mansion を消しても印は必ず残す
+    if _PRO_MENU_MARK not in out:   # 診断を消しても印は必ず残す
         out.append(_PRO_MENU_MARK)
     return "".join(out)
 
@@ -3953,6 +3959,19 @@ BRAND_BAR
     <div class="hint">未入力は4人。延床が足りるかの基準に使います</div></div>
   </div>
 
+  <div class="row">
+   <div><label>建築条件</label>
+    <select name="condition">
+     {% for k, lbl in conditions %}
+     <option value="{{k}}" {{'selected' if v.condition==k else ''}}>{{lbl}}</option>
+     {% endfor %}
+    </select>
+    <div class="hint"><b>建築条件付きだと、建てる会社を選べません。</b>
+     広告か契約書で分かります。点数には入れません（土地の欠点ではなく、
+     買い方の制約なので）</div></div>
+   <div></div>
+  </div>
+
   <h3 class="sec">接道（ここが土地の成否を分けます）</h3>
   <div class="row">
    <div><label>前面道路の幅員（m）</label>
@@ -4059,6 +4078,15 @@ BRAND_BAR
 </div></body></html>
 """
 
+# 建築条件。注文住宅を探している人にとって、建築条件付きの土地は
+# 「注文住宅の土地ではない」。知らずに診断を受けると、この診断がその人に
+# とって嘘になるので、PROではなく無料で聞く。
+LAND_CONDITIONS = [
+    ("unknown", "わからない"),
+    ("none", "建築条件なし（建てる会社を選べる）"),
+    ("attached", "建築条件付き（売主指定の会社で建てる）"),
+]
+
 # 道路の種類。src/land_scoring.py の ROAD_TYPE_POINTS と同じキーを使う。
 LAND_ROAD_TYPES = [
     ("unknown", "わからない"),
@@ -4143,6 +4171,21 @@ BRAND_BAR
    （金融機関が担保として評価しません）。他がどれほど良くても、
    家を建てる前提が崩れます。</p>
   <p style="margin:8px 0 0;font-size:14px">{{capped.escape}}</p>
+ </div>
+ {% endif %}
+
+ {% if s.condition_attached %}
+ <div class="card" style="border-color:#f59e0b;background:#fffbeb">
+  <h2 style="margin-top:0;color:#92400e">この土地は建築条件付きです</h2>
+  <p style="margin:6px 0;font-size:14px">売主の指定する会社と、一定期間内に
+   建築請負契約を結ぶ条件が付いています。<b>設計事務所や他の工務店では
+   建てられません。</b>気に入った会社がすでにあるなら、この土地は
+   その会社では建てられない、ということになります。</p>
+  <p style="margin:6px 0;font-size:14px">条件を外せる場合もあります。
+   外せるか、外すときにいくら上がるかを売主に確認してください。</p>
+  <div class="foot">この点は<b>点数に入れていません。</b>土地そのものの
+   欠点ではなく、買い方の制約だからです。下の点数は、この土地に
+   家を建てるとしたらどうか、という評価です。</div>
  </div>
  {% endif %}
 
@@ -4294,6 +4337,7 @@ LAND_RESULT = (LAND_RESULT
 
 def _land_example_v():
     return dict(address="", price="", area="", budget="", household="",
+                condition="unknown",
                 road_width="", road_type="unknown", frontage="",
                 station="", bus="", coverage="", far="",
                 city="", district="", income="", down="", loan_years="35")
@@ -4312,14 +4356,14 @@ def land():
     """土地診断の入力フォーム。"""
     _seen("view_land")
     return render_template_string(LAND_FORM, v=_land_example_v(),
-                                  road_types=LAND_ROAD_TYPES, banner=None)
+                                  road_types=LAND_ROAD_TYPES, conditions=LAND_CONDITIONS, banner=None)
 
 
 @app.route("/land/edit", methods=["POST"])
 def land_edit():
     return render_template_string(
         LAND_FORM, v=_land_form_values(request.form),
-        road_types=LAND_ROAD_TYPES,
+        road_types=LAND_ROAD_TYPES, conditions=LAND_CONDITIONS,
         banner="入力を読み込みました。直してから、もう一度診断してください。")
 
 
@@ -4328,12 +4372,12 @@ def land_diagnose():
     f = request.form
     if not _rate_ok(_client_ip()):
         return render_template_string(
-            LAND_FORM, v=_land_form_values(f), road_types=LAND_ROAD_TYPES,
+            LAND_FORM, v=_land_form_values(f), road_types=LAND_ROAD_TYPES, conditions=LAND_CONDITIONS,
             banner=(f"本日の診断回数の上限（{_RATE_LIMIT}回）に達しました。"
                     "時間をおいて再度お試しください。")), 429
     if not _SEM.acquire(timeout=25):
         return render_template_string(
-            LAND_FORM, v=_land_form_values(f), road_types=LAND_ROAD_TYPES,
+            LAND_FORM, v=_land_form_values(f), road_types=LAND_ROAD_TYPES, conditions=LAND_CONDITIONS,
             banner="ただいまアクセスが集中しています。"
                    "少し時間をおいて再度お試しください。"), 503
     try:
@@ -4359,13 +4403,16 @@ def _run_land_diagnose(f):
     area = to_float(f.get("area"))
     if not area or area <= 0:
         return render_template_string(
-            LAND_FORM, v=_land_form_values(f), road_types=LAND_ROAD_TYPES,
+            LAND_FORM, v=_land_form_values(f), road_types=LAND_ROAD_TYPES, conditions=LAND_CONDITIONS,
             banner="敷地面積を入力してください。"
                    "建てられる家の大きさを計算するのに必要です。")
 
     road_type = (f.get("road_type") or "unknown").strip()
     if road_type not in dict(LAND_ROAD_TYPES):
         road_type = "unknown"
+    condition = (f.get("condition") or "unknown").strip()
+    if condition not in dict(LAND_CONDITIONS):
+        condition = "unknown"
 
     subject = LandSubject(
         address=address,
@@ -4373,6 +4420,7 @@ def _run_land_diagnose(f):
         land_area_m2=area,
         building_budget=to_yen(f.get("budget")),
         household_size=to_int(f.get("household")),
+        building_condition=condition,
         frontage_m=to_float(f.get("frontage")),
         road_width_m=to_float(f.get("road_width")),
         road_type=road_type,
@@ -4463,11 +4511,16 @@ def _render_land_result(res, subject, f, down_yen, loan_years):
         bits.append(f"間口 {subject.frontage_m}m")
     if subject.road_type != "unknown":
         bits.append(dict(LAND_ROAD_TYPES)[subject.road_type])
+    if subject.building_condition == "attached":
+        bits.append("建築条件付き")
+    elif subject.building_condition == "none":
+        bits.append("建築条件なし")
     if subject.bus_min:
         bits.append(f"駅までバス{subject.bus_min}分")
     elif subject.station_walk_min is not None:
         bits.append(f"駅徒歩{subject.station_walk_min}分")
     sctx = dict(address=subject.address, price=man(subject.price),
+                condition_attached=(subject.building_condition == "attached"),
                 budget=(man(subject.building_budget)
                         if subject.building_budget else None),
                 household=household, road_width=subject.road_width_m,

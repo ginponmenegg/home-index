@@ -90,6 +90,10 @@ class LandSubject:
     land_area_m2: Optional[float] = None        # 敷地面積(㎡)
     building_budget: Optional[int] = None       # 建物の予算(円)。総額の計算に使う
     household_size: Optional[int] = None        # 世帯人数。居住面積水準の基準
+    # 建築条件付きなら、売主の指定する会社としか建てられない。注文住宅を
+    # 探している人にとっては「この土地は対象外」という決定的な情報なので、
+    # PROに置かず無料で聞く。点数には入れない（土地の欠点ではないため）。
+    building_condition: str = "unknown"          # none / attached / unknown
     # 間口＝道路に接している長さ。整形地では「間口」と「接道の長さ」は
     # 同じ数字なので、一つしか聞かない。角地や、敷地の一部が水路・他人地に
     # 接する土地では食い違うが、そのときは前面道路に接している長さを入れる。

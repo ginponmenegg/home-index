@@ -430,6 +430,18 @@ def build_land_diagnosis(subj: LandSubject,
     strengths, weaknesses = highlights(cats)
     to_confirm = [f"{c.name}: {c.reason}" for c in cats if c.sufficiency < 0.5]
 
+    # 建築条件付きは点数に入れない。土地の欠点ではなく、買い方の制約。
+    # ただし注文住宅を建てたい人には決定的なので、要確認の先頭に出す。
+    if getattr(subj, "building_condition", "unknown") == "attached":
+        to_confirm.insert(0, (
+            "建築条件付き: 売主の指定する会社と、一定期間内に建築請負契約を"
+            "結ぶ条件が付いています。設計事務所や他の工務店では建てられません。"
+            "条件を外せるか、外すときの価格を売主に確認してください"))
+    elif getattr(subj, "building_condition", "unknown") == "unknown":
+        to_confirm.append(
+            "建築条件: 建築条件付きかどうかを確認してください。"
+            "条件付きなら、建てる会社を選べません")
+
     risks: List[CriticalRisk] = []
     if cap:
         sev = "high" if cap.limit == SCORE_CAP_REBUILD else "medium"
