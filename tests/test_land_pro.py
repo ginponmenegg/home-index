@@ -365,3 +365,32 @@ def test_leaving_the_legal_questions_blank_does_not_dock_the_score(client):
     blank = _post(client)
     free = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
     assert _asset(blank) == _asset(free)
+
+
+def test_the_matched_distribution_is_pro_only(client):
+    """条件を揃えた分布はPROだけ。無料には出さない。"""
+    pro = _post(client)
+    free = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
+    assert "条件を揃えた分布" in pro
+    assert "条件を揃えた分布" not in free
+
+
+def test_the_matched_distribution_always_shows_the_counts(client):
+    """絞ったあとの件数だけ出すと、どれだけ捨てたか分からない。"""
+    h = _post(client)
+    i = h.index("条件を揃えた分布")
+    block = h[i:i + 900]
+    assert "絞る前" in block
+    assert "件" in block
+
+
+def test_the_matched_distribution_does_not_claim_more_accuracy(client):
+    """絞れば正確になる、とは言わない。件数が減るぶん振れやすくなる。"""
+    h = _post(client)
+    assert "絞れば正確になる、とは言えません" in h
+    assert "少数の成約に振り回され" in h
+
+
+def test_the_dropped_filters_are_named(client):
+    h = _post(client)
+    assert ("条件は外しています" in h) or ("をこの土地に合わせた成約" in h)

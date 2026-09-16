@@ -94,6 +94,10 @@ class DiagnosisResult:
         # 土地のみ。建てられる大きさの計算と、近隣の土地取引の分布。
         self.capacity: Optional[BuildCapacity] = None
         self.market: Optional[LandMarket] = None
+        # 宅地(土地)の成約だけ残しておく。PROで条件を揃えて引き直すときに、
+        # APIをもう一度叩かないで済む。戸建・マンションの成約は捨てる
+        # （土地の分布には使わないのに、持っているとメモリだけ食う）。
+        self.land_txns: List[Transaction] = []
         self.generated_at = now_iso()
 
 
@@ -325,6 +329,8 @@ def run_land_pipeline(subject: LandSubject,
     result.transactions_count = len(txns)
 
     # 3) 近隣の土地取引の分布。点数には使わない（land_price.py 参照）。
+    from .land_price import is_land_txn
+    result.land_txns = [t for t in txns if is_land_txn(t)]
     result.market = analyze_land_market(txns, subject.district_name,
                                         subject.price, subject.land_area_m2)
     add_neighbourhood_traits(result.market, txns, subject.district_name)

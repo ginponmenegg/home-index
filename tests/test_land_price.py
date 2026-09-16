@@ -86,3 +86,96 @@ def test_a_trait_is_not_reported_when_the_field_is_mostly_empty():
     assert m.private_road_pct is None
     assert m.narrow_road_pct is None
     assert m.irregular_pct is None
+
+
+# ---- 条件を揃えた分布（PRO）----
+from src.land_price import (AREA_TOLERANCE, MATCH_FILTERS,
+                            analyze_matched_market, road_band)
+
+
+def _matched_txn(price, area, district="南町", width=6.0, road="公道",
+          cov=60, far=200, shape="長方形"):
+    return Transaction(
+        trade_price=price, type="宅地(土地)", municipality_code="14206",
+        district_name=district, land_area_m2=area, building_area_m2=None,
+        build_year=None, period_year=2024, period_quarter=1,
+        city_planning="第一種住居地域", structure=None, layout=None,
+        road_width_m=width, road_type=road, land_shape=shape,
+        coverage_ratio=cov, floor_area_ratio=far)
+
+
+SUBJ = dict(road_type="公道", road_width_m=6.0, coverage_ratio=60,
+            floor_area_ratio=200, land_area_m2=120.0)
+
+
+def test_the_bands_group_widths_that_are_the_same_in_practice():
+    """4.0mと4.2mを別物にしても意味がない。帯で合わせる。"""
+    assert road_band(3.5) == "4m未満"
+    assert road_band(4.0) == road_band(5.9) == "4〜6m"
+    assert road_band(6.0) == road_band(12.0) == "6m以上"
+    assert road_band(None) is None
+
+
+def test_matching_narrows_the_pool_to_like_for_like():
+    rows = ([_matched_txn(20_000_000, 120.0) for _ in range(6)]
+            + [_matched_txn(9_000_000, 120.0, road="私道") for _ in range(6)])
+    m = analyze_matched_market(rows, SUBJ, "南町")
+    assert m.pool == 12
+    assert m.count == 6                      # 私道の6件が落ちる
+    assert "道路の種類" in m.applied
+    assert m.unit_mid == int(20_000_000 / 120.0)
+
+
+def test_the_filters_are_dropped_from_the_least_important_end():
+    """件数が足りないときは、後ろの条件から外す。
+
+    道路の種類を最後まで残すのは、実測で私道と公道の差が最も大きかった
+    ため（船橋市三咲は成約の62%が私道で、坪単価の中央値が36万円。
+    前原西の97万円との差は、駅距離だけでは説明がつかない）。
+    """
+    # 幅員も面積も合わないが、道路の種類だけは合う成約
+    rows = [_matched_txn(20_000_000, 300.0, width=3.0) for _ in range(6)]
+    m = analyze_matched_market(rows, SUBJ, "南町")
+    assert m.applied == ["道路の種類"]
+    assert "敷地面積" in m.dropped
+    assert "前面道路の幅員" in m.dropped
+    assert any("条件は外しています" in n for n in m.notes)
+
+
+def test_the_most_important_filter_is_first():
+    assert MATCH_FILTERS[0] == "road_type"
+
+
+def test_a_blank_field_is_not_treated_as_a_mismatch():
+    """相手の項目が空なら落とさない。
+
+    空欄を不一致として扱うと、項目が埋まっている物件だけが残って
+    分布が偏る。
+    """
+    rows = [_matched_txn(20_000_000, 120.0, road=None) for _ in range(6)]
+    m = analyze_matched_market(rows, SUBJ, "南町")
+    assert m.count == 6
+
+
+def test_too_few_matches_means_no_numbers_at_all():
+    rows = [_matched_txn(20_000_000, 120.0) for _ in range(3)]
+    m = analyze_matched_market(rows, SUBJ, "南町")
+    assert m.unit_mid is None
+    assert any("足りません" in n or "出していません" in n for n in m.notes)
+
+
+def test_the_area_tolerance_is_a_ratio_not_an_absolute():
+    inside = _matched_txn(20_000_000, 120.0 * (1 + AREA_TOLERANCE - 0.01))
+    outside = _matched_txn(20_000_000, 120.0 * (1 + AREA_TOLERANCE + 0.05))
+    rows = [inside] * 6 + [outside] * 6
+    m = analyze_matched_market(rows, SUBJ, "南町")
+    assert m.count == 6
+    assert "敷地面積" in m.applied
+
+
+def test_the_pool_count_is_always_reported():
+    """絞ったあとの件数だけ出すと、どれだけ捨てたか分からない。"""
+    rows = [_matched_txn(20_000_000, 120.0) for _ in range(6)] + \
+           [_matched_txn(9_000_000, 120.0, road="私道") for _ in range(4)]
+    m = analyze_matched_market(rows, SUBJ, "南町")
+    assert m.pool == 10 and m.count == 6

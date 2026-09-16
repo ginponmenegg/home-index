@@ -4267,6 +4267,26 @@ BRAND_BAR
    <p class="muted">{{mk.note}}</p>
   {% endif %}
 
+  {% if matched %}
+   {% if matched.has %}
+   <h3 style="font-size:14px;margin:18px 0 2px">条件を揃えた分布</h3>
+   <p class="muted" style="margin:0 0 4px">
+    {{matched.applied|join("・")}}をこの土地に合わせた成約
+    <b>{{matched.count}}件</b>（絞る前 {{matched.pool}}件）</p>
+   <p class="big" style="margin:4px 0 0">坪単価 {{matched.tlow}} 〜 {{matched.thigh}}<span
+     class="muted" style="font-size:15px;font-weight:400">（中央値 {{matched.tmid}}）</span></p>
+   <p style="font-size:14px;margin:2px 0 0">㎡単価 {{matched.low}} 〜 {{matched.high}}
+    <span class="muted">（中央値 {{matched.mid}}）・ばらつき ±{{matched.spread}}%</span></p>
+   {% for n in matched.notes %}<div class="rsk">{{n}}</div>{% endfor %}
+   <div class="foot"><b>絞れば正確になる、とは言えません。</b>
+    比べる相手は近くなりますが、件数が減るぶん、少数の成約に振り回され
+    やすくなります。上の絞る前の分布と、件数を一緒に見てください。
+    中央値が動いたときは、条件のちがいが値段に効いているという意味です。</div>
+   {% else %}
+   <div class="foot" style="margin-top:14px">{{matched.note}}</div>
+   {% endif %}
+  {% endif %}
+
   {% if mk.traits %}
   <h3 style="font-size:14px;margin:16px 0 2px">この地域の土地の傾向</h3>
   <div class="kv">
@@ -4609,8 +4629,20 @@ def _land_position(unit, low, mid, high):
     return "近隣の成約の真ん中あたりです"
 
 
+def _matched_ctx(m):
+    """条件を揃えた分布の表示用。件数を必ず添える。"""
+    if not m or not m.unit_mid:
+        return dict(has=False, note=(m.notes[0] if (m and m.notes) else None))
+    return dict(has=True, count=m.count, pool=m.pool,
+                low=f"{m.unit_low:,}円", mid=f"{m.unit_mid:,}円",
+                high=f"{m.unit_high:,}円", spread=m.spread_pct,
+                tlow=_tsubo_yen(m.unit_low), tmid=_tsubo_yen(m.unit_mid),
+                thigh=_tsubo_yen(m.unit_high),
+                applied=m.applied, dropped=m.dropped, notes=m.notes)
+
+
 def _render_land_result(res, subject, f, down_yen, loan_years,
-                        fin=None, pro=False, procedures=None):
+                        fin=None, pro=False, procedures=None, matched=None):
     from src.land import tsubo
     from src.land_scoring import guided_area_m2, DEFAULT_HOUSEHOLD, score_cap
 
@@ -4733,6 +4765,7 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
         LAND_RESULT, s=sctx, d=dctx, cats=cats, cap=cap_ctx, mk=mk,
         loan=loan, capped=capped, warnings=_public_warnings(res.warnings),
         fin=fin, pro=pro, handover=handover, procedures=procedures,
+        matched=matched,
         ring_circ=round(circ, 1),
         ring_off=round(circ * (1 - d.total_score / 100.0), 1),
         grade_color=GRADE_COLOR.get(d.grade, "#0d9488"),
@@ -5192,6 +5225,20 @@ def _run_land_pro(f):
         / sum(c.weight for c in d.categories) * 100))
     d.strengths, d.weaknesses = highlights(d.categories)
 
+    # 条件を揃えた分布。対象地と近い成約だけで引き直す。
+    from src.land_price import analyze_matched_market
+    e2 = res.enrichment
+    matched = analyze_matched_market(
+        res.land_txns, dict(
+            road_type=subject.road_type,
+            road_width_m=subject.road_width_m,
+            coverage_ratio=(subject.coverage_ratio
+                            or (e2.coverage_ratio if e2 else None)),
+            floor_area_ratio=(subject.floor_area_ratio
+                              or (e2.floor_area_ratio if e2 else None)),
+            land_area_m2=subject.land_area_m2),
+        subject.district_name)
+
     urban = res.enrichment.urbanization if res.enrichment else None
     procedures = [x for x in (lps.farmland_procedure(legal, urban),
                               lps.heritage_notice(legal)) if x]
@@ -5199,7 +5246,8 @@ def _run_land_pro(f):
     metrics.bump("pro_diag")
     return _render_land_result(res, subject, f, down_yen, loan_years,
                                fin=_land_fin_ctx(bridge, total, events),
-                               pro=True, procedures=procedures)
+                               pro=True, procedures=procedures,
+                               matched=_matched_ctx(matched))
 
 
 def _land_fin_ctx(bridge, total, events):
