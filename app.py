@@ -4002,10 +4002,16 @@ BRAND_BAR
   <div class="row">
    <div><label>土地の価格（万円） <span class="req">必須</span></label>
     <input name="price" value="{{v.price}}" placeholder="例）1800" required></div>
-   <div><label>敷地面積（㎡） <span class="req">必須</span></label>
-    <input name="area" value="{{v.area}}" placeholder="例）120"
-     required>
-    <div class="hint">坪なら 3.30578 を掛けて㎡にしてください</div></div>
+   <div><label>敷地面積 <span class="req">必須</span></label>
+    <div class="unitrow">
+     <input name="area" value="{{v.area}}" placeholder="例）120" required>
+     <select name="area_unit" aria-label="面積の単位">
+      <option value="m2" {{'selected' if v.area_unit != 'tsubo' else ''}}>㎡</option>
+      <option value="tsubo" {{'selected' if v.area_unit == 'tsubo' else ''}}>坪</option>
+     </select>
+    </div>
+    <div class="hint">広告が坪なら、単位を<b>坪</b>に変えてそのまま入れて
+     ください。㎡への換算はこちらでします</div></div>
   </div>
 
   <div class="row">
@@ -4158,7 +4164,10 @@ LAND_ROAD_TYPES = [
 LAND_FORM = (LAND_FORM
              .replace("LAND_CSS_PLACEHOLDER",
                       _FORM_CSS + "\n .sec{font-size:15px;margin:22px 0 2px;"
-                      "padding-top:14px;border-top:1px solid #e5e5e5}")
+                      "padding-top:14px;border-top:1px solid #e5e5e5}"
+                      "\n .unitrow{display:flex;gap:8px;align-items:stretch}"
+                      "\n .unitrow input{flex:1;min-width:0}"
+                      "\n .unitrow select{flex:0 0 5.5em}")
              .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
              .replace("BRAND_BAR", brand_bar("土地診断"))
              .replace("</div></body></html>", FOOTER + "</div></body></html>"))
@@ -4679,8 +4688,8 @@ LAND_RESULT = (LAND_RESULT
 
 
 def _land_example_v():
-    return dict(address="", price="", area="", budget="", household="",
-                condition="unknown",
+    return dict(address="", price="", area="", area_unit="m2",
+                budget="", household="", condition="unknown",
                 road_width="", road_type="unknown", frontage="",
                 station="", bus="", coverage="", far="",
                 city="", district="", income="", down="", loan_years="35")
@@ -4786,7 +4795,12 @@ def _land_subject_from(f):
         except Exception:
             pass
 
-    area = to_float(f.get("area"))
+    # 広告は坪で書かれることが多い。㎡への換算を利用者にやらせていたが、
+    # そこで間違えると建ぺい率・容積率の計算がまるごとずれる。
+    unit = (f.get("area_unit") or "m2").strip()
+    if unit not in ("m2", "tsubo"):
+        unit = "m2"
+    area = to_m2(to_float(f.get("area")), unit)
     if not area or area <= 0:
         return None, city, district, ("敷地面積を入力してください。"
                                       "建てられる家の大きさを計算するのに必要です。")
@@ -4862,7 +4876,7 @@ def _public_warnings(warnings):
 
 
 # 土地の打ち合わせは坪単価で進むことが多い。㎡単価だけだと読み替えが要る。
-M2_PER_TSUBO = 3.30578
+from src.land import M2_PER_TSUBO, to_m2  # noqa: E402  1坪 = 400/121 ㎡
 
 
 def _tsubo_yen(unit_m2):
@@ -5073,6 +5087,9 @@ FONT_LINK_PLACEHOLDER
 LAND_PRO_CSS_PLACEHOLDER
  .sec{font-size:15px;margin:22px 0 2px;padding-top:14px;
    border-top:1px solid #e5e5e5}
+ .unitrow{display:flex;gap:8px;align-items:stretch}
+ .unitrow input{flex:1;min-width:0}
+ .unitrow select{flex:0 0 5.5em}
 </style></head><body>
 BRAND_BAR
 <div class="wrap">
@@ -5094,8 +5111,14 @@ BRAND_BAR
   <div class="row">
    <div><label>土地の価格（万円） <span class="req">必須</span></label>
     <input name="price" value="{{v.price}}" placeholder="例）1800" required></div>
-   <div><label>敷地面積（㎡） <span class="req">必須</span></label>
-    <input name="area" value="{{v.area}}" placeholder="例）120" required></div>
+   <div><label>敷地面積 <span class="req">必須</span></label>
+    <div class="unitrow">
+     <input name="area" value="{{v.area}}" placeholder="例）120" required>
+     <select name="area_unit" aria-label="面積の単位">
+      <option value="m2" {{'selected' if v.area_unit != 'tsubo' else ''}}>㎡</option>
+      <option value="tsubo" {{'selected' if v.area_unit == 'tsubo' else ''}}>坪</option>
+     </select>
+    </div></div>
   </div>
   <div class="row">
    <div><label>建物の本体工事費（万円）</label>

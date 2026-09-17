@@ -263,3 +263,54 @@ def test_the_land_result_carries_its_own_disclaimer(client):
     h = _post(client)
     assert "免責" in h
     assert "斜線制限" in h          # 計算に入れていないものを名指しする
+
+
+# ---- 面積の単位（㎡／坪）----
+def test_the_form_lets_you_type_tsubo(client):
+    """広告は坪で書かれることが多い。㎡への換算を利用者にやらせない。"""
+    h = client.get("/land").get_data(as_text=True)
+    assert 'name="area_unit"' in h
+    assert "㎡への換算はこちらでします" in h
+    # 自分で掛け算しろ、という古い案内は消す
+    assert "3.30578 を掛けて" not in h
+
+
+def test_tsubo_and_square_metres_reach_the_same_answer(client):
+    import re
+
+    def area(h):
+        return re.search(r"敷地 ([\d.]+)㎡（([\d.]+)坪）", h).groups()
+
+    in_m2 = _post(client, area="120", area_unit="m2")
+    in_tsubo = _post(client, area="36.3", area_unit="tsubo")
+    assert area(in_m2) == area(in_tsubo)
+
+
+def test_fifty_tsubo_is_a_hundred_and_sixty_five_square_metres(client):
+    # 50坪 × 400/121 = 165.289…㎡
+    import re
+    h = _post(client, area="50", area_unit="tsubo")
+    m2, tsubo = re.search(r"敷地 ([\d.]+)㎡（([\d.]+)坪）", h).groups()
+    assert m2 == "165" and tsubo == "50.0"
+
+
+def test_no_unit_means_square_metres(client):
+    """単位を送らない古いブックマークやリンクでも、今までどおり動くこと。"""
+    import re
+    h = client.post("/land_diagnose", data=dict(FORM)).get_data(as_text=True)
+    assert re.search(r"敷地 120㎡", h)
+
+
+def test_a_nonsense_unit_falls_back_to_square_metres(client):
+    import re
+    h = _post(client, area="120", area_unit="でたらめ")
+    assert re.search(r"敷地 120㎡", h)
+
+
+def test_the_unit_survives_the_edit_button(client):
+    """坪で入れた人が修正を押したとき、㎡に化けないこと。"""
+    h = client.post("/land/edit",
+                    data=dict(FORM, area="50", area_unit="tsubo")
+                    ).get_data(as_text=True)
+    assert 'value="50"' in h
+    assert '"tsubo" selected' in h

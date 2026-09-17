@@ -207,3 +207,26 @@ def test_a_low_rise_zone_carries_the_absolute_height_note():
     assert any("10mまたは12m" in n for n in c.notes)
     plain = build_capacity(120.0, 60, 200, "第一種住居地域", road_width_m=6.0)
     assert not any("10mまたは12m" in n for n in plain.notes)
+
+
+# ---- 坪と㎡ ----
+def test_one_tsubo_is_four_hundred_over_one_hundred_twenty_one():
+    """計量法の尺貫法の換算そのもの。丸めた値をあちこちに散らさない。"""
+    from src.land import M2_PER_TSUBO
+    assert M2_PER_TSUBO == 400.0 / 121.0
+    assert abs(M2_PER_TSUBO - 3.305785) < 1e-6
+
+
+def test_converting_to_square_metres():
+    from src.land import to_m2
+    assert to_m2(120, "m2") == 120
+    assert abs(to_m2(50, "tsubo") - 165.289) < 0.01
+    assert to_m2(None, "tsubo") is None
+    # 知らない単位は㎡として扱う（勝手に大きくしない）
+    assert to_m2(120, "でたらめ") == 120
+
+
+def test_the_round_trip_holds():
+    from src.land import to_m2, tsubo
+    for t in (30.0, 36.3, 50.0, 100.0):
+        assert tsubo(to_m2(t, "tsubo")) == t

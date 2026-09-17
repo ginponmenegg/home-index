@@ -55,6 +55,12 @@ RESIDENTIAL_TOKENS = ("住居",)
 FAR_MULTIPLIER_RESIDENTIAL = 0.4
 FAR_MULTIPLIER_OTHER = 0.6
 
+# 1坪 = 400/121 ㎡。計量法の尺貫法の換算そのもの。
+# 3.30578 や 3.305785 と丸めた値があちこちに散っていたので、ここに寄せた。
+# 丸め方が違うと、同じ面積を別のところで出したときに末尾がずれる。
+M2_PER_TSUBO = 400.0 / 121.0
+
+
 # 道路の幅員の下限（建築基準法第42条）。接道の長さは第43条で2m以上。
 MIN_ROAD_WIDTH_M = 4.0
 MIN_FRONTAGE_M = 2.0
@@ -276,8 +282,20 @@ def meets_road_requirement(road_width_m: Optional[float]) -> Optional[bool]:
     return road_width_m >= MIN_ROAD_WIDTH_M
 
 
+def to_m2(value: Optional[float], unit: str = "m2") -> Optional[float]:
+    """入力された面積を㎡に直す。unit は "m2" か "tsubo"。
+
+    土地の広告は坪で書かれることが多く、㎡に直すのを利用者にやらせていた。
+    掛け算を1回させるだけだが、そこで間違えると建ぺい率・容積率の計算が
+    まるごとずれる。こちらで直す。
+    """
+    if value is None:
+        return None
+    return value * M2_PER_TSUBO if unit == "tsubo" else value
+
+
 def tsubo(m2: Optional[float]) -> Optional[float]:
     """坪に直す。打ち合わせは坪で進むことが多い。"""
     if m2 is None:
         return None
-    return round(m2 / 3.30578, 1)
+    return round(m2 / M2_PER_TSUBO, 1)
