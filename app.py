@@ -2529,8 +2529,14 @@ _ABOUT_BODY = ("""
 <p>国土交通省 不動産情報ライブラリ（成約価格・災害リスク・用途地域・学区・
 将来推計人口）、国土地理院（住所からの座標特定）、OpenStreetMap（商業施設）。
 出典は診断結果の画面にも表示しています。</p>
-<p>取得できなかった項目は「未取得」と表示し、採点には反映しません。
-不明な項目を推測で補うことはいたしません。</p>
+<p>取得できなかった項目は「未取得」と表示します。<b>良い評価としては
+数えません。</b>「調べていない」ことを「問題なし」の扱いにしない、という
+線の引き方です。</p>
+<p>災害リスクのように、確かめないと安全だと言えない項目は、<b>点数の上限を
+下げます</b>（見ていないのに満点にはしません）。年収のように、無くても物件の
+評価そのものは変わらない項目は、中立の点を置いて<b>情報充足度を下げます</b>。
+どちらの場合も、何が未確認かを結果の画面に書き出します。</p>
+<p>不明な項目を推測で補うことはいたしません。</p>
 
 <h2>お問い合わせ</h2>
 <p>""" + CONTACT + """</p>
@@ -3201,6 +3207,69 @@ def _edit_carry(action: str, f, keys) -> dict:
     return {"action": action, "fields": fields}
 
 
+def _hazard_items(hz):
+    """防災カードに並べる項目。(見出し, 中身, 種別) の並び。
+
+    **見ていない層を「該当なし」に含めない。**
+
+    この判定は _render_result の中に埋まっていて、単体で試せなかった。
+    そのため score_risk 側だけを直したときに、ここが取り残された。
+    津波を取りに行かない地域で、このカードは緑で「指定区域に該当なし」と
+    出しながら、下の採点では「津波浸水想定を確認していません」と書く、
+    という食い違いが起きた。外に出して、テストで押さえられる形にする。
+    """
+    if not getattr(hz, "checked", False):
+        return [("防災", "未取得（要確認）", "muted")]
+    items = []
+    if hz.flood_rank:
+        lbl = hz.flood_label + (f"（{hz.flood_river}）" if hz.flood_river else "")
+        items.append(("洪水浸水", lbl, "warn"))
+    if hz.sediment:
+        items.append(("土砂災害", hz.sediment, "warn"))
+    if hz.tsunami:
+        items.append(("津波", "浸水想定域", "warn"))
+    if hz.storm_surge:
+        items.append(("高潮", "浸水想定域", "warn"))
+    if getattr(hz, "danger_zone", None):
+        items.append(("災害危険区域", hz.danger_zone, "warn"))
+    if getattr(hz, "steep_slope", False):
+        items.append(("急傾斜地", "崩壊危険区域", "warn"))
+    if getattr(hz, "landslide_zone", False):
+        items.append(("地すべり", "防止地区", "warn"))
+    if getattr(hz, "embankment", None):
+        items.append(("大規模盛土", hz.embankment, "warn"))
+    liq = getattr(hz, "liquefaction", None)
+    if liq:
+        items.append(("液状化", liq,
+                      "warn" if "しやすい" in liq else "ok"))
+    # 提供元の利用条件で取りに行かなかった層。**見ていないものを
+    # 「該当なし」に含めない。**score_risk 側は直してあったのに、
+    # この表示カードだけ直っていなかった。津波を見ていない地域で
+    # 「防災: 指定区域に該当なし」と緑で出しながら、下の採点では
+    # 「津波浸水想定を確認していません」と書く、という食い違いが
+    # 起きていた。
+    blocked = list(getattr(hz, "restricted", None) or [])
+    for name in blocked:
+        items.append((name, "未取得（提供元の利用条件）", "muted"))
+    if not items:
+        items.append(("防災", "指定区域に該当なし", "ok"))
+    elif blocked and len(items) == len(blocked):
+        # 見た層はすべて該当なしだが、見ていない層がある。
+        items.insert(0, ("防災", "見た範囲では該当なし", "ok"))
+
+    # 提供元の利用条件で取りに行かなかった層。見ていないものを
+    # 「該当なし」に含めない。
+    blocked = list(getattr(hz, "restricted", None) or [])
+    for name in blocked:
+        items.append((name, "未取得（提供元の利用条件）", "muted"))
+    if not items:
+        items.append(("防災", "指定区域に該当なし", "ok"))
+    elif blocked and len(items) == len(blocked):
+        # 見た層はすべて該当なしだが、見ていない層がある。
+        items.insert(0, ("防災", "見た範囲では該当なし", "ok"))
+    return items
+
+
 def _render_result(res, subject, sctx, down_yen, loan_years,
                    free_diagnosis=None, carry=None, questions=None,
                    questions_note=None, redo=None, finance_carry=None,
@@ -3289,34 +3358,7 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
     en = res.enrichment
     enr = None
     if en:
-        hz = en.hazard
-        items = []
-        if hz.checked:
-            if hz.flood_rank:
-                lbl = hz.flood_label + (f"（{hz.flood_river}）" if hz.flood_river else "")
-                items.append(("洪水浸水", lbl, "warn"))
-            if hz.sediment:
-                items.append(("土砂災害", hz.sediment, "warn"))
-            if hz.tsunami:
-                items.append(("津波", "浸水想定域", "warn"))
-            if hz.storm_surge:
-                items.append(("高潮", "浸水想定域", "warn"))
-            if getattr(hz, "danger_zone", None):
-                items.append(("災害危険区域", hz.danger_zone, "warn"))
-            if getattr(hz, "steep_slope", False):
-                items.append(("急傾斜地", "崩壊危険区域", "warn"))
-            if getattr(hz, "landslide_zone", False):
-                items.append(("地すべり", "防止地区", "warn"))
-            if getattr(hz, "embankment", None):
-                items.append(("大規模盛土", hz.embankment, "warn"))
-            liq = getattr(hz, "liquefaction", None)
-            if liq:
-                items.append(("液状化", liq,
-                              "warn" if "しやすい" in liq else "ok"))
-            if not items:
-                items.append(("防災", "指定区域に該当なし", "ok"))
-        else:
-            items.append(("防災", "未取得（要確認）", "muted"))
+        items = _hazard_items(en.hazard)
         fa = en.facility
         fac_bits = []
         if fa and fa.checked:
@@ -3345,7 +3387,11 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
                 fac_bits.append(f"スーパー {daily.distance_m}m"
                                 + (f"（{daily.name}）" if daily.name else ""))
             if not big and not daily:
-                fac_bits.append("商業施設は付近に見当たらず")
+                # 「無い」と断定しない。OpenStreetMap は有志が作る地図で、
+                # 地域によって載っている店の数が違う。載っていないことは、
+                # 存在しないことではない。
+                fac_bits.append(
+                    "商業施設は OpenStreetMap の範囲では見つかりませんでした")
 
         # 学区と将来推計人口。人口はメッシュの推計があればそちらを優先する。
         districts = []
@@ -3936,7 +3982,8 @@ BRAND_BAR
  <p class="aim">注文住宅を建てる土地を100点で採点します。
   <b>建ぺい率・容積率・前面道路</b>から延床の上限を計算し、
   近隣の<b>土地の成約事例</b>から㎡単価の分布を出します。</p>
- <p class="lead"><b>所在地・価格・敷地面積・建物の予算</b>の4つで診断できます。
+ <p class="lead"><b>所在地・価格・敷地面積</b>の3つで診断できます。
+  <b>建物の予算</b>を足すと、総額と月々の返済まで出ます。
   分かる項目を足すほど、点の確からしさ（情報充足度）が上がります。
   金額は<b>万円</b>。<a href="/buy">戸建の診断はこちら</a>　<a href="/mansion">マンションの診断はこちら</a></p>
 
@@ -7995,8 +8042,10 @@ BRAND_BAR
    いることが多く、こちらのほうが確実です。<br>
    <b>文字が選択できないPDF</b>は、紙をスキャンした画像です。この場合、中身は
    画像なので文字を取り出せません。<br>
-   どちらも難しければ、<b>手入力でも構いません</b>。必要なのは、価格・所在地・面積・
-   築年・駅からの徒歩分の5つだけです。</p>
+   どちらも難しければ、<b>手入力でも構いません</b>。
+   <b>所在地と価格だけで診断できます</b>（土地は所在地・価格・敷地面積）。
+   面積・築年・駅からの徒歩分などを足すほど、点の確からしさ
+   （情報充足度）が上がります。</p>
  </div>
 
  <div class="card">
@@ -8014,6 +8063,9 @@ BRAND_BAR
  <a class="cta" href="/mansion" style="display:block;text-align:center;margin-top:10px;
    padding:15px;background:#eef2f7;color:#111;border-radius:10px;font-weight:700;
    text-decoration:none">マンションの診断にもどる</a>
+ <a class="cta" href="/land" style="display:block;text-align:center;margin-top:10px;
+   padding:15px;background:#eef2f7;color:#111;border-radius:10px;font-weight:700;
+   text-decoration:none">土地の診断にもどる</a>
 </div></body></html>
 """
 
