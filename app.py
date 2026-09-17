@@ -6612,9 +6612,9 @@ def login():
     # 本番でこれを出すと誰でもログインできてしまうので、鍵が無いときに限る。
     devlink = None if (ok or mailer.enabled()) else link
     if not ok and mailer.enabled():
+        # msg は相手に見せてよい文面だけ（詳細は mailer 側でログに出る）。
         return _account_page("ログイン", render_template_string(
-            LOGIN_PAGE, user=None, email=email,
-            error=f"メールを送れませんでした。{msg}"), chip="ログイン")
+            LOGIN_PAGE, user=None, email=email, error=msg), chip="ログイン")
     return _account_page("確認", render_template_string(
         LOGIN_SENT, email=email, ttl=accounts.TOKEN_TTL_MIN, devlink=devlink),
         chip="ログイン")

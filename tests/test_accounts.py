@@ -708,3 +708,48 @@ def test_compare_stops_offering_more_at_six(env):
     h = c.get(f"/compare?{q}").get_data(as_text=True)
     assert "ほかに保存された物件がありません" in h \
         or "もう1件くらべる" not in h.split("多6")[0]
+
+
+def test_a_send_failure_never_shows_the_provider_message(monkeypatch):
+    """業者の文面を、ログインしようとした人の画面に出さない。
+
+    実際に Resend が 403 で返した本文がそのまま画面に出た。
+      {"statusCode":403,"message":"The send.homeindex.jp domain is not
+       verified. Please, add and verify your domain on
+       https://resend.com/domains", ...}
+    読んでもどうしようもないうえ、送信ドメインと使っている業者が漏れる。
+    """
+    import os as _os
+    import urllib.error
+    import io as _io
+    from src import mailer
+
+    monkeypatch.setenv("RESEND_API_KEY", "re_dummy")
+    monkeypatch.setenv("MAIL_FROM", "HOME INDEX <no-reply@send.homeindex.jp>")
+
+    body = ('{"statusCode":403,"message":"The send.homeindex.jp domain is not '
+            'verified. Please, add and verify your domain on '
+            'https://resend.com/domains","name":"validation_error"}')
+
+    def boom(*a, **k):
+        raise urllib.error.HTTPError(
+            mailer.API, 403, "Forbidden", {},
+            _io.BytesIO(body.encode("utf-8")))
+
+    monkeypatch.setattr(mailer.urllib.request, "urlopen", boom)
+    ok, msg = mailer.send("x@example.com", "t", "<p>t</p>")
+
+    assert ok is False
+    assert "send.homeindex.jp" not in msg
+    assert "resend" not in msg.lower()
+    assert "403" not in msg
+    assert "お問い合わせ" in msg
+
+
+def test_a_missing_key_gives_the_same_neutral_message(monkeypatch):
+    from src import mailer
+    monkeypatch.setenv("RESEND_API_KEY", "")
+    ok, msg = mailer.send("x@example.com", "t", "<p>t</p>")
+    assert ok is False
+    # 鍵の有無という内部の事情も、相手には見せない
+    assert "RESEND_API_KEY" not in msg

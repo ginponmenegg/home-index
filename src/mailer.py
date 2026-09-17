@@ -54,11 +54,27 @@ def warn_if_shared_sender() -> str:
     return ""
 
 
+# 送信元のドメインがResendで認証されていないときの403。
+# この文面は相手（ログインしようとした人）には見せない。読んでも
+# どうしようもないうえ、こちらの送信ドメインと使っている業者が漏れる。
+_NOT_VERIFIED = "domain is not verified"
+
+# 相手に見せる文面。何が起きたかと、次にどうすればよいかだけ。
+_USER_MESSAGE = ("メールを送れませんでした。しばらくしてからもう一度"
+                 "お試しください。続くようでしたら、お手数ですが"
+                 "お問い合わせください。")
+
+
 def send(to: str, subject: str, html: str, text: str = "") -> tuple[bool, str]:
-    """1通送る。(成功したか, メッセージ) を返す。例外は投げない。"""
+    """1通送る。(成功したか, 相手に見せてよい文面) を返す。例外は投げない。
+
+    **失敗の詳細は戻り値に混ぜない。**業者が返す文面には、送信ドメインの
+    設定手順や管理画面のURLが入ってくる。ログインしようとした人に見せても
+    何もできないし、こちらの設定が漏れる。詳細はログにだけ出す。
+    """
     key = (os.environ.get("RESEND_API_KEY") or "").strip()
     if not key:
-        return False, "RESEND_API_KEY が未設定です"
+        return False, _USER_MESSAGE
     body = {"from": sender(), "to": [to], "subject": subject, "html": html}
     if text:
         body["text"] = text
@@ -76,9 +92,17 @@ def send(to: str, subject: str, html: str, text: str = "") -> tuple[bool, str]:
             detail = e.read().decode("utf-8")[:300]
         except Exception:
             pass
-        return False, f"送信に失敗しました（{e.code}）{detail}"
+        print(f"[mailer] 送信失敗 {e.code}: {detail}")
+        if e.code == 403 and _NOT_VERIFIED in detail:
+            # 運営者向けの一行。ログを見たときに、次に何をするかが分かる形で。
+            print(f"[mailer] 差出人 {sender()} のドメインが Resend で"
+                  "認証されていません。https://resend.com/domains で"
+                  "ドメインを追加し、表示されるDNSレコード（SPF・DKIM）を"
+                  "登録してください。認証が済むまでメールは送れません。")
+        return False, _USER_MESSAGE
     except Exception as e:
-        return False, f"送信に失敗しました（{type(e).__name__}）"
+        print(f"[mailer] 送信失敗 {type(e).__name__}: {e}")
+        return False, _USER_MESSAGE
 
 
 LOGIN_SUBJECT = "【HOME INDEX】ログイン用のリンク"
