@@ -550,6 +550,51 @@ else:
                  '<a href="/pro/finance" style="color:#111">詳細な資金計画</a>　・　'
                  '<a href="/sample/finance" style="color:#111">資金計画の見本</a>')
 
+CARD_CSS = """
+ :root{--bg:#f1f4f7;--card:#fff;--ink:#1f2937;--sub:#6b7480;--acc:#111111;
+  --line:#e8ebef}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
+ .wrap{max-width:720px;margin:0 auto;padding:28px 16px}
+ /* 枠と影を両方かけると輪郭が二重になって重く見える。影だけにする。 */
+ .card{background:var(--card);border:0;border-radius:18px;padding:24px;
+  box-shadow:0 1px 2px rgba(16,24,40,.04),0 10px 26px -14px rgba(16,24,40,.22);
+  margin-top:14px}
+ h1{font-size:21px;margin:10px 0 2px;letter-spacing:.01em}
+ /* 見出しの左に色のついた細い棒。◎△⚠ のような記号を重ねない。 */
+ h2{font-size:15px;font-weight:700;letter-spacing:.04em;margin:0 0 14px;
+  display:flex;align-items:center;gap:9px}
+ h2::before{content:"";width:3px;height:16px;border-radius:2px;
+  background:currentColor;opacity:.85;flex:0 0 auto}
+ .muted{color:var(--sub);font-size:14px}
+ /* URLのような切れ目の無い文字列が入っても、横スクロールを出さない */
+ .foot{color:var(--sub);font-size:13px;margin-top:8px;overflow-wrap:anywhere}
+ table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
+ th,td{text-align:left;padding:9px 6px;border-bottom:1px solid #f0f2f5}
+ th{color:var(--sub);font-weight:600;font-size:12px;letter-spacing:.07em}
+ .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+ /* リスクの帯とハザードの札。結果画面と、保存した診断の詳細で使う。 */
+ .rsk{display:block;background:#fffaf4;border:1px solid #f4ddc2;
+  border-radius:14px;padding:13px 15px;margin:8px 0;font-size:15px;
+  line-height:1.85}
+ .rsk b{color:#9a3412}
+ .hz{display:inline-block;border-radius:999px;padding:7px 13px;
+  margin:5px 5px 0 0;font-size:14px;font-weight:600;
+  border:1px solid var(--line)}
+ .hz-ok{border-color:#bbf7d0;color:#166534}
+ .hz-warn{border-color:#fecaca;color:#991b1b}
+ .hz-muted{color:#6b7480}
+ /* 赤は気をつける側に置く。強みが赤、弱みが水色で逆だった。 */
+ ul.strong li{color:#0ea5e9}ul.weak li{color:#dc2626}
+ @media (max-width:560px){
+  .wrap{padding:18px 12px} h1{font-size:19px}
+  .card{padding:18px 16px;border-radius:16px;margin-top:12px}
+  table{font-size:13px} th,td{padding:7px 5px}
+ }
+"""
+
+
 FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#5f6773;line-height:1.9">'
           '<a href="/guide" style="color:#111">解説</a><br>'
           + PRO_LINKS + '<br>'
@@ -737,32 +782,29 @@ FORM = """
 FONT_LINK_PLACEHOLDER
 <title>HOME INDEX｜購入診断</title>
 <style>
- :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#5f6773;--acc:#111111;--line:#e5e5e5}
- *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
-  font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
- .wrap{max-width:720px;margin:0 auto;padding:24px 16px}
- h1{font-size:22px;margin:8px 0 2px} .lead{color:var(--sub);margin:0 0 16px;font-size:14px}
- .aim{color:var(--ink);margin:0 0 10px;font-size:14px;line-height:1.85}
- .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;
-  box-shadow:0 1px 2px rgba(0,0,0,.04);margin-bottom:16px}
- label{display:block;font-size:13px;color:var(--sub);margin:12px 0 4px}
+CARD_CSS_PLACEHOLDER
+ .lead{color:var(--sub);margin:0 0 16px;font-size:15px;line-height:1.85}
+ .aim{color:var(--ink);margin:0 0 10px;font-size:15px;line-height:1.85}
+ label{display:block;font-size:14px;color:var(--sub);margin:14px 0 4px}
  input,textarea,select{width:100%;padding:13px 12px;border:1px solid var(--line);border-radius:10px;font-size:16px;font-family:inherit;background:#fff}
  textarea{min-height:120px;resize:vertical}
  .row{display:flex;gap:12px}.row>div{flex:1;min-width:0}
- .hint{font-size:12px;color:var(--sub);margin-top:3px}
+ .hint{font-size:13px;color:var(--sub);margin-top:4px;line-height:1.75}
  button{margin-top:14px;width:100%;padding:15px;background:var(--acc);color:#fff;border:0;
-  border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;min-height:50px}
+  border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;min-height:50px}
  button:hover{background:#333}
  button.sub{background:#eef2f7;color:var(--ink);font-size:15px;font-weight:600}
  button.sub:hover{background:#e2e8f0}
- .badge{display:inline-block;background:#f1f1f1;color:#374151;border:1px solid #e5e5e5;
-  border-radius:999px;padding:3px 10px;font-size:12px;margin-bottom:10px}
- .banner{background:#fafafa;border:1px solid #e5e5e5;color:#374151;border-radius:10px;
-  padding:12px 14px;font-size:14px;margin-bottom:16px}
+ .badge{display:inline-block;background:none;color:#374151;
+  border:1px solid var(--line);
+  border-radius:999px;padding:4px 12px;font-size:12px;margin-bottom:10px}
+ .banner{background:#fafbfc;border:1px solid var(--line);color:#374151;
+  border-radius:14px;
+  padding:13px 15px;font-size:15px;line-height:1.85;margin-bottom:16px}
  .banner b{color:#111}
  details.more{border:1px solid var(--line);border-radius:10px;padding:0 14px;
    margin-top:14px;background:#fafbfc}
- details.more>summary{cursor:pointer;padding:13px 0;font-size:14px;
+ details.more>summary{cursor:pointer;padding:13px 0;font-size:15px;
    font-weight:600;color:var(--ink);list-style:none}
  details.more>summary::-webkit-details-marker{display:none}
  details.more>summary::before{content:"＋ ";color:var(--sub)}
@@ -771,7 +813,6 @@ FONT_LINK_PLACEHOLDER
  .req{color:#b91c1c;font-weight:700}
  BRAND_CSS_PLACEHOLDER
  @media (max-width:560px){
-  .wrap{padding:16px 12px} h1{font-size:19px} .card{padding:16px}
   .row{flex-direction:column;gap:0}
  }
 </style></head><body>
@@ -956,14 +997,8 @@ RESULT = """
 FONT_LINK_PLACEHOLDER
 <title>HOME INDEX｜{{s.address}}</title>
 <style>
- :root{--bg:#f1f4f7;--card:#fff;--ink:#1f2937;--sub:#6b7480;--acc:#111111;--line:#e8ebef}
- *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
-  font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
- .wrap{max-width:720px;margin:0 auto;padding:28px 16px}
+CARD_CSS_PLACEHOLDER
  a.back{color:var(--acc);text-decoration:none;font-size:14px}
- .card{background:var(--card);border:0;border-radius:18px;padding:24px;
-  box-shadow:0 1px 2px rgba(16,24,40,.04),0 10px 26px -14px rgba(16,24,40,.22);margin-top:14px}
- h1{font-size:21px;margin:10px 0 2px;letter-spacing:.01em}
  .sub{color:var(--sub);font-size:15px;margin:0 0 6px}
  .hero{background:#fff}
  .hero-score{display:flex;align-items:center;gap:28px;margin-top:20px;flex-wrap:wrap}
@@ -977,40 +1012,21 @@ FONT_LINK_PLACEHOLDER
  .gletter{font-family:Jost,"Century Gothic",Futura,sans-serif;font-size:54px;
    font-weight:700;line-height:.95;letter-spacing:.02em}
  .gcomment{font-size:15px;font-weight:700;letter-spacing:.02em}
- .muted{color:var(--sub);font-size:14px}
  .verdict{display:inline-block;border-radius:999px;padding:3px 13px;
   font-weight:700;font-size:13px;letter-spacing:.04em;border:1.5px solid currentColor}
  .v-under{color:#166534}.v-fair{color:#075985}
  .v-over{color:#9a3412}.v-none{color:#6b7480}
- table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
- th,td{text-align:left;padding:9px 6px;border-bottom:1px solid #f0f2f5}
- th{color:var(--sub);font-weight:600;font-size:12px;letter-spacing:.07em}
  .cat{margin:18px 0}
  .cat .top{display:flex;justify-content:space-between;font-size:15px;font-weight:500}
  .cat .top .muted{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px}
  .bar{height:6px;background:#eaeef3;border-radius:999px;overflow:hidden;margin:8px 0 6px}
  .bar>span{display:block;height:100%}
- .rsk{display:block;background:#fffaf4;border:1px solid #f4ddc2;border-radius:14px;
-  padding:13px 15px;margin:8px 0;font-size:15px;line-height:1.85}
- .rsk b{color:#9a3412}
- h2{font-size:15px;font-weight:700;letter-spacing:.04em;margin:0 0 14px;
-  display:flex;align-items:center;gap:9px}
- h2::before{content:"";width:3px;height:16px;border-radius:2px;
-  background:currentColor;opacity:.85;flex:0 0 auto}
- .foot{color:var(--sub);font-size:13px;margin-top:8px;overflow-wrap:anywhere}
  ul{margin:6px 0 0;padding-left:18px}
  li{margin:3px 0;font-size:15px;line-height:1.9}
- ul.strong li{color:#0ea5e9}ul.weak li{color:#dc2626}
- .hz{display:inline-block;border-radius:999px;padding:7px 13px;
-  margin:5px 5px 0 0;font-size:14px;font-weight:600;border:1px solid var(--line)}
- .hz-ok{border-color:#bbf7d0;color:#166534}
- .hz-warn{border-color:#fecaca;color:#991b1b}
- .hz-muted{color:#6b7480}
- .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
  table.pc{table-layout:fixed}
  table.pc th{font-weight:600;color:var(--ink);white-space:normal}
- table.pc thead th{color:var(--sub);font-weight:600;font-size:12px;
-   text-align:center;width:23%;font-size:13px}
+ table.pc thead th{color:var(--sub);font-weight:600;font-size:13px;
+   text-align:center;width:23%}
  table.pc thead th:first-child{width:54%}
  table.pc td{text-align:center;font-size:14px;white-space:normal}
  table.pc td.free{color:var(--sub)}
@@ -1022,19 +1038,16 @@ FONT_LINK_PLACEHOLDER
   padding:18px 22px;margin-top:12px;display:flex;gap:12px;align-items:center;
   flex-wrap:wrap;box-shadow:0 1px 2px rgba(16,24,40,.04),0 10px 26px -14px rgba(16,24,40,.22)}
  .savebar button,.savebar a.b{display:inline-block;padding:12px 22px;
-  background:#111;color:#fff;border:0;border-radius:9px;font-weight:700;
-  font-size:14px;cursor:pointer;text-decoration:none;font-family:inherit;
-  border-radius:999px}
+  background:#111;color:#fff;border:0;border-radius:999px;font-weight:700;
+  font-size:14px;cursor:pointer;text-decoration:none;font-family:inherit}
  .savebar .why{font-size:14px;color:var(--sub);line-height:1.7;flex:1;
   min-width:200px}
  @media (max-width:560px){
-  .wrap{padding:18px 12px} h1{font-size:19px}
-  .card{padding:18px 16px;border-radius:16px;margin-top:12px}
   .savebar{padding:16px;border-radius:16px}
   .score{font-size:44px} .gletter{font-size:46px}
   .hero-score{gap:16px;margin-top:14px} .cat{margin:14px 0}
   .ring{width:112px;height:112px} .ring svg{width:112px;height:112px}
-  table{font-size:13px} th,td{padding:7px 5px;white-space:nowrap}
+  th,td{white-space:nowrap}
  }
  .only-print{display:none}
  .fixrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 0}
@@ -1432,11 +1445,13 @@ _PLAN_LINKS = ('<p style="margin:12px 0 0">'
                + '<a href="/sample/finance">資金計画の見本を見る</a></p>')
 
 # ブランドのCSS/ヘッダー・フッターをテンプレートへ差し込む
-FORM = (FORM.replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
+FORM = (FORM.replace("CARD_CSS_PLACEHOLDER", CARD_CSS)
+        .replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
         .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
         .replace("BRAND_BAR", brand_bar())
         .replace("</div></body></html>", FOOTER + "</div></body></html>"))
-RESULT = (RESULT.replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
+RESULT = (RESULT.replace("CARD_CSS_PLACEHOLDER", CARD_CSS)
+          .replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
           .replace("PLAN_LINKS_PLACEHOLDER", _PLAN_LINKS)
           .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
           .replace("BRAND_BAR", brand_bar())
@@ -2406,6 +2421,14 @@ _RISK_STATUS_JA = {"confirmed": "該当あり", "unknown": ""}
 # 見ているのは修繕積立金の水準と管理費の額。表示名だけ合わせる
 # （config.json のキーと保存済みのデータは変えない）。
 _CATEGORY_JA = {"管理": "管理費・修繕積立金"}
+
+
+def _sevja(v):
+    return _SEVERITY_JA.get(v, v)
+
+
+def _riskstatusja(v):
+    return _RISK_STATUS_JA.get(v, v)
 
 
 def _catcolor(raw):
@@ -3421,9 +3444,8 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
                  reason=c.reason) for c in d.categories]
     dctx = dict(total=d.total_score, grade=d.grade, suff=d.data_sufficiency,
                 comment=d.comment,
-                risks=[dict(sev=_SEVERITY_JA.get(r.severity, r.severity),
-                            type=r.type, ev=r.evidence,
-                            status=_RISK_STATUS_JA.get(r.status, r.status))
+                risks=[dict(sev=_sevja(r.severity), type=r.type,
+                            ev=r.evidence, status=_riskstatusja(r.status))
                        for r in d.critical_risks],
                 strengths=d.strengths, weaknesses=d.weaknesses, confirm=d.to_confirm)
     L = res.loan
@@ -6431,39 +6453,40 @@ def _run_mansion_pro(f):
 # （accounts_on() が False なら案内だけ返す）。診断そのものは今までどおり動く。
 
 _ACCOUNT_CSS = """
- .lead{color:#5f6773;font-size:13px;line-height:1.9;margin:0 0 14px}
+ .lead{color:var(--sub);font-size:14px;line-height:1.9;margin:0 0 14px}
  .btn{display:inline-block;padding:13px 20px;background:#111;color:#fff;
-   border:0;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;
+   border:0;border-radius:999px;font-weight:700;font-size:15px;cursor:pointer;
    text-decoration:none;font-family:inherit}
  .btn.ghost{background:#eef2f7;color:#111}
  /* inline-block なので、横に並ぶときは文字間の余白で離れるが、折り返すと
     縦の隙間がゼロになり2つのボタンがくっついて見える。押し間違いのもと。 */
  .btn{margin-bottom:10px}
- .btn.sm{padding:7px 12px;font-size:13px;border-radius:8px}
+ .btn.sm{padding:8px 14px;font-size:13px;border-radius:999px}
  .btn:disabled{opacity:.45;cursor:default}
  input[type=email]{width:100%;padding:13px;border:1px solid #d1d5db;
    border-radius:10px;font-size:16px;font-family:inherit}
- .note{background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;
-   padding:12px 14px;font-size:13px;line-height:1.85;color:#374151}
+ .note{background:#fafbfc;border:1px solid var(--line);border-radius:14px;
+   padding:13px 15px;font-size:14px;line-height:1.85;color:#374151}
  .warn{background:#fff7ed;border-color:#fed7aa;color:#9a3412}
  .ok{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
  .plan-badge{display:inline-block;border-radius:999px;padding:3px 10px;
    font-size:12px;font-weight:700;background:#eef2f7;color:#374151}
  .plan-badge.is-pro{background:#111;color:#fff}
  .items{list-style:none;padding:0;margin:12px 0 0}
- .items li{border-top:1px solid #e5e7eb;padding:13px 0;display:flex;
+ .items li{border-top:1px solid #f0f2f5;padding:14px 0;display:flex;
    gap:12px;align-items:flex-start}
  .items li:first-child{border-top:0}
  .items .pick{margin-top:3px;width:18px;height:18px;flex:0 0 auto}
  .items .body{flex:1;min-width:0}
- .items .ttl{font-size:14px;font-weight:700;line-height:1.5;
+ .items .ttl{font-size:15px;font-weight:700;line-height:1.5;
    word-break:break-word}
- .items .meta{font-size:12px;color:#5f6773;margin-top:3px}
- .items .sc{font-size:20px;font-weight:800;white-space:nowrap;margin-left:6px}
+ .items .meta{font-size:13px;color:var(--sub);margin-top:4px}
+ .items .sc{font-size:20px;font-weight:500;white-space:nowrap;margin-left:6px;
+   font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:10px}
- table.cmp{border-collapse:collapse;font-size:13px;min-width:100%}
- table.cmp th,table.cmp td{border-bottom:1px solid #e5e7eb;padding:9px 11px;
-   text-align:left;white-space:nowrap}
+ table.cmp{border-collapse:collapse;font-size:14px;min-width:100%}
+ table.cmp th,table.cmp td{border-bottom:1px solid #f0f2f5;padding:10px 11px;
+   text-align:left;white-space:nowrap;letter-spacing:0}
  table.cmp thead th{font-size:13px;color:#111;border-bottom:2px solid #111;
    vertical-align:bottom}
  table.cmp thead th span{display:block;font-weight:400;font-size:11px;
@@ -6508,30 +6531,30 @@ _ACCOUNT_CSS = """
 
  /* 保存した診断の詳細 */
  .sc-big{display:flex;align-items:baseline;gap:10px;margin:2px 0 4px}
- .sc-big b{font-size:44px;font-weight:800;line-height:1}
- .sc-big .g{font-size:22px;font-weight:800}
+ .sc-big b{font-size:44px;font-weight:500;line-height:1;
+   font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+ .sc-big .g{font-size:22px;font-weight:700;
+   font-family:Jost,"Century Gothic",Futura,sans-serif}
  .bars{margin-top:8px}
  .bars .b{margin:11px 0}
  .bars .top{display:flex;justify-content:space-between;gap:10px;
-   font-size:14px;align-items:baseline}
+   font-size:15px;font-weight:500;align-items:baseline}
+ .bars .top b{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px}
  .bars .top b{font-weight:700}
- .bars .track{height:9px;background:#eef2f7;border-radius:5px;overflow:hidden;
-   margin:5px 0 3px}
+ .bars .track{height:6px;background:#eaeef3;border-radius:999px;
+   overflow:hidden;margin:8px 0 6px}
  .bars .fill{display:block;height:100%}
- .bars .why{font-size:12.5px;color:#5f6773;line-height:1.75}
- .rsk{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;
-   padding:10px 12px;margin:8px 0;font-size:13.5px;line-height:1.8}
- .rsk b{color:#9a3412}
+ .bars .why{font-size:14px;color:var(--sub);line-height:1.75}
  .memo textarea{width:100%;min-height:110px;padding:12px;font-size:15px;
    border:1px solid #d1d5db;border-radius:10px;font-family:inherit;
    line-height:1.8;resize:vertical}
  .memo-read{white-space:pre-wrap;font-size:14px;line-height:1.9;
-   background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;
-   padding:12px 14px}
+   background:#fafbfc;border:1px solid var(--line);border-radius:14px;
+   padding:13px 15px}
  .items .memo-tag{font-size:12px;color:#5f6773;margin-top:5px;
    display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
- .selbar{position:sticky;bottom:0;background:#fff;border-top:1px solid #e5e7eb;
+ .selbar{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);
    padding:12px 0;margin-top:6px;display:flex;gap:10px;align-items:center}
  .selbar .n{font-size:13px;color:#5f6773}
 """
@@ -6924,9 +6947,10 @@ SAVED_DETAIL = """
 
 {% if p.risks %}
 <div class="card" style="margin-top:14px">
- <h2 style="margin-top:0">重大なリスク</h2>
+ <h2 style="margin-top:0;color:#9a3412">重大なリスク</h2>
  {% for r in p.risks %}
-  <div class="rsk"><b>[{{ r.sev }}] {{ r.type }}</b>（{{ r.status }}）
+  <div class="rsk"><b>［{{ sevja(r.sev) }}］{{ r.type }}</b>{%
+    if riskstatusja(r.status) %}（{{ riskstatusja(r.status) }}）{% endif %}
    {% if r.ev %}<br>{{ r.ev }}{% endif %}</div>
  {% endfor %}
 </div>
@@ -6951,10 +6975,11 @@ SAVED_DETAIL = """
 
 {% if p.strengths or p.weaknesses or p.confirm %}
 <div class="card" style="margin-top:14px">
- {% if p.strengths %}<h2 style="margin-top:0">強み</h2>
-  <ul>{% for x in p.strengths %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
- {% if p.weaknesses %}<h2>弱み</h2>
-  <ul>{% for x in p.weaknesses %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+ {% if p.strengths %}<h2 style="margin-top:0;color:#0ea5e9">強み</h2>
+  <ul class="strong">{% for x in p.strengths %}<li>{{ x }}</li>
+  {% endfor %}</ul>{% endif %}
+ {% if p.weaknesses %}<h2 style="margin-top:20px;color:#dc2626">弱み</h2>
+  <ul class="weak">{% for x in p.weaknesses %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
  {% if p.confirm %}<h2>要確認（情報不足）</h2>
   <ul>{% for x in p.confirm %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
 </div>
@@ -7036,6 +7061,7 @@ def saved_detail(sid):
     body = render_template_string(
         SAVED_DETAIL, it=it, p=p, man=man, kindja=_kindja,
         catcolor=_catcolor, short=short_label(it),
+        sevja=_sevja, riskstatusja=_riskstatusja,
         is_mansion=("mansion" in (p.get("kind") or "")), dx=dx,
         note_max=saved.NOTE_MAX)
     return _account_page("保存した診断", body)
@@ -8488,28 +8514,29 @@ FONT_LINK_PLACEHOLDER
 <meta name="description" content="中古戸建3,180万円を例に、仲介手数料・印紙税・登録免許税・不動産取得税・司法書士報酬・火災保険の内訳、金利が上がった場合の返済額、繰上返済の効果、住宅ローン控除、引渡日の精算金までを試算した見本です。根拠と出典つき。">
 {% else %}<title>資金計画の結果｜HOME INDEX PRO</title>{% endif %}
 <style>
- :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#5f6773;--acc:#111111;--line:#e5e5e5}
- *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
+CARD_CSS_PLACEHOLDER
+ a.back{color:var(--acc);text-decoration:none;font-size:14px}
+ .sub{color:var(--sub);font-size:15px;margin:0 0 8px}
+ .big{font-size:26px;font-weight:700;margin:6px 0;
+  font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+ /* 脇に添える一言は本文の書体に戻す。等幅のままだと間延びする。 */
+ .big .sub{font-size:14px;margin:0 0 0 12px;
   font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
- .wrap{max-width:760px;margin:0 auto;padding:20px 16px}
- a.back{color:var(--acc);text-decoration:none;font-size:13.5px}
- .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-top:16px}
- h1{font-size:20px;margin:10px 0 2px}
- h2{font-size:15px;margin:0 0 10px}
- .sub{color:var(--sub);font-size:13px;margin:0 0 8px}
- .big{font-size:26px;font-weight:700;margin:6px 0}
- .kv{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+ @media (max-width:560px){ .big .sub{display:block;margin:3px 0 0} }
+ .kv{display:flex;justify-content:space-between;padding:9px 0;
+  border-bottom:1px solid #f0f2f5;font-size:15px}
  .kv:last-child{border-bottom:0}
  .kv b{font-weight:700}
- table{width:100%;border-collapse:collapse;font-size:13px}
- th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
- th{color:var(--sub);font-weight:600;white-space:nowrap}
- td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
- .basis{font-size:11.5px;color:var(--sub);line-height:1.7;margin-top:2px}
- .st{display:inline-block;font-size:10px;border-radius:5px;padding:2px 6px;white-space:nowrap}
- .st-computed{background:#e8f0e8;color:#2f5233}
- .st-estimated{background:#eef2f7;color:#3f4a5a}
- .st-unknown{background:#f3f4f6;color:#5f6773}
+ th,td{vertical-align:top}
+ th{white-space:nowrap}
+ td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;
+  font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+ .basis{font-size:12.5px;color:var(--sub);line-height:1.75;margin-top:3px}
+ .st{display:inline-block;font-size:11px;border-radius:999px;padding:3px 9px;
+  white-space:nowrap;border:1px solid var(--line)}
+ .st-computed{color:#2f5233;border-color:#bbf7d0}
+ .st-estimated{color:#3f4a5a}
+ .st-unknown{color:#6b7480}
  .foot{color:var(--sub);font-size:11.5px;line-height:1.9;margin-top:10px}
  .warn{background:#fafafa;border:1px solid var(--line);border-radius:10px;padding:12px 14px;
   font-size:12px;color:var(--sub);line-height:1.85}
@@ -8561,7 +8588,7 @@ BRAND_BAR
   <div class="kv"><span>必要総額</span><b>{{s.total}}</b></div>
   <div class="kv"><span>頭金</span><b>{{s.down}}</b></div>
   <div class="kv"><span>借入額</span><b>{{s.principal}}</b></div>
-  <p class="big">月々 約 {{s.monthly}}{% if s.burden %}<span class="sub" style="font-size:14px"> ／ 返済負担率 {{s.burden}}%</span>{% endif %}</p>
+  <p class="big">月々 約 {{s.monthly}}{% if s.burden %}<span class="sub">返済負担率 {{s.burden}}%</span>{% endif %}</p>
   <p class="sub">金利 {{s.rate}}％ ／ {{s.years}}年 ／ 元利均等返済</p>
   <div class="warn">借入額は<b>必要総額から頭金を差し引いた額</b>です（諸費用を借入に含める前提）。
    保証料と抵当権設定の登録免許税は借入額に比例するため、借入額と諸費用が釣り合うまで計算を繰り返しています。
@@ -8693,6 +8720,7 @@ PRO_FINANCE_FORM = (PRO_FINANCE_FORM
                     .replace("</div></body></html>",
                              FOOTER + "</div></body></html>"))
 PRO_FINANCE_RESULT = (PRO_FINANCE_RESULT
+                      .replace("CARD_CSS_PLACEHOLDER", CARD_CSS)
                       .replace("SAMPLE_PLAN_LINK",
                                '　・　<a href="/plan">無料とPROのちがい</a>'
                                if accounts_on() else '')
