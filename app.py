@@ -2971,6 +2971,11 @@ def metrics_page():
   <b>診断 → 会員登録</b>　{tot["signup"]}人／
   診断{tot["diag_kodate"] + tot["diag_mansion"] + tot["diag_land"]}件<br>
   <b>PRO</b>　開始 {tot["pro_start"]}／解約 {tot["pro_cancel"]}
+  {"<br><b style='color:#b91c1c'>ログインのメールを送れなかった "
+   f"{tot['mail_failed']}回</b>。この数が0でないあいだ、"
+   "誰もログインできず、会員登録もできません。"
+   "Renderのログで差出人ドメインの認証を確かめてください。"
+   if tot["mail_failed"] else ""}
  </div>
  <div class="tablewrap"><table class="cmp">
   <thead><tr><th class="rowlbl">日付</th>{head}</tr></thead>
@@ -6612,6 +6617,9 @@ def login():
     # 本番でこれを出すと誰でもログインできてしまうので、鍵が無いときに限る。
     devlink = None if (ok or mailer.enabled()) else link
     if not ok and mailer.enabled():
+        # 数えておく。ここが0でないあいだ、誰もログインできず、会員登録も
+        # できない。気づく手立てが無いと、何日でも続いてしまう。
+        metrics.bump("mail_failed")
         # msg は相手に見せてよい文面だけ（詳細は mailer 側でログに出る）。
         return _account_page("ログイン", render_template_string(
             LOGIN_PAGE, user=None, email=email, error=msg), chip="ログイン")
