@@ -347,7 +347,7 @@ def test_question_card_sits_between_strengths_and_what_is_covered():
     """読む順に置く。強みを見たあとに「では何を聞けばいいか」が続く。"""
     html = _client().post("/pro/diagnose", data=dict(
         FREE_INPUT, leak="ok")).data.decode("utf-8")
-    strengths = html.find("◎ 強み")
+    strengths = html.find(">強み<")
     questions = html.find("仲介業者に聞くこと")
     covered = html.find("この診断が見ているもの")
     assert -1 < strengths < questions < covered

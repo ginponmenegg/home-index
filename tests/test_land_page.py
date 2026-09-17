@@ -129,9 +129,13 @@ def test_severity_is_shown_in_japanese(client):
 
 
 def test_the_strengths_and_weaknesses_are_labelled(client):
-    """色分けだけでは、どちらが強みか分からない。"""
+    """色分けだけでは、どちらが強みか分からない。
+
+    見出しの記号（◎△）は、見出しの左に色のついた棒を置いたのでやめた。
+    言葉のほうは残す。色だけにすると、色が見えない人に伝わらない。
+    """
     h = _post(client)
-    assert ("◎ 強み" in h) or ("△ 弱み" in h)
+    assert ("強み" in h) or ("弱み" in h)
 
 
 def test_the_edit_button_brings_the_answers_back(client):

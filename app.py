@@ -190,6 +190,9 @@ def current_user():
 FONT_LINK = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
              '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
              '<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;700'
+             # 点数と配点だけ等幅にする。欧文のみなので数十KBで済む
+             # （日本語の書体を足すと、同じ画面で600KBを超える）。
+             '&family=IBM+Plex+Mono:wght@500'
              '&display=swap" rel="stylesheet">')
 
 # LPだけは本文にNoto Sans JP、見出しに明朝（Zen Old Mincho）、数値にIBM Plex Monoを使う。
@@ -953,75 +956,91 @@ RESULT = """
 FONT_LINK_PLACEHOLDER
 <title>HOME INDEX｜{{s.address}}</title>
 <style>
- :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#5f6773;--acc:#111111;--line:#e5e5e5}
+ :root{--bg:#f1f4f7;--card:#fff;--ink:#1f2937;--sub:#6b7480;--acc:#111111;--line:#e8ebef}
  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
   font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
- .wrap{max-width:760px;margin:0 auto;padding:24px 16px}
+ .wrap{max-width:720px;margin:0 auto;padding:28px 16px}
  a.back{color:var(--acc);text-decoration:none;font-size:14px}
- .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;
-  box-shadow:0 1px 2px rgba(0,0,0,.04);margin-top:16px}
- h1{font-size:20px;margin:10px 0 2px} .sub{color:var(--sub);font-size:14px;margin:0 0 6px}
+ .card{background:var(--card);border:0;border-radius:18px;padding:24px;
+  box-shadow:0 1px 2px rgba(16,24,40,.04),0 10px 26px -14px rgba(16,24,40,.22);margin-top:14px}
+ h1{font-size:21px;margin:10px 0 2px;letter-spacing:.01em}
+ .sub{color:var(--sub);font-size:15px;margin:0 0 6px}
  .hero{background:#fff}
- .hero-score{display:flex;align-items:center;gap:24px;margin-top:14px;flex-wrap:wrap}
+ .hero-score{display:flex;align-items:center;gap:28px;margin-top:20px;flex-wrap:wrap}
  .ring{position:relative;width:132px;height:132px;flex:0 0 auto}
  .ring .num{position:absolute;inset:0;display:flex;flex-direction:column;
    align-items:center;justify-content:center}
- .ring .num b{font-size:40px;font-weight:800;line-height:1}
- .ring .num small{font-size:11px;color:var(--sub);margin-top:2px}
+ .ring .num b{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+   font-size:36px;font-weight:500;line-height:1}
+ .ring .num small{font-size:11px;color:var(--sub);margin-top:2px;letter-spacing:.08em}
  .gradebox{display:flex;flex-direction:column;gap:2px}
- .gletter{font-size:60px;font-weight:800;line-height:.9;letter-spacing:-1px}
- .gcomment{font-size:16px;font-weight:700}
- .muted{color:var(--sub);font-size:13px}
- .verdict{display:inline-block;border-radius:999px;padding:4px 12px;font-weight:700;font-size:14px}
- .v-under{background:#dcfce7;color:#166534}.v-fair{background:#e0f2fe;color:#075985}
- .v-over{background:#ffedd5;color:#9a3412}.v-none{background:#f3f4f6;color:#5f6773}
- table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
- th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line)}
- th{color:var(--sub);font-weight:600}
- .cat{margin:12px 0}.cat .top{display:flex;justify-content:space-between;font-size:14px}
- .bar{height:10px;background:#eef2f7;border-radius:6px;overflow:hidden;margin:5px 0}
+ .gletter{font-family:Jost,"Century Gothic",Futura,sans-serif;font-size:54px;
+   font-weight:700;line-height:.95;letter-spacing:.02em}
+ .gcomment{font-size:15px;font-weight:700;letter-spacing:.02em}
+ .muted{color:var(--sub);font-size:14px}
+ .verdict{display:inline-block;border-radius:999px;padding:3px 13px;
+  font-weight:700;font-size:13px;letter-spacing:.04em;border:1.5px solid currentColor}
+ .v-under{color:#166534}.v-fair{color:#075985}
+ .v-over{color:#9a3412}.v-none{color:#6b7480}
+ table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
+ th,td{text-align:left;padding:9px 6px;border-bottom:1px solid #f0f2f5}
+ th{color:var(--sub);font-weight:600;font-size:12px;letter-spacing:.07em}
+ .cat{margin:18px 0}
+ .cat .top{display:flex;justify-content:space-between;font-size:15px;font-weight:500}
+ .cat .top .muted{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px}
+ .bar{height:6px;background:#eaeef3;border-radius:999px;overflow:hidden;margin:8px 0 6px}
  .bar>span{display:block;height:100%}
- .rsk{display:block;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;
-  padding:10px 12px;margin:8px 0;font-size:14px}
+ .rsk{display:block;background:#fffaf4;border:1px solid #f4ddc2;border-radius:14px;
+  padding:13px 15px;margin:8px 0;font-size:15px;line-height:1.85}
  .rsk b{color:#9a3412}
- h2{font-size:16px;margin:2px 0 6px} .foot{color:var(--sub);font-size:12px;margin-top:8px}
- ul{margin:6px 0 0;padding-left:18px}li{margin:3px 0;font-size:14px}
- ul.strong li{color:#dc2626}ul.weak li{color:#0ea5e9}
- .hz{display:inline-block;border-radius:8px;padding:6px 11px;margin:5px 5px 0 0;font-size:13px;font-weight:600}
- .hz-ok{background:#dcfce7;color:#166534}
- .hz-warn{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
- .hz-muted{background:#f3f4f6;color:#5f6773}
+ h2{font-size:15px;font-weight:700;letter-spacing:.04em;margin:0 0 14px;
+  display:flex;align-items:center;gap:9px}
+ h2::before{content:"";width:3px;height:16px;border-radius:2px;
+  background:currentColor;opacity:.85;flex:0 0 auto}
+ .foot{color:var(--sub);font-size:13px;margin-top:8px;overflow-wrap:anywhere}
+ ul{margin:6px 0 0;padding-left:18px}
+ li{margin:3px 0;font-size:15px;line-height:1.9}
+ ul.strong li{color:#0ea5e9}ul.weak li{color:#dc2626}
+ .hz{display:inline-block;border-radius:999px;padding:7px 13px;
+  margin:5px 5px 0 0;font-size:14px;font-weight:600;border:1px solid var(--line)}
+ .hz-ok{border-color:#bbf7d0;color:#166534}
+ .hz-warn{border-color:#fecaca;color:#991b1b}
+ .hz-muted{color:#6b7480}
  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
  table.pc{table-layout:fixed}
  table.pc th{font-weight:600;color:var(--ink);white-space:normal}
  table.pc thead th{color:var(--sub);font-weight:600;font-size:12px;
-   text-align:center;width:23%}
+   text-align:center;width:23%;font-size:13px}
  table.pc thead th:first-child{width:54%}
- table.pc td{text-align:center;font-size:13px;white-space:normal}
+ table.pc td{text-align:center;font-size:14px;white-space:normal}
  table.pc td.free{color:var(--sub)}
  ul.seen{list-style:none;padding:0;margin:6px 0 0}
- ul.seen li{display:flex;gap:10px;font-size:13px;line-height:1.75;margin:0;
+ ul.seen li{display:flex;gap:10px;font-size:14px;line-height:1.75;margin:0;
   padding:8px 0;border-top:1px solid var(--line)}
  ul.seen li b{flex:0 0 38px;color:var(--ink)}
- .savebar{background:#fff;border:1px solid var(--line);border-radius:14px;
-  padding:14px 18px;margin-top:12px;display:flex;gap:12px;align-items:center;
-  flex-wrap:wrap;box-shadow:0 1px 2px rgba(0,0,0,.04)}
- .savebar button,.savebar a.b{display:inline-block;padding:11px 18px;
+ .savebar{background:#fff;border:0;border-radius:18px;
+  padding:18px 22px;margin-top:12px;display:flex;gap:12px;align-items:center;
+  flex-wrap:wrap;box-shadow:0 1px 2px rgba(16,24,40,.04),0 10px 26px -14px rgba(16,24,40,.22)}
+ .savebar button,.savebar a.b{display:inline-block;padding:12px 22px;
   background:#111;color:#fff;border:0;border-radius:9px;font-weight:700;
-  font-size:14px;cursor:pointer;text-decoration:none;font-family:inherit}
- .savebar .why{font-size:13px;color:var(--sub);line-height:1.7;flex:1;
+  font-size:14px;cursor:pointer;text-decoration:none;font-family:inherit;
+  border-radius:999px}
+ .savebar .why{font-size:14px;color:var(--sub);line-height:1.7;flex:1;
   min-width:200px}
  @media (max-width:560px){
-  .wrap{padding:16px 12px} h1{font-size:18px} .card{padding:16px}
-  .score{font-size:44px} .gletter{font-size:48px}
+  .wrap{padding:18px 12px} h1{font-size:19px}
+  .card{padding:18px 16px;border-radius:16px;margin-top:12px}
+  .savebar{padding:16px;border-radius:16px}
+  .score{font-size:44px} .gletter{font-size:46px}
+  .hero-score{gap:16px;margin-top:14px} .cat{margin:14px 0}
   .ring{width:112px;height:112px} .ring svg{width:112px;height:112px}
-  table{font-size:12px} th,td{padding:6px 5px;white-space:nowrap}
+  table{font-size:13px} th,td{padding:7px 5px;white-space:nowrap}
  }
  .only-print{display:none}
  .fixrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 0}
  .fixrow .muted{font-size:12px}
- button.fix{width:auto;margin:0;padding:8px 14px;font-size:13px;font-weight:700;
-   background:#fff;color:#111;border:1px solid #c6ced7;border-radius:8px;cursor:pointer}
+ button.fix{width:auto;margin:0;padding:9px 16px;font-size:13px;font-weight:700;
+   background:#fff;color:#111;border:1px solid var(--line);border-radius:999px;cursor:pointer}
  button.fix:hover{border-color:#111}
  .asklist{margin:0;padding:0;list-style:none}
  .asklist li{margin-bottom:9px}
@@ -1087,12 +1106,21 @@ BRAND_BAR
     <div class="gletter" style="color:{{grade_color}}">{{d.grade}}</div>
     <div class="gcomment" style="color:{{grade_color}}">{{grade_comment}}</div>
     <div class="muted">情報充足度 {{d.suff}}%</div>
-    <div class="muted" style="font-size:12px"><b>点数ではありません。</b>採点に
+    <div class="muted" style="font-size:13px"><b>点数ではありません。</b>採点に
      使えた情報の割合です。未確認の項目は点数に入れていません</div>
    </div>
   </div>
  </div>
 
+ <div class="card">
+  {% if d.risks %}
+ <h2 style="color:#9a3412">重大リスク</h2>
+  {% for r in d.risks %}<span class="rsk"><b>［{{r.sev}}］{{r.type}}</b>{% if r.status %}（{{r.status}}）{% endif %}：{{r.ev}}</span>{% endfor %}{% endif %}
+  {% if d.strengths %}<h2 style="color:#0ea5e9">強み</h2><ul class="strong">{% for x in d.strengths %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
+  {% if d.weaknesses %}<h2 style="margin-top:20px;color:#dc2626">弱み</h2><ul class="weak">{% for x in d.weaknesses %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
+  {% if d.confirm %}<h2 style="margin-top:20px">要確認（情報が足りない項目）</h2><ul>{% for x in d.confirm %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
+  <p class="foot">{{d.comment}}</p>
+ </div>
  {% if save %}
  <div class="savebar">
   {% if save.logged_in %}
@@ -1118,8 +1146,8 @@ BRAND_BAR
      <span class="muted">（中央値比 {{p.dev}}%）</span></p>
    <p style="font-size:22px;font-weight:700;margin:8px 0">
      推定 {{p.low}} 〜 {{p.high}}<span class="muted" style="font-size:14px">（中央値 {{p.mid}}）</span></p>
-   <p class="muted">確信度 {{p.conf}} ・ 使用 {{p.count}}件 ・ レンジ幅 {{p.disp}}%
-     ／ ㎡単価(中央) 建物 {{p.ub}}・土地 {{p.ul}}</p>
+   <p class="muted">推定の確かさ <b>{{p.conf}}</b> ・ 参考にした成約 {{p.count}}件 ・ 価格のばらつき {{p.disp}}%<br>
+     1㎡あたりの中央値　建物 {{p.ub}}　土地 {{p.ul}}</p>
    {% if p.same %}
    <div class="banner" style="margin:10px 0">
     <b>同じ建物の可能性がある成約 {{p.same|length}}件</b>
@@ -1129,7 +1157,7 @@ BRAND_BAR
     {% for c in p.same %}<tr><td>{{c.period}}</td><td>{{c.area}}㎡</td>
      <td style="text-align:right">{{c.price}}</td>
      <td style="text-align:right">{{c.unit}}</td></tr>{% endfor %}</table>
-    <div class="muted" style="font-size:12px;margin-top:6px">
+    <div class="muted" style="font-size:13px;margin-top:6px">
      取引価格情報に建物名は含まれないため、同一マンションとは断定できません。
      町名と築年が一致する成約を集めたものです。</div>
    </div>
@@ -1257,17 +1285,6 @@ BRAND_BAR
   {% elif loan.burden %}<p class="muted" style="font-size:14px;margin:2px 0 6px">返済負担率 {{loan.burden}}%</p>{% endif %}
  </div>
 
- {% if d.risks %}
- <div class="card"><h2>⚠ 重大リスク（要確認）</h2>
-  {% for r in d.risks %}<span class="rsk"><b>[{{r.sev}}] {{r.type}}</b>（{{r.status}}）：{{r.ev}}</span>{% endfor %}
- </div>{% endif %}
-
- <div class="card">
-  {% if d.strengths %}<h2 style="color:#dc2626">◎ 強み</h2><ul class="strong">{% for x in d.strengths %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
-  {% if d.weaknesses %}<h2 style="margin-top:12px;color:#0ea5e9">△ 弱み</h2><ul class="weak">{% for x in d.weaknesses %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
-  {% if d.confirm %}<h2 style="margin-top:12px">? 要確認（情報不足）</h2><ul>{% for x in d.confirm %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
-  <p class="foot">{{d.comment}}</p>
- </div>
 
   {% if disc %}
   <div class="card" id="juyo">
@@ -1288,7 +1305,7 @@ BRAND_BAR
    <p class="no-print" style="margin:14px 0 0">
     <button type="button" class="sub" onclick="window.print()">この一覧だけ印刷する</button>
    </p>
-   <p class="muted no-print" style="font-size:12px;margin:8px 0 0">
+   <p class="muted no-print" style="font-size:13px;margin:8px 0 0">
     条文は e-Gov 法令検索で確かめたものです。担当者にそのまま
     「第何号の欄を見せてください」と言えます。
    </p>
@@ -1312,7 +1329,7 @@ BRAND_BAR
    <p class="no-print" style="margin:14px 0 0">
     <button type="button" class="sub" onclick="window.print()">この一覧だけ印刷する</button>
    </p>
-   <p class="muted no-print" style="font-size:12px;margin:8px 0 0">
+   <p class="muted no-print" style="font-size:13px;margin:8px 0 0">
     内見や商談に持っていけます。チェックは印刷の前に付けるためのもので、
     どこにも保存されません。
    </p>
@@ -2375,6 +2392,22 @@ def _vclass(v):
             "割高の可能性": "v-over"}.get(v, "v-none")
 
 
+# 画面に出すときの言い換え。採点には英語の記号を使っているが、
+# それがそのまま読む人の目に入っていた（「確信度 mid」「[medium]」）。
+# 値は変えず、出すときだけ日本語にする。
+_SEVERITY_JA = {"high": "重大", "medium": "中", "low": "軽微"}
+_CONFIDENCE_JA = {"high": "高い", "mid": "ふつう", "low": "低い"}
+# 調べた結果あてはまった、という状態のときだけ添える。「未確認」は
+# 項目名（「ハザード未確認」）と同じことを二度言うので出さない。
+# 資金計画にも _STATUS_JA があるので、名前を分けてある。同じ名前で
+# 後ろに定義すると、そちらが勝って黙って別の言葉が出る。
+_RISK_STATUS_JA = {"confirmed": "該当あり", "unknown": ""}
+# 「管理」だと管理組合の運営や修繕履歴まで見ていると読めるが、実際に
+# 見ているのは修繕積立金の水準と管理費の額。表示名だけ合わせる
+# （config.json のキーと保存済みのデータは変えない）。
+_CATEGORY_JA = {"管理": "管理費・修繕積立金"}
+
+
 def _catcolor(raw):
     if raw >= 0.8:
         return "#15803d"
@@ -3357,7 +3390,8 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
         price_ctx.update(verdict=p.verdict, vclass=_vclass(p.verdict),
                          dev=p.deviation_pct, low=man(p.estimate_low),
                          mid=man(p.estimate_mid), high=man(p.estimate_high),
-                         conf=p.confidence, count=p.comparable_count,
+                         conf=_CONFIDENCE_JA.get(p.confidence, p.confidence),
+                         count=p.comparable_count,
                          disp=p.dispersion_pct,
                          ub=(f"{p.unit_building_median:,}円/㎡" if p.unit_building_median else "—"),
                          ul=(f"{p.unit_land_median:,}円/㎡" if p.unit_land_median else "—"),
@@ -3381,12 +3415,15 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
                          free_suff=free_diagnosis.data_sufficiency,
                          total=d.total_score, suff=d.data_sufficiency,
                          diff=d.total_score - free_diagnosis.total_score)
-    cats = [dict(name=c.name, points=c.points, weight=c.weight,
+    cats = [dict(name=_CATEGORY_JA.get(c.name, c.name),
+                 points=c.points, weight=c.weight,
                  pct=int(round(c.raw * 100)), color=_catcolor(c.raw),
                  reason=c.reason) for c in d.categories]
     dctx = dict(total=d.total_score, grade=d.grade, suff=d.data_sufficiency,
                 comment=d.comment,
-                risks=[dict(sev=r.severity, type=r.type, status=r.status, ev=r.evidence)
+                risks=[dict(sev=_SEVERITY_JA.get(r.severity, r.severity),
+                            type=r.type, ev=r.evidence,
+                            status=_RISK_STATUS_JA.get(r.status, r.status))
                        for r in d.critical_risks],
                 strengths=d.strengths, weaknesses=d.weaknesses, confirm=d.to_confirm)
     L = res.loan
@@ -3506,7 +3543,8 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
     return render_template_string(
         RESULT, s=sctx, price_man=man(subject.price), age=age, save=save,
         sample=bool(sample),
-        p=price_ctx, cats=cats, d=dctx, loan=loan, warnings=res.warnings,
+        p=price_ctx, cats=cats, d=dctx, loan=loan,
+        warnings=_public_warnings(res.warnings),
         enr=enr, ring_circ=round(circ, 1), ring_off=ring_off,
         grade_color=grade_color, grade_comment=grade_comment,
         pro=pro_delta, handover=handover,
@@ -4454,9 +4492,9 @@ BRAND_BAR
 
  {% if d.strengths or d.weaknesses %}
  <div class="card">
-  {% if d.strengths %}<h2 style="color:#dc2626">◎ 強み</h2><ul class="strong">
+  {% if d.strengths %}<h2 style="color:#0ea5e9">強み</h2><ul class="strong">
    {% for t in d.strengths %}<li>{{t}}</li>{% endfor %}</ul>{% endif %}
-  {% if d.weaknesses %}<h2 style="margin-top:12px;color:#0ea5e9">△ 弱み</h2>
+  {% if d.weaknesses %}<h2 style="margin-top:20px;color:#dc2626">弱み</h2>
    <ul class="weak">
    {% for t in d.weaknesses %}<li>{{t}}</li>{% endfor %}</ul>{% endif %}
  </div>
@@ -4900,9 +4938,6 @@ def _run_land_diagnose(f):
 
 
 # 重大度は high / medium / low で持っているが、そのまま画面に出さない。
-_SEVERITY_JA = {"high": "重大", "medium": "中", "low": "軽微"}
-
-
 def _public_warnings(warnings):
     """画面に出してよい注記だけにする。
 
