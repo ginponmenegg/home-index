@@ -454,6 +454,33 @@ def price_now():
     return PRICE_YEN, PRICE_LABEL
 
 
+PRICE_PLACEHOLDER = "〔ここに料金〕"
+CAMPAIGN_PLACEHOLDER = "〔ここにキャンペーンの注記〕"
+
+
+def _campaign_note() -> str:
+    """いまキャンペーン中なら、その条件を本文に足す。"""
+    if not campaign.active():
+        return ""
+    return ('<p class="sub">いまお申し込みの場合、'
+            + campaign.until_ja() + 'までの'
+            + campaign.label() + 'が適用されます。'
+            'ご契約が続くかぎりこの金額のままで、通常価格（月額'
+            + f"{PRICE_YEN:,}" + '円・税込）に上がることはありません。</p>')
+
+
+def with_price(body: str) -> str:
+    """規約・特商法の本文に、いま請求する金額を差し込む。
+
+    金額を定数として文字列に焼き付けていたため、キャンペーン中は
+    申込画面が1,980円、規約と特商法が2,980円という状態になっていた。
+    特定商取引法の「販売価格」は実際に請求する額でなければならないので、
+    表示のたびに price_now() から取り直す。
+    """
+    return (body.replace(PRICE_PLACEHOLDER, price_now()[1])
+                .replace(CAMPAIGN_PLACEHOLDER, _campaign_note()))
+
+
 def campaign_price_id():
     """申込に使うStripeのPrice。キャンペーン中だけ差し替わる。"""
     return campaign.price_id() if campaign.active() else None
@@ -2363,32 +2390,42 @@ def healthz():
     return "ok", 200
 
 
-_BILLING_TERMS = ("""<h2>第9条（有料プラン）</h2>
+_BILLING_TERMS = ("""<h2>第7条（有料プラン）</h2>
 <p>本サービスには、無料で利用できる範囲と、有料プラン（以下「PRO」）があります。
 PROの内容・料金・支払方法・提供時期・解約の方法は、申込みの最終確認画面および
 <a href="/tokushoho">特定商取引法に基づく表記</a>に表示します。</p>
-<p>PROは、""" + PRICE_LABEL + """の月額制です。
+<p>PROの料金は、""" + PRICE_PLACEHOLDER + """です。
 <b>解約されない限り、毎月同じ日に自動で更新されます。</b>
 初回と2回目以降で金額が変わることはありません。</p>
-<h2>第10条（解約）</h2>
+<p>料金は、<b>お申込みの時点で表示していた金額を適用します。</b>
+キャンペーン価格でお申し込みいただいた場合も、その契約が続くかぎり、
+あとから通常価格に変わることはありません。ただし、解約されたのちに
+改めてお申し込みいただく場合は、そのときに表示している料金を適用します。</p>
+""" + CAMPAIGN_PLACEHOLDER + """
+<h2>第8条（解約）</h2>
 <p>利用者は、マイページからいつでもPROを解約できます。解約の手続に、
 電話や書面は必要ありません。</p>
 <p>解約後も、支払済みの期間の末日まではPROをご利用いただけます。
 その後は無料プランに切り替わります。</p>
-<h2>第11条（返金）</h2>
+<h2>第9条（返金）</h2>
 <p>本サービスは役務の提供であり、その性質上、返品はできません。
 <b>日割りその他の返金は行いません。</b>
 ただし、当方の責めに帰すべき事由により長期間サービスを提供できなかった場合は、
 個別に対応します。</p>
-<h2>第12条（保存データの扱い）</h2>
+<h2>第10条（保存データの扱い）</h2>
 <p>解約しても、保存された診断結果およびメモは消去しません。
 無料プランの保存件数を超えている分についても、引き続き閲覧および比較が
 できます。ただし、上限を超えている間は新たな保存ができません。</p>
-<h2>第13条（料金の改定）</h2>
+<h2>第11条（料金の改定）</h2>
 <p>料金を改定する場合は、<b>改定の1か月前までに本サービス上で告知します。</b>
 改定後の料金は、告知後に到来する更新日から適用します。改定に同意されない
 場合は、更新日までに解約してください。</p>
+<p><b>キャンペーン価格でご契約中の方の金額は、この改定の対象としません。</b>
+その契約が続くかぎり、お申込み時の金額のままです。</p>
 """ if billing_on() else "")
+
+# 有料の条文が入ると、末尾の2条の番号がうしろへずれる。
+_TAIL_N = 12 if billing_on() else 7
 
 _TERMS_BODY = ("""
 <p class="sub">最終改定日：2026年8月28日</p>
@@ -2424,10 +2461,10 @@ Open Database License（ODbL）に基づいて利用しています。
 <h2>第6条（変更・中断）</h2>
 <p>運営者は、利用者への事前通知なく本サービスの内容を変更・中断・終了することがあります。</p>
 """ + _BILLING_TERMS + """
-<h2>第7条（準拠法・管轄）</h2>
+<h2>第""" + str(_TAIL_N) + """条（準拠法・管轄）</h2>
 <p>本規約は日本法に準拠し、本サービスに関する紛争は運営者所在地を管轄する裁判所を
 第一審の専属的合意管轄とします。</p>
-<h2>第8条（運営者）</h2>
+<h2>第""" + str(_TAIL_N + 1) + """条（運営者）</h2>
 <p>運営者：""" + OPERATOR + """<br>お問い合わせ：""" + CONTACT + """</p>
 """)
 
@@ -2565,7 +2602,7 @@ def about():
 
 @app.route("/terms")
 def terms():
-    return _legal_page("利用規約", _TERMS_BODY)
+    return _legal_page("利用規約", with_price(_TERMS_BODY))
 
 
 @app.route("/privacy")
@@ -2594,9 +2631,11 @@ _TOKUSHO_BODY = ("""
 <h2>メールアドレス</h2>
 <p>""" + CONTACT + """</p>
 <h2>販売価格</h2>
-<p>""" + PRICE_LABEL + """<br>
+<p>""" + PRICE_PLACEHOLDER + """<br>
 <span class="sub">解約されるまで毎月同額が発生します。初回と2回目以降で
- 金額が変わることはありません。</span></p>
+ 金額が変わることはありません。解約されたのちに改めてお申し込みいただく
+ 場合は、そのときに表示している料金を適用します。</span></p>
+""" + CAMPAIGN_PLACEHOLDER + """
 <h2>商品代金以外に必要な費用</h2>
 <p>インターネット接続に要する通信料は、お客様のご負担となります。
  それ以外に当方が申し受ける費用はありません。</p>
@@ -2617,13 +2656,21 @@ _TOKUSHO_BODY = ("""
 """)
 
 
+# 目印を書き損じると、規約に「〔ここに料金〕」がそのまま出る。
+assert PRICE_PLACEHOLDER in _TOKUSHO_BODY, "特商法の料金欄の目印が無い"
+assert CAMPAIGN_PLACEHOLDER in _TOKUSHO_BODY, "特商法のキャンペーン欄の目印が無い"
+assert (PRICE_PLACEHOLDER in _TERMS_BODY) == billing_on(), \
+    "規約の料金欄の目印が、課金の有無と合っていない"
+
+
 @app.route("/tokushoho")
 def tokushoho():
     """特定商取引法に基づく表記。有料提供の準備が整うまでは出さない。"""
     if not billing_on():
         from flask import abort
         abort(404)
-    return _legal_page("特定商取引法に基づく表記", _TOKUSHO_BODY)
+    return _legal_page("特定商取引法に基づく表記",
+                       with_price(_TOKUSHO_BODY))
 
 
 @app.route("/")

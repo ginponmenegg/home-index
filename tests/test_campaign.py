@@ -9,6 +9,7 @@
 import datetime
 import importlib
 import os
+import re
 import sys
 import tempfile
 
@@ -101,10 +102,10 @@ def test_the_end_date_reads_as_japanese(env):
 
 # ---- 画面と請求 -----------------------------------------------------------
 
-def _app(monkeypatch, day):
-    """その日付でアプリを組み立てる。"""
+def _app(monkeypatch, day, **over):
+    """その日付でアプリを組み立てる。over で環境変数を上書きできる。"""
     path = os.path.join(tempfile.mkdtemp(prefix="hi_camp_"), "t.db")
-    for k, v in _ENV.items():
+    for k, v in dict(_ENV, **over).items():
         monkeypatch.setenv(k, v)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///" + path.replace(os.sep, "/"))
     monkeypatch.setenv("SECRET_KEY", "camp")
@@ -181,3 +182,105 @@ def test_the_window_does_not_touch_anyone_already_subscribed(monkeypatch):
     h = c.get("/plan").get_data(as_text=True)
     assert "PROをご利用中です" in h
     assert "解約する" in h
+
+
+# ---- 規約・特商法の金額 ---------------------------------------------------
+# 金額を定数として本文に焼き付けていたため、キャンペーン中は
+# 申込画面が1,980円、規約と特商法が2,980円という状態になっていた。
+# 特定商取引法の「販売価格」は、実際に請求する額でなければならない。
+
+def _articles(html):
+    """本文に出てくる条番号を、出た順に拾う。"""
+    return [int(n) for n in re.findall(r"第(\d+)条（", html)]
+
+
+def test_the_terms_quote_the_price_actually_charged(monkeypatch):
+    webapp, _ = _app(monkeypatch, "2026-10-01")
+    h = webapp.app.test_client().get("/terms").get_data(as_text=True)
+    assert "PROの料金は、月額 1,980円（税込）です" in h
+    assert "2026年12月7日までの月額 1,980円（税込）が適用されます" in h
+    # 通常価格は、比べる相手として1回だけ出る
+    assert h.count("2,980円") == 1
+
+
+def test_the_tokushoho_price_is_the_price_charged(monkeypatch):
+    """特商法の販売価格欄が、申込画面と違う金額を出さないこと。"""
+    webapp, accounts = _app(monkeypatch, "2026-10-01")
+    h = webapp.app.test_client().get("/tokushoho").get_data(as_text=True)
+    i = h.index("販売価格")
+    assert "月額 1,980円（税込）" in h[i:i + 200]
+
+    # 申込の最終確認画面と、同じ金額であること
+    c = _login(webapp, accounts, "conf@example.com")
+    assert "月額 1,980円（税込）" in c.get("/plan/confirm").get_data(as_text=True)
+
+
+def test_the_legal_pages_go_back_to_normal_after_the_window(monkeypatch):
+    webapp, _ = _app(monkeypatch, "2026-12-08")
+    c = webapp.app.test_client()
+    for url in ("/terms", "/tokushoho"):
+        h = c.get(url).get_data(as_text=True)
+        assert "月額 2,980円（税込）" in h, url
+        assert "1,980" not in h, f"{url}: 終わった価格が残っている"
+
+
+def test_no_campaign_at_all_leaves_the_pages_clean(monkeypatch):
+    webapp, _ = _app(monkeypatch, "2026-10-01", CAMPAIGN_PRICE_ID="")
+    c = webapp.app.test_client()
+    for url in ("/terms", "/tokushoho"):
+        h = c.get(url).get_data(as_text=True)
+        assert "月額 2,980円（税込）" in h, url
+        assert "いまお申し込みの場合" not in h, f"{url}: 無い注記が出ている"
+
+
+@pytest.mark.parametrize("url", ["/terms", "/tokushoho"])
+def test_the_placeholders_never_reach_the_reader(monkeypatch, url):
+    """目印を書き損じると「〔ここに料金〕」がそのまま出る。"""
+    webapp, _ = _app(monkeypatch, "2026-10-01")
+    h = webapp.app.test_client().get(url).get_data(as_text=True)
+    assert "〔ここに" not in h
+
+
+# ---- 規約の中身 -----------------------------------------------------------
+
+def test_the_terms_promise_the_same_thing_as_the_plan_page(monkeypatch):
+    """/plan の「ずっとこの金額」「再開は通常価格」が規約にも書いてあること。
+
+    画面だけで約束して規約に書かないと、条件が食い違う。
+    """
+    webapp, accounts = _app(monkeypatch, "2026-10-01")
+    c = _login(webapp, accounts, "promise@example.com")
+    plan = c.get("/plan").get_data(as_text=True)
+    assert "そのあともずっとこの金額です" in plan
+    assert "再開のお申し込みは通常価格" in plan
+
+    terms = c.get("/terms").get_data(as_text=True)
+    assert "あとから通常価格に変わることはありません" in terms
+    assert "解約されたのちに" in terms and "改めてお申し込み" in terms
+    # 値上げの条文が、据え置きの約束を食わないこと
+    assert "この改定の対象としません" in terms
+
+
+def test_the_cancel_and_restart_rule_is_in_the_tokushoho(monkeypatch):
+    webapp, _ = _app(monkeypatch, "2026-10-01")
+    h = webapp.app.test_client().get("/tokushoho").get_data(as_text=True)
+    assert "解約されたのちに改めてお申し込みいただく" in h
+
+
+# ---- 条番号 ---------------------------------------------------------------
+
+def test_the_article_numbers_run_in_order_with_billing(monkeypatch):
+    """有料の条文を第6条のうしろに挿していたため、
+    6 → 9,10,11,12,13 → 7,8 の順に並んでいた。
+    """
+    webapp, _ = _app(monkeypatch, "2026-10-01")
+    h = webapp.app.test_client().get("/terms").get_data(as_text=True)
+    assert _articles(h) == list(range(1, 14))
+
+
+def test_the_article_numbers_close_up_when_billing_is_off(monkeypatch):
+    """課金前は有料の条文が丸ごと消える。番号が飛ばないこと。"""
+    webapp, _ = _app(monkeypatch, "2026-10-01", BILLING_ENABLED="")
+    h = webapp.app.test_client().get("/terms").get_data(as_text=True)
+    assert _articles(h) == list(range(1, 9))
+    assert webapp.app.test_client().get("/tokushoho").status_code == 404

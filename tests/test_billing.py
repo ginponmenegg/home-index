@@ -177,7 +177,7 @@ def test_the_trade_name_is_composed_on_the_page_not_in_the_variable(billing):
 
 def test_terms_gain_the_billing_clauses(billing):
     h = billing.app.app.test_client().get("/terms").get_data(as_text=True)
-    for k in ["有料プラン", "自動で更新", "第10条（解約）", "第11条（返金）",
+    for k in ["有料プラン", "自動で更新", "第8条（解約）", "第9条（返金）",
               "1か月前までに"]:
         assert k in h, k
 
