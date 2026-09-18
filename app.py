@@ -195,20 +195,24 @@ FONT_LINK = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
              '&family=IBM+Plex+Mono:wght@500'
              '&display=swap" rel="stylesheet">')
 
-# LPだけは本文にNoto Sans JP、見出しに明朝（Zen Old Mincho）、数値にIBM Plex Monoを使う。
+# LPだけは本文と見出しに Zen Kaku Gothic New、大見出しに明朝
+# （Zen Old Mincho）、数値に IBM Plex Mono を使う。
 # 欧文ワードマークのJostは共通。
 # 太さは、実際に使っているものだけ並べる。日本語の書体は1つの太さで
 # 100個以上の塊に分かれていて、宣言するだけで @font-face の定義が増え、
 # CSSが膨らむ。ブラウザで document.fonts を数えたところ、
 # Zen Kaku の500・Zen Old Mincho の700・Noto Sans JP の500 は
 # 一度も使われていなかった。
+# あわせて、本文と見出しで和文ゴシックを2つ持っていたのを Zen Kaku に
+# 寄せ、Noto Sans JP をやめた。本文の文字は結局どれかの書体が背負うので、
+# フォント本体の量はほぼ変わらない。減るのは @font-face の定義と、
+# 書体の混ざりぐあい。
 LP_FONT_LINK = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
                 '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
                 '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?'
                 'family=Jost:wght@300;700'
                 '&family=Zen+Kaku+Gothic+New:wght@400;700;900'
                 '&family=Zen+Old+Mincho:wght@600'
-                '&family=Noto+Sans+JP:wght@400;700'
                 '&family=IBM+Plex+Mono:wght@400;500'
                 '&display=swap">')
 
@@ -1529,7 +1533,7 @@ ICON_LINKS_PLACEHOLDER
 html{scroll-behavior:smooth}
 body{
   margin:0; background:var(--ground); color:var(--ink);
-  font-family:"Noto Sans JP","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;
+  font-family:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;
   font-size:15px; line-height:1.9; -webkit-font-smoothing:antialiased;
 }
 h1,h2,h3{margin:0; text-wrap:balance}
@@ -2116,7 +2120,7 @@ LP_MENU_PLACEHOLDER
 
       <figure class="figure">
         <svg viewBox="0 0 660 250" role="img" aria-label="住所を起点に、成約価格・ハザード・用途地域と周辺施設・人口統計の4系統の公的データを取得し、公開された配点ルールで計算して100点の採点票と根拠一覧を出力する流れ図。">
-          <g font-family="Noto Sans JP, sans-serif" font-size="12">
+          <g font-family="Zen Kaku Gothic New, sans-serif" font-size="12">
             <rect class="f-node" x="8" y="98" width="96" height="54" rx="10"/>
             <text class="f-node-t" x="56" y="121" text-anchor="middle" font-size="13" font-weight="700">住所</text>
             <text class="f-node-t" x="56" y="139" text-anchor="middle" font-size="10" opacity=".8">＋ 物件条件</text>

@@ -20,11 +20,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import app as webapp  # noqa: E402
 
 # family → 実際に描画に使われている太さ（2026-09-18 に document.fonts で確認）
+# 和文ゴシックは Zen Kaku ひとつ。本文にも見出しにも使う。
 EXPECTED = {
     "Jost": {"300", "700"},
     "Zen Kaku Gothic New": {"400", "700", "900"},
     "Zen Old Mincho": {"600"},
-    "Noto Sans JP": {"400", "700"},
     "IBM Plex Mono": {"400", "500"},
 }
 
@@ -80,3 +80,20 @@ def test_the_landing_page_still_declares_its_own_link():
     html = c.get("/").get_data(as_text=True)
     assert "fonts.googleapis.com/css2" in html
     assert "Zen+Old+Mincho:wght@600&" in html, "余分な太さが戻っている"
+
+
+def test_only_one_japanese_gothic_is_loaded():
+    """本文と見出しで和文ゴシックを2つ持たない。
+
+    書体が混ざるだけでなく、@font-face の定義が丸ごと一式増える。
+    """
+    gothics = [f for f in _requested(webapp.LP_FONT_LINK)
+               if f in ("Zen Kaku Gothic New", "Noto Sans JP",
+                        "Noto Sans Japanese", "M PLUS 1p")]
+    assert gothics == ["Zen Kaku Gothic New"], gothics
+
+
+def test_the_landing_page_body_uses_that_gothic():
+    html = webapp.app.test_client().get("/").get_data(as_text=True)
+    i = html.index("body{")
+    assert '"Zen Kaku Gothic New"' in html[i:i + 300], "本文の指定が違う"
