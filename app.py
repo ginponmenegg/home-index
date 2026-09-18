@@ -4306,6 +4306,30 @@ LAND_RESULT_CSS_PLACEHOLDER
  .dist{display:flex;align-items:flex-end;gap:2px;height:52px;margin:10px 0 2px}
  .dist i{flex:1;background:#dbeafe;border-radius:3px 3px 0 0;display:block}
  .dist i.mid{background:#1d4ed8}
+ /* 敷地の図。道路・敷地・建築面積はすべて同じ縮尺（src/land.py）。
+    道路だけ別の縮尺で描くと、4mか6mかを見る意味が無くなる。 */
+ svg.fig{display:block;width:100%;height:auto;margin:14px 0 2px}
+ .fg-lot{fill:#eef4fb;stroke:#9db8d6;stroke-width:1.5}
+ .fg-build{fill:#d8ead8;stroke:#6f9d6f;stroke-width:1.5}
+ .fg-road{fill:#f3f4f6}
+ .fg-center{stroke:#c6ced7;stroke-width:1.5;stroke-dasharray:6 5}
+ .fg-lost{fill:#fdeeee;stroke:#e6a8a8;stroke-width:1.2;stroke-dasharray:4 4}
+ .fg-2m{stroke:#9a3412;stroke-width:1.5;stroke-dasharray:7 4}
+ .fg-dim{stroke:#6b7480;stroke-width:1}
+ .fg-t{font-size:12px;fill:var(--ink)}
+ .fg-n{font-size:12px;fill:var(--sub);
+   font-family:"IBM Plex Mono",ui-monospace,monospace}
+ .fg-b{font-size:12.5px;font-weight:700;fill:#3f6b3f}
+ .fg-bn{font-size:12px;fill:#3f6b3f;
+   font-family:"IBM Plex Mono",ui-monospace,monospace}
+ .fg-warn{font-size:12px;font-weight:700;fill:#9a3412}
+ /* 図は viewBox ごと縮むので、スマホでは字だけ大きくしておかないと
+    7pxくらいになって読めない。数字はここの寸法（viewBox）の値。 */
+ @media (max-width:560px){
+  .fg-t,.fg-n,.fg-bn{font-size:20px}
+  .fg-b,.fg-warn{font-size:21px}
+  .fg-dim,.fg-center{stroke-width:1.6}
+ }
 </style></head><body>
 BRAND_BAR
 <div class="wrap" id="report">
@@ -4414,6 +4438,33 @@ BRAND_BAR
 
  <div class="card">
   <h2>この土地に建てられる家</h2>
+  {% if fig %}
+  <svg class="fig" viewBox="0 0 {{fig.width}} {{fig.height}}" role="img"
+    aria-label="間口{{fig.frontage_m}}m・奥行き{{fig.depth_m}}mの長方形として描いた敷地の模式図。{% if fig.footprint %}建築面積の上限{{cap.footprint_m2}}平方メートルを重ねている。{% endif %}{% if fig.road_width_m %}前面道路の幅は{{fig.road_width_m}}m。{% endif %}{% if fig.setback %}道路が4m未満のため、およそ{{cap.setback_m2}}平方メートルが敷地として使えない。{% endif %}縮尺は合わせてあるが、土地の形は分かっていない。">
+   <text class="fg-n" x="12" y="20">上が奥、下が道路側</text>
+   {% if fig.road %}<rect class="fg-road" x="{{fig.road[0]}}" y="{{fig.road[1]}}" width="{{fig.road[2]}}" height="{{fig.road[3]}}"/>
+   <line class="fg-center" x1="{{fig.road[0]}}" y1="{{fig.road[1] + fig.road[3] / 2}}" x2="{{fig.road[0] + fig.road[2]}}" y2="{{fig.road[1] + fig.road[3] / 2}}"/>
+   {% if fig.road_label_inside %}<text class="fg-t" x="{{fig.width / 2}}" y="{{fig.road[1] + 17}}" text-anchor="middle">前面道路</text>
+   <text class="fg-n" x="{{fig.width / 2}}" y="{{fig.road[1] + fig.road[3] - 7}}" text-anchor="middle">{{fig.road_width_m}} m</text>
+   {% else %}<text class="fg-t" x="{{fig.road[0] + fig.road[2] + 6}}" y="{{fig.road[1] + fig.road[3] / 2 + 4}}">前面道路 {{fig.road_width_m}}m</text>{% endif %}{% endif %}
+   <rect class="fg-lot" x="{{fig.lot[0]}}" y="{{fig.lot[1]}}" width="{{fig.lot[2]}}" height="{{fig.lot[3]}}"/>
+   {% if fig.setback %}<rect class="fg-lost" x="{{fig.setback[0]}}" y="{{fig.setback[1]}}" width="{{fig.setback[2]}}" height="{{fig.setback[3]}}"/>
+   <line class="fg-2m" x1="{{fig.setback[0] - 24}}" y1="{{fig.setback[1]}}" x2="{{fig.width - 16}}" y2="{{fig.setback[1]}}"/>
+   <text class="fg-warn" x="{{fig.width - 16}}" y="{{fig.setback[1] - 8}}" text-anchor="end">道の中心から 2m</text>{% endif %}
+   {% if fig.footprint %}<rect class="fg-build" x="{{fig.footprint[0]}}" y="{{fig.footprint[1]}}" width="{{fig.footprint[2]}}" height="{{fig.footprint[3]}}"/>
+   {% if fig.footprint_number_inside %}<text class="fg-bn" x="{{fig.width / 2}}" y="{{fig.footprint[1] + fig.footprint[3] / 2 + 5}}" text-anchor="middle">{{cap.footprint_m2}} ㎡</text>{% endif %}
+   <text class="fg-b" x="{{fig.width - 16}}" y="20" text-anchor="end">■ 建築面積の上限{% if not fig.footprint_number_inside %} {{cap.footprint_m2}}㎡{% endif %}</text>{% endif %}
+   <line class="fg-dim" x1="{{fig.lot[0]}}" y1="{{fig.lot[1] + fig.lot[3] + 14}}" x2="{{fig.lot[0] + fig.lot[2]}}" y2="{{fig.lot[1] + fig.lot[3] + 14}}"/>
+   <text class="fg-t" x="{{fig.lot[0] + fig.lot[2] + 10}}" y="{{fig.lot[1] + fig.lot[3] + 18}}">間口 {{fig.frontage_m}}m</text>
+   <line class="fg-dim" x1="{{fig.lot[0] - 14}}" y1="{{fig.lot[1]}}" x2="{{fig.lot[0] - 14}}" y2="{{fig.lot[1] + fig.lot[3]}}"/>
+   <text class="fg-t" x="{{fig.lot[0] - 20}}" y="{{fig.lot[1] + fig.lot[3] / 2 - 4}}" text-anchor="end">奥行き</text>
+   <text class="fg-n" x="{{fig.lot[0] - 20}}" y="{{fig.lot[1] + fig.lot[3] / 2 + 13}}" text-anchor="end">{{fig.depth_m}} m</text>
+  </svg>
+  <div class="foot"><b>土地の形は分かっていません。</b>敷地面積と間口から
+   奥行きを割り戻した長方形として描いています。縮尺は道路も含めて
+   合わせてありますが、<b>実際の形・向き・建物の置き場所は違います。</b>
+   建築面積の四角は広さの目安で、どこに建てるかではありません。</div>
+  {% endif %}
   {% if cap.max_total_floor_m2 %}
    <p class="big">延床の上限 {{cap.floor_m2}}㎡<span class="muted"
      style="font-size:15px;font-weight:400">（{{cap.floor_tsubo}}坪）</span></p>
@@ -5026,7 +5077,7 @@ def _matched_ctx(m):
 def _render_land_result(res, subject, f, down_yen, loan_years,
                         fin=None, pro=False, procedures=None, matched=None,
                         disclosure_points=None):
-    from src.land import tsubo
+    from src.land import tsubo, site_diagram
     from src.land_scoring import guided_area_m2, DEFAULT_HOUSEHOLD, score_cap
 
     d = res.diagnosis
@@ -5082,6 +5133,11 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
                if "セットバックで使えません" not in n
                and "前面道路" not in n],
         guided=f"{guided_area_m2(household):.0f}")
+    # 縮尺を合わせた図。面積か間口が無ければ None を返し、図は描かない。
+    fig = site_diagram(subject.land_area_m2, subject.frontage_m,
+                       road_width_m=subject.road_width_m,
+                       footprint_m2=c.max_footprint_m2,
+                       setback_m2=c.setback_m2)
 
     mk = dict(count=mkt.count if mkt else 0)
     if mkt and mkt.unit_mid:
@@ -5163,6 +5219,7 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
     circ = 2 * 3.14159265 * 58
     return render_template_string(
         LAND_RESULT, s=sctx, d=dctx, cats=cats, cap=cap_ctx, mk=mk,
+        fig=fig,
         loan=loan, capped=capped, warnings=_public_warnings(res.warnings),
         fin=fin, pro=pro, handover=handover, procedures=procedures,
         matched=matched, save=save, sample=bool(f.get("sample")),

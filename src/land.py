@@ -299,3 +299,99 @@ def tsubo(m2: Optional[float]) -> Optional[float]:
     if m2 is None:
         return None
     return round(m2 / M2_PER_TSUBO, 1)
+
+
+# ---- 図解 ------------------------------------------------------------------
+# 「前面道路4.0m」「間口9.0m」が、どれくらいなのかは、何度も土地を見た人
+# にしか浮かばない。買う人はたいてい初めてなので、縮尺を合わせて絵にする。
+#
+# ただし**土地の形は分かっていない**。手元にあるのは面積と間口だけなので、
+# 奥行きは面積÷間口で割り戻している。旗竿かもしれないし台形かもしれない。
+# だから縮尺だけは必ず本物に合わせ、形は断定しないと画面側に書く。
+# 道路だけ別の縮尺で描くと「4mか6mか」を見る意味が無くなるので、
+# 道路・敷地・建築面積はすべて同じ scale で描く。
+
+DIAGRAM_W = 560          # 図全体の横幅（px）
+LOT_MAX_W = 260          # 敷地の横幅の上限
+LOT_MAX_H = 230          # 敷地の高さの上限
+LOT_TOP = 30             # 上の余白（「上が奥」の注記を置く）
+FRONT_GAP = 26           # 敷地と道路のあいだ。間口の寸法線を置く
+ROAD_LABEL_MIN_H = 34    # これより細い道路は、文字を中に入れられない
+# 間口の狭い土地では建築面積の箱も細くなる。数字が入らないまま置くと、
+# 左の「奥行き 31.2 m」と隣り合って一つの数に見える。
+FOOT_NUM_MIN_W = 90
+BAND_MIN_H = 5           # セットバックの帯が消えない最小の高さ
+
+
+@dataclass
+class SiteDiagram:
+    """縮尺を合わせた座標（px）。単位つきの数字は画面で使う。"""
+    scale: float                         # px / m
+    width: int
+    height: int
+    lot: Tuple[float, float, float, float]          # x, y, w, h
+    road: Optional[Tuple[float, float, float, float]] = None
+    footprint: Optional[Tuple[float, float, float, float]] = None
+    setback: Optional[Tuple[float, float, float, float]] = None
+    road_label_inside: bool = True
+    footprint_number_inside: bool = True
+    frontage_m: Optional[float] = None
+    depth_m: Optional[float] = None
+    road_width_m: Optional[float] = None
+    setback_depth_m: Optional[float] = None
+
+
+def site_diagram(site_area_m2: Optional[float],
+                 frontage_m: Optional[float],
+                 road_width_m: Optional[float] = None,
+                 footprint_m2: Optional[float] = None,
+                 setback_m2: Optional[float] = None
+                 ) -> Optional[SiteDiagram]:
+    """敷地・前面道路・建築面積を、同じ縮尺で置いた座標を返す。
+
+    面積か間口が無ければ描かない。無いものを線で埋めると、
+    「分からない」が「こういう形」に化ける。
+    """
+    if not site_area_m2 or not frontage_m or frontage_m <= 0:
+        return None
+    if site_area_m2 <= 0:
+        return None
+    depth_m = site_area_m2 / frontage_m
+
+    # 間口と奥行きの両方が枠に収まる縮尺。道路もこの縮尺で描く。
+    scale = min(LOT_MAX_W / frontage_m, LOT_MAX_H / depth_m)
+    lot_w, lot_h = frontage_m * scale, depth_m * scale
+    lot_x = (DIAGRAM_W - lot_w) / 2.0
+    lot = (round(lot_x, 1), float(LOT_TOP), round(lot_w, 1), round(lot_h, 1))
+
+    d = SiteDiagram(scale=round(scale, 3), width=DIAGRAM_W, height=0, lot=lot,
+                    frontage_m=round(frontage_m, 1),
+                    depth_m=round(depth_m, 1),
+                    road_width_m=road_width_m)
+
+    # ---- セットバックで使えなくなる帯（敷地の道路側）----
+    if setback_m2 and setback_m2 > 0:
+        d.setback_depth_m = round(setback_m2 / frontage_m, 2)
+        band_h = max(BAND_MIN_H, d.setback_depth_m * scale)
+        d.setback = (lot[0], round(lot[1] + lot_h - band_h, 1),
+                     lot[2], round(band_h, 1))
+
+    # ---- 建築面積。置き場所ではなく広さのイメージなので中央に置く ----
+    if footprint_m2 and footprint_m2 > 0 and footprint_m2 <= site_area_m2:
+        k = (footprint_m2 / site_area_m2) ** 0.5
+        fw, fh = lot_w * k, lot_h * k
+        d.footprint = (round(lot_x + (lot_w - fw) / 2.0, 1),
+                       round(LOT_TOP + (lot_h - fh) / 2.0, 1),
+                       round(fw, 1), round(fh, 1))
+        d.footprint_number_inside = fw >= FOOT_NUM_MIN_W
+
+    # ---- 前面道路 ----
+    bottom = LOT_TOP + lot_h + FRONT_GAP
+    if road_width_m and road_width_m > 0:
+        road_h = road_width_m * scale
+        d.road = (40.0, round(bottom, 1), float(DIAGRAM_W - 80),
+                  round(road_h, 1))
+        d.road_label_inside = road_h >= ROAD_LABEL_MIN_H
+        bottom += road_h
+    d.height = int(round(bottom + 14))
+    return d
