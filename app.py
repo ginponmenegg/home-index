@@ -197,13 +197,18 @@ FONT_LINK = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
 
 # LPだけは本文にNoto Sans JP、見出しに明朝（Zen Old Mincho）、数値にIBM Plex Monoを使う。
 # 欧文ワードマークのJostは共通。
+# 太さは、実際に使っているものだけ並べる。日本語の書体は1つの太さで
+# 100個以上の塊に分かれていて、宣言するだけで @font-face の定義が増え、
+# CSSが膨らむ。ブラウザで document.fonts を数えたところ、
+# Zen Kaku の500・Zen Old Mincho の700・Noto Sans JP の500 は
+# 一度も使われていなかった。
 LP_FONT_LINK = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
                 '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
                 '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?'
                 'family=Jost:wght@300;700'
-                '&family=Zen+Kaku+Gothic+New:wght@400;500;700;900'
-                '&family=Zen+Old+Mincho:wght@600;700'
-                '&family=Noto+Sans+JP:wght@400;500;700'
+                '&family=Zen+Kaku+Gothic+New:wght@400;700;900'
+                '&family=Zen+Old+Mincho:wght@600'
+                '&family=Noto+Sans+JP:wght@400;700'
                 '&family=IBM+Plex+Mono:wght@400;500'
                 '&display=swap">')
 
