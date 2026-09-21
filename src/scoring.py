@@ -238,14 +238,14 @@ def _shopping_score(shops):
         bits.append(f"大型商業施設{big.distance_m}m（{big.name or '名称不明'}）")
     else:
         big_raw = 0.35
-        bits.append("大型商業施設は付近になし")
+        bits.append("大型商業施設は OpenStreetMap では見つからず")
     # 日常：スーパーが徒歩圏にあるか
     if daily:
         daily_raw = _dist_score(daily.distance_m, 400, 700, 1200, 2000)
         bits.append(f"スーパー{daily.distance_m}m")
     else:
         daily_raw = 0.3
-        bits.append("スーパーは付近になし")
+        bits.append("スーパーは OpenStreetMap では見つからず")
     n = shops.count_within(1000)
     if n >= 3:
         bits.append(f"1km内に{n}店")

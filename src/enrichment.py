@@ -278,6 +278,11 @@ def fetch_use_district(lat, lon, key, zoom=15) -> Optional[str]:
     return fetch_zoning(lat, lon, key, zoom)[0]
 
 
+# 用途地域ごとに取りうる指定建ぺい率は法53条1項で決まっている。
+# 借りてきた名前がこの土地の数字と両立するかを見るのに使う。
+from .land import coverage_fits_district  # noqa: E402
+
+
 def fetch_zoning(lat, lon, key, zoom=15):
     """用途地域と、そこに紐づく建ぺい率・容積率を返す。
 
@@ -795,6 +800,16 @@ def enrich(lat: Optional[float], lon: Optional[float],
     if reinfolib_key:
         try:
             e.use_district, e.coverage_ratio, e.floor_area_ratio =                 tasks["ud"].result()
+            # 地点を含む面に名前が無いとき、名前だけ隣の面から借りている。
+            # 借りた名前がこの土地の建ぺい率と両立しないなら、それは別の
+            # 土地の用途地域。用途地域は前面道路による容積率の係数（法52条
+            # 2項）と高さ制限（法55条）に効くので、表示だけの話ではない。
+            if coverage_fits_district(e.use_district, e.coverage_ratio) is False:
+                e.notes.append(
+                    f"用途地域：{e.use_district}と指定建ぺい率"
+                    f"{e.coverage_ratio}%は両立しません（法53条1項）。"
+                    "名前は近くの別の区域のものと判断し、未取得として扱います")
+                e.use_district = None
             if not e.use_district:
                 e.notes.append("用途地域：該当ポリゴンを特定できず（要確認）")
         except Exception as ex_:
@@ -811,7 +826,17 @@ def enrich(lat: Optional[float], lon: Optional[float],
         try:
             e.hazard = tasks["hz"].result()
             if e.hazard.checked and not e.hazard.any_hit():
-                e.notes.append("ハザード：洪水/土砂/津波/高潮の指定区域に該当なし")
+                # 提供元の利用条件で取りに行けなかった層がある地域で
+                # 「該当なし」と言い切ると、見ていない層まで問題なしに
+                # 読まれる。採点側は未確認として扱っているので、
+                # ここだけ断定すると画面の中で食い違う。
+                if e.hazard.restricted:
+                    e.notes.append(
+                        "ハザード：見た範囲では指定区域に該当なし（"
+                        + "・".join(e.hazard.restricted) + "は未取得）")
+                else:
+                    e.notes.append(
+                        "ハザード：洪水/土砂/津波/高潮の指定区域に該当なし")
         except Exception as ex_:
             e.notes.append(f"ハザード取得失敗: {ex_}")
         try:
