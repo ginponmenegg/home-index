@@ -20,10 +20,14 @@ HOUSE = {"address": "神奈川県小田原市城山1-2-3", "price": "3880",
          "station": "12", "ptype": "chuko_kodate", "income": "600",
          "down": "300", "loan_years": "35"}
 
+# 欄の名前は area / total_floors。exclusive と書いていたため入力エラーに
+# なり、返ってきた入力画面を結果画面だと思って調べていた（入力画面にも
+# 「管理費・修繕積立金」の文字があるので、テストは通ってしまっていた）。
 FLAT = {"address": "神奈川県小田原市栄町1-1-1", "price": "3480",
-        "exclusive": "70", "byear": "2010", "station": "8",
-        "floor": "5", "floors": "10", "mfee": "12000", "rfund": "13000",
-        "income": "600", "down": "300", "loan_years": "35"}
+        "area": "70", "byear": "2010", "station": "8",
+        "floor": "5", "total_floors": "10", "mfee": "12000",
+        "rfund": "13000", "income": "600", "down": "300",
+        "loan_years": "35"}
 
 
 def _client():
@@ -36,7 +40,16 @@ def _house():
 
 
 def _flat():
-    return _client().post("/mansion_diagnose", data=FLAT).get_data(as_text=True)
+    h = _client().post("/mansion_diagnose", data=FLAT).get_data(as_text=True)
+    # 入力エラーで返ってきた入力画面を、結果画面と取り違えないこと
+    assert "スコア内訳" in h, "結果画面になっていない（入力が弾かれている）"
+    return h
+
+
+def _house_page():
+    h = _house()
+    assert "スコア内訳" in h, "結果画面になっていない"
+    return h
 
 
 # ---- 読む順 ---------------------------------------------------------------

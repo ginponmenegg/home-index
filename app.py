@@ -22,6 +22,7 @@ from flask import (Flask, request, render_template_string,  # noqa: E402
                    session, redirect)
 from src import db, accounts, saved, mailer, billing, campaign  # noqa: E402
 from src import metrics  # noqa: E402
+from src import observations  # noqa: E402
 
 _w = mailer.warn_if_shared_sender()
 if _w:
@@ -697,6 +698,22 @@ def _did(name: str) -> None:
     metrics.bump(name)
 
 
+def _observe(kind, subject, res) -> None:
+    """診断された物件を1行残す。**利用者を結びつける鍵は渡さない。**
+
+    クローラは数えない。数字のほうと同じ扱いにしておかないと、巡回の
+    ぶんが地域の傾向に混ざる。
+    """
+    if _looks_like_a_bot():
+        return
+    observations.record(
+        kind, subject, res.diagnosis,
+        enrichment=getattr(res, "enrichment", None),
+        # 市区町村コードは subject 側にある（住所から引いたもの）。
+        # 集計の鍵はこちらで、文字列の市区町村名は人が読むための補助。
+        city_code=getattr(subject, "municipality_code", None))
+
+
 def _seen(name: str) -> None:
     """画面が見られたことを数える（人だけ）。
 
@@ -910,7 +927,8 @@ BRAND_BAR
    </details>
   </details>
 
-  <button type="submit">この物件を診断する</button>
+  <button type="submit">この物件を診断する</button>
+  <p class="hint" style="margin:10px 0 0">診断された物件は、サービスの改善のために<b>町名まで</b>を記録します（丁目・番地、世帯年収・頭金は記録しません）。<a href="/privacy">くわしく</a></p>
   <div class="hint" style="text-align:center;margin-top:8px">押したあと、公的データを集めるのに10〜30秒ほどかかります（混み合うときは1分ほど）</div>
  </form>
 
@@ -2551,6 +2569,26 @@ _ACC_COLLECT = ("""
 あわせて、アカウントをご利用の場合はメールアドレスをお預かりします。"""
                 if db.enabled() else "")
 
+# 診断の記録。DBが無い環境では1行も残らないので、そのときは
+# 「残します」と書かない。使っていない機能について約束を書くと、
+# 書いてあることと、していることがずれる。
+_OBS_STORE = ("""
+<p>ただし、地域ごとの傾向を知り、サービスを改善するために、
+<b>診断された物件の記録</b>を残します。残すのは次のものです。</p>
+<ul>
+<li>診断した日と、物件の種別（戸建・マンション・土地）</li>
+<li>所在地は<b>町名まで</b>（丁目・番地は残しません）</li>
+<li>価格・面積・築年・駅からの徒歩分・用途地域</li>
+<li>総合点・グレード・情報充足度・カテゴリ別の点数・注意項目の種類</li>
+</ul>
+<p><b>利用者を結びつける情報は含めません。</b>アカウントのID・セッション・
+IPアドレスのいずれも記録しないため、この記録から特定の方をたどることは
+できません。<b>世帯年収・頭金・他の借入は残しません。</b></p>
+<p>この記録は<b>3年間</b>保存し、それを過ぎたものは自動的に削除します。</p>
+""" if db.enabled() else """
+<p>現在は、診断された物件の記録も残していません。</p>
+""")
+
 _ACC_STORE = ("""<p>アカウントをご利用の場合に限り、利用者ご自身が「保存する」を
 押した診断結果を、比較のためにお預かりします。保存されるのは、そのときの
 点数・カテゴリ別の内訳・価格判定・返済額と、対象物件の所在地・価格などの
@@ -2570,7 +2608,7 @@ _ACC_MAIL = ("""<h2>5-2. メールの送信</h2>
 お送りしません。</p>""" if db.enabled() else "")
 
 _PRIVACY_BODY = ("""
-<p class="sub">最終改定日：2026年8月28日</p>
+<p class="sub">最終改定日：2026年9月21日</p>
 <h2>1. 取得する情報</h2>
 <p>本サービスは、診断のために利用者が入力・貼り付けした情報（物件の所在地・価格・面積・築年・
 駅距離・種別、任意入力の世帯年収・頭金等）を処理します。あわせて、アクセスに伴う技術情報
@@ -2578,11 +2616,14 @@ _PRIVACY_BODY = ("""
 + _ACC_COLLECT + """</p>
 <h2>2. 利用目的</h2>
 <p>取得した情報は、(1) 診断結果の生成・表示、(2) 本サービスの品質改善、
-(3) 不正・過度なアクセスの防止""" + _ACC_PURPOSE + """、
+(3) 不正・過度なアクセスの防止、(4) 地域ごとの傾向の把握（下記3の記録による）""" + _ACC_PURPOSE + """、
 の目的にのみ利用します。診断のために不要な情報は取得しません。</p>
 <h2>3. 保存・安全管理</h2>
-<p>入力情報は原則として診断処理のために用い、サーバー上での恒久的な保存は行いません
-（不正防止のためのアクセス記録を除く）。取り扱いにあたっては適切な安全管理措置を講じます。
+<p><b>入力されたものをそのまま保存することはありません。</b>丁目・番地を含む住所、
+世帯年収・頭金・他の借入は、診断の計算に使うだけで、サーバー上に残しません
+（不正防止のためのアクセス記録を除く）。</p>
+""" + _OBS_STORE + """
+<p>取り扱いにあたっては適切な安全管理措置を講じます。
 地図・座標情報は各提供元の利用条件に従って取り扱います。</p>""" + _ACC_STORE + """
 <h2>4. 第三者提供</h2>
 <p>法令に基づく場合を除き、利用者の同意なく個人情報を第三者に提供しません。
@@ -3037,6 +3078,53 @@ if billing_on():
 SITEMAP_PATHS += guides.paths()
 
 
+def _require_metrics_key() -> None:
+    """合鍵を知らない人には、この画面があること自体を見せない。
+
+    会員のログインとは別。運営者用の画面のために会員へ管理者フラグを
+    持たせると、その列を守る責任が増える。
+
+    比較は compare_digest で。== は先頭から順に見て違えば即座に返すため、
+    応答時間から何文字目まで合っているかを絞り込めてしまう。bytes で
+    比べるのは、str だと非ASCIIで例外になり、日本語の鍵を設定した瞬間に
+    画面が壊れるため。
+    """
+    import secrets
+    from flask import abort
+    key = (os.environ.get("METRICS_KEY") or "").strip()
+    if not key or not secrets.compare_digest(
+            (request.args.get("key") or "").encode("utf-8"),
+            key.encode("utf-8")):
+        abort(404)
+
+
+@app.route("/metrics/data.csv")
+def metrics_csv():
+    """診断された物件の記録を書き出す。手元に置いて分析するためのもの。
+
+    中身は observations テーブルそのまま。**利用者を結びつける鍵は
+    入っていない**ので、1行は物件の観測であって誰かの行動ではない。
+
+    Excel で開く前提なので BOM を付ける。付けないと日本語が化ける。
+    """
+    _require_metrics_key()
+    import csv
+    import datetime as _dt
+    import io as _io
+    from flask import Response
+    buf = _io.StringIO()
+    wr = csv.writer(buf, lineterminator="\n")
+    wr.writerow(observations.COLUMNS)
+    for r in observations.rows():
+        wr.writerow([r[c] for c in observations.COLUMNS])
+    today = _dt.date.today().isoformat()
+    return Response(
+        "\ufeff" + buf.getvalue(),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition":
+                 f'attachment; filename="homeindex-{today}.csv"'})
+
+
 @app.route("/metrics")
 def metrics_page():
     """数字を見る画面。合鍵を知っている人だけ。
@@ -3045,17 +3133,7 @@ def metrics_page():
     管理者フラグを持たせたくない（持たせると、その列を守る責任が増える）。
     METRICS_KEY が未設定なら、この画面自体を出さない。
     """
-    import secrets
-    key = (os.environ.get("METRICS_KEY") or "").strip()
-    # 合鍵の比較は compare_digest で。== は先頭から順に見て違えば即座に
-    # 返すため、応答時間から何文字目まで合っているかを絞り込めてしまう。
-    # bytes で比べる。compare_digest は str だとASCII以外で例外を投げるため、
-    # 日本語の鍵を設定した瞬間に画面が壊れる。
-    if not key or not secrets.compare_digest(
-            (request.args.get("key") or "").encode("utf-8"),
-            key.encode("utf-8")):
-        from flask import abort
-        abort(404)
+    _require_metrics_key()
 
     # days は手でURLに書き足す前提の値。打ち間違いで500にしない。
     try:
@@ -3680,6 +3758,7 @@ def _run_diagnose(f, datetime):
             "reno": "1" if subject.renovated else "",
             "loan_years": str(loan_years)}
     metrics.bump("diag_kodate")
+    _observe("kodate", subject, res)
     return _render_result(res, subject, sctx,
                           to_yen(f.get("down")) or 0, loan_years, carry=carry,
                           redo=redo, sample=bool(f.get("sample")),
@@ -3804,7 +3883,8 @@ BRAND_BAR
     <div class="hint">未入力は35年</div></div>
   </div>
 
-  <button type="submit">このマンションを診断する</button>
+  <button type="submit">このマンションを診断する</button>
+  <p class="hint" style="margin:10px 0 0">診断された物件は、サービスの改善のために<b>町名まで</b>を記録します（丁目・番地、世帯年収・頭金は記録しません）。<a href="/privacy">くわしく</a></p>
   <div class="hint">診断結果は公的データにもとづく推定です。契約の判断は専門家の確認を前提としてください。</div>
  </form>
 
@@ -4082,6 +4162,7 @@ def _run_mansion_diagnose(f):
             "reno": "1" if subject.renovated else "",
             "loan_years": str(loan_years)}
     metrics.bump("diag_mansion")
+    _observe("mansion", subject, res)
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           carry=carry, redo=redo,
                           finance_carry=_finance_carry(
@@ -4233,7 +4314,8 @@ BRAND_BAR
    <div></div>
   </div>
 
-  <button type="submit">この土地を診断する</button>
+  <button type="submit">この土地を診断する</button>
+  <p class="hint" style="margin:10px 0 0">診断された物件は、サービスの改善のために<b>町名まで</b>を記録します（丁目・番地、世帯年収・頭金は記録しません）。<a href="/privacy">くわしく</a></p>
   <div class="hint">押したあと、公的データを集めるのに10〜30秒ほどかかります。
    診断結果は公的データにもとづく推定です。契約の判断は専門家の確認を
    前提としてください。</div>
@@ -5028,6 +5110,7 @@ def _run_land_diagnose(f):
         estat_appid=os.environ.get("ESTAT_APPID"),
         estat_table=os.environ.get("ESTAT_TABLE", "0000020201"))
     metrics.bump("diag_land")
+    _observe("tochi", subject, res)
     return _render_land_result(res, subject, f, down_yen, loan_years)
 
 

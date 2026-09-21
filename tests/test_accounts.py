@@ -83,7 +83,10 @@ def test_disabled_without_database_url():
         # 使っていない機能について「預かります」と書かないこと
         pv = webapp.app.test_client().get("/privacy").get_data(as_text=True)
         assert "メールアドレスをお預かり" not in pv
-        assert "恒久的な保存は行いません" in pv
+        assert "入力されたものをそのまま保存することはありません" in pv
+        # 診断の記録もDBが無ければ1行も残らない。残すとは書かないこと
+        assert "診断された物件の記録も残していません" in pv
+        assert "3年間" not in pv
     finally:
         if prev is None:
             os.environ.pop("DATABASE_URL", None)

@@ -164,6 +164,29 @@ def schema_sql() -> list[str]:
               payload TEXT NOT NULL,
               created_at TEXT NOT NULL
             )""",
+        # 診断された物件の記録。**利用者を結びつける鍵を持たない**
+        # （ユーザーID・セッション・IPを入れない）。住所は町名まで。
+        # 家計の入力（年収・頭金・他の借入）は入れない。3年で消す。
+        """CREATE TABLE IF NOT EXISTS observations (
+              day TEXT NOT NULL,
+              kind TEXT NOT NULL,
+              pref TEXT,
+              city TEXT,
+              city_code TEXT,
+              district TEXT,
+              price_yen DOUBLE PRECISION,
+              land_m2 DOUBLE PRECISION,
+              building_m2 DOUBLE PRECISION,
+              build_year DOUBLE PRECISION,
+              station_min DOUBLE PRECISION,
+              use_district TEXT,
+              total_score DOUBLE PRECISION,
+              grade TEXT,
+              sufficiency DOUBLE PRECISION,
+              risks TEXT,
+              categories TEXT
+            )""",
+        "CREATE INDEX IF NOT EXISTS ix_obs_day ON observations (day)",
         # 日ごとの件数。個人も物件も入らない（日付・名前・件数だけ）。
         """CREATE TABLE IF NOT EXISTS daily_counts (
               day TEXT NOT NULL,
