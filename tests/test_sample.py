@@ -81,9 +81,24 @@ def test_both_entrances_point_at_the_sample():
         assert 'href="/sample"' in c.get(path).get_data(as_text=True), path
 
 
-def test_the_sample_is_not_advertised_for_crawling():
-    """毎回この画面を採り直させる意味がない。サイトマップには載せない。"""
-    assert "/sample" not in webapp.SITEMAP_PATHS
+def test_both_samples_are_in_the_sitemap():
+    """以前は「毎回この画面を採り直させる意味がない」として外していた。
+
+    いまは6時間キャッシュするので、巡回が増えても外部APIを叩く回数は
+    増えない（TTLごとに1回）。土地の見本だけ載っていて戸建が載っていない
+    のは、基準が揃っていないだけだった。
+    """
+    assert "/sample" in webapp.SITEMAP_PATHS
+    assert "/sample/land" in webapp.SITEMAP_PATHS
+    assert webapp._SAMPLE_TTL >= 60 * 60, "キャッシュが短いと巡回のたびに採り直す"
+
+
+def test_the_land_sample_is_reachable_from_the_land_form():
+    """/plan からの1本だけだった。リンクが1本しかないページは後回しに
+    される。土地診断に一番手をかけたのに、見本がサイトの奥にあった。
+    """
+    h = _client().get("/land").get_data(as_text=True)
+    assert 'href="/sample/land"' in h
 
 
 def test_a_thin_result_is_not_frozen_for_six_hours():

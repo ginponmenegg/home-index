@@ -3091,7 +3091,12 @@ def guide_page(slug):
 
 # サイトマップに載せるのはGETで開けるページだけ。
 # 診断結果はPOSTでしか生成されず、固有のURLを持たないのでクロール対象にならない。
-SITEMAP_PATHS = ["/", "/buy", "/mansion", "/land", "/sample/land",
+SITEMAP_PATHS = ["/", "/buy", "/mansion", "/land",
+                 # 見本の結果。採点の中身と出典を、入力せずに見られる
+                 # 実質的な内容ページ。**外部APIを叩く**ので、巡回が
+                 # 増えると不動産情報ライブラリの呼び出し回数を使う。
+                 # 戸建だけ載せていなかったのを揃えた。
+                 "/sample", "/sample/land",
                  "/copy-guide", "/pro",
                  # 資金計画の見本。会員でなくても開ける固定のページで、
                  # 外部APIを叩かないので、巡回されても負荷にならない。
@@ -4308,7 +4313,7 @@ BRAND_BAR
  <p class="lead"><b>所在地・価格・敷地面積</b>の3つで診断できます。
   <b>建物の予算</b>を足すと、総額と月々の返済まで出ます。
   分かる項目を足すほど、点の確からしさ（情報充足度）が上がります。
-  金額は<b>万円</b>。<a href="/buy">戸建の診断はこちら</a>　<a href="/mansion">マンションの診断はこちら</a></p>
+  金額は<b>万円</b>。<a href="/sample/land">見本の結果を見る</a>　<a href="/buy">戸建の診断はこちら</a>　<a href="/mansion">マンションの診断はこちら</a></p>
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
 
@@ -4434,6 +4439,12 @@ BRAND_BAR
    診断結果は公的データにもとづく推定です。契約の判断は専門家の確認を
    前提としてください。</div>
  </form>
+
+ <div class="card fixrow">
+  <a class="btn sub" href="/sample/land" style="width:auto">見本の土地で結果を見る</a>
+  <span class="muted">土地がまだ決まっていない方へ。採点の中身と出典を、
+   そのまま見られます</span>
+ </div>
 <script>
 (function(){
   var form = document.querySelector('form[action="/land_diagnose"]');
