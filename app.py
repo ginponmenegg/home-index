@@ -2882,6 +2882,10 @@ _GUIDE_CSS = (
     '.meta{color:var(--sub);font-size:13px;margin:0 0 16px}'
     '.lead{background:#fafbfc;border:1px solid var(--line);border-radius:14px;'
     'padding:14px 16px;margin:0 0 6px}'
+    # 条文をそのまま引くところ。私の言い換えと見分けがつくように。
+    'blockquote{margin:12px 0;padding:12px 16px;border-left:3px solid var(--line);'
+    'background:#fafbfc;border-radius:0 10px 10px 0;font-size:14.5px;'
+    'line-height:1.9;color:#33404f}'
     '.formula{background:#fafbfc;border:1px solid var(--line);border-radius:10px;'
     'padding:11px 14px;text-align:center}'
     '.toc{border:1px solid var(--line);border-radius:14px;padding:14px 18px 15px;'

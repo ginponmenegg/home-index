@@ -29,6 +29,9 @@
  "mansion-kanri-15ten": {
   "title": "マンションの100点中15点は管理です。ただし見ているのは積立金の水準だけです"
  },
+ "setsudou-2m-saikenchiku": {
+  "title": "敷地は道路に2m以上。足りないと、建て替えができません"
+ },
  "shigaika-chosei-kuiki": {
   "title": "市街化調整区域は建てられないのか。原則、許可が要ります"
  },
@@ -46,5 +49,8 @@
  },
  "youto-chiiki-13-shurui": {
   "title": "用途地域は13種類。この診断では点数に入れていません"
+ },
+ "zenmen-douro-yousekiritsu": {
+  "title": "指定容積率200%でも、前面道路が4mなら160%までです"
  }
 }
