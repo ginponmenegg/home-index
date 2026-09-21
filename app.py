@@ -766,10 +766,19 @@ def _rate_ok(ip):
     return True
 
 
-def _legal_page(title, body):
+def _legal_page(title, body, desc=None, path=None):
+    """規約・PROの案内など、枠だけ共通の固定ページ。
+
+    desc と path は検索に出すページで渡す。canonical のパスを決め打ちに
+    するのは、request.path から作ると別のURLから描いたときに嘘になるため。
+    """
+    url = (request.url_root.rstrip("/") + path) if path else None
     return (f'<!doctype html><html lang="ja"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
-            f'{FONT_LINK}{ICON_LINKS}'
+            + (f'<meta name="description" content="{html.escape(desc)}">'
+               if desc else '')
+            + (f'<link rel="canonical" href="{url}">' if url else '')
+            + f'{FONT_LINK}{ICON_LINKS}'
             f'<title>{title}｜HOME INDEX</title><style>'
             # 枠・色・余白は共通のもの。規約も読みものなので、見出しと
             # 本文だけ自前にする（カードの棒つきの見出しは当てない）。
@@ -826,6 +835,8 @@ FORM = """
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
 <title>HOME INDEX｜購入診断</title>
+<meta name="description" content="中古戸建の価格・災害リスク・住宅ローン返済を、国土交通省の成約データなど公的データから100点で採点します。所在地と価格だけで診断できます。無料・会員登録不要。">
+<link rel="canonical" href="{{ request.url_root.rstrip('/') }}/buy">
 <style>
 CARD_CSS_PLACEHOLDER
  .lead{color:var(--sub);margin:0 0 16px;font-size:15px;line-height:1.85}
@@ -1041,7 +1052,10 @@ RESULT = """
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
-<title>HOME INDEX｜{{s.address}}</title>
+{% if sample %}<title>見本の診断結果（中古戸建）｜HOME INDEX</title>
+<meta name="description" content="実在の住所で公的データを引いた見本の診断結果です。100点の内訳、推定価格レンジ、災害リスク、返済額の出し方と出典を、入力せずにそのまま見られます。">
+<link rel="canonical" href="{{ request.url_root.rstrip('/') }}/sample">
+{% else %}<title>HOME INDEX｜{{s.address}}</title>{% endif %}
 <style>
 CARD_CSS_PLACEHOLDER
  a.back{color:var(--acc);text-decoration:none;font-size:14px}
@@ -2738,17 +2752,27 @@ def about():
     if not operator_named():
         from flask import abort
         abort(404)
-    return _legal_page("運営者について", _ABOUT_BODY + _ABOUT_JSONLD)
+    return _legal_page(
+        "運営者について", _ABOUT_BODY + _ABOUT_JSONLD, path="/about",
+        desc="HOME INDEX の運営者です。宅地建物取引士が個人で運営して"
+             "います。物件は売らず、仲介も紹介もしません。")
 
 
 @app.route("/terms")
 def terms():
-    return _legal_page("利用規約", with_price(_TERMS_BODY))
+    return _legal_page("利用規約", with_price(_TERMS_BODY), path="/terms",
+                       desc="HOME INDEX の利用規約です。"
+                            "診断結果が参考情報であること、有料プランの"
+                            "料金・解約・返金について定めています。")
 
 
 @app.route("/privacy")
 def privacy():
-    return _legal_page("プライバシーポリシー", _PRIVACY_BODY)
+    return _legal_page(
+        "プライバシーポリシー", _PRIVACY_BODY, path="/privacy",
+        desc="HOME INDEX が取得する情報と、その扱いです。"
+             "入力そのものは保存しません。診断された物件は町名までを記録し、"
+             "3年で削除します。世帯年収・頭金は残しません。")
 
 
 # ---- 特定商取引法に基づく表記 ----------------------------------------
@@ -3895,6 +3919,8 @@ MANSION_FORM = """
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
 <title>HOME INDEX｜マンション購入診断</title>
+<meta name="description" content="中古マンションを100点で採点します。近隣の成約価格との比較、修繕積立金が国土交通省の目安の幅に入っているか、災害リスク、返済負担率まで。所在地と価格だけで診断できます。無料。">
+<link rel="canonical" href="{{ request.url_root.rstrip('/') }}/mansion">
 <style>
 MANSION_CSS_PLACEHOLDER
 </style></head><body>
@@ -4301,6 +4327,8 @@ LAND_FORM = """
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
 <title>HOME INDEX｜土地診断（注文住宅）</title>
+<meta name="description" content="注文住宅を建てる土地を100点で採点します。建ぺい率・容積率・前面道路から延床の上限を計算し、近隣の土地の成約から坪単価の分布を出します。無料・会員登録不要。">
+<link rel="canonical" href="{{ request.url_root.rstrip('/') }}/land">
 <style>
 LAND_CSS_PLACEHOLDER
 </style></head><body>
@@ -4512,7 +4540,10 @@ LAND_RESULT = """
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
-<title>HOME INDEX｜{{s.address}}</title>
+{% if sample %}<title>見本の診断結果（土地・注文住宅）｜HOME INDEX</title>
+<meta name="description" content="実在の住所で公的データを引いた見本の土地診断です。建ぺい率・容積率・前面道路から出した延床の上限、近隣の坪単価の分布、災害リスクを、入力せずにそのまま見られます。">
+<link rel="canonical" href="{{ request.url_root.rstrip('/') }}/sample/land">
+{% else %}<title>HOME INDEX｜{{s.address}}</title>{% endif %}
 <style>
 LAND_RESULT_CSS_PLACEHOLDER
  .big{font-size:26px;font-weight:800;margin:6px 0 0}
@@ -5478,6 +5509,8 @@ LAND_PRO_FORM = """
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
 <title>HOME INDEX｜PRO 土地診断（注文住宅）</title>
+<meta name="description" content="土地の詳細診断。つなぎ融資の利息と支払いの時系列、現地と書類の確認19項目、重要事項説明書のどこを見るかまで出します。">
+<link rel="canonical" href="{{ request.url_root.rstrip('/') }}/pro/land">
 <style>
 LAND_PRO_CSS_PLACEHOLDER
  .sec{font-size:15px;margin:22px 0 2px;padding-top:14px;
@@ -6093,6 +6126,8 @@ PRO_DIAGNOSE_FORM = """
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
 <title>購入診断(戸建)(PRO)｜HOME INDEX</title>
+<meta name="description" content="戸建の詳細診断。雨漏り・シロアリ・傾き・設備の更新時期まで答えて、仲介業者に聞くことと重要事項説明書のどこを見るかを出します。">
+<link rel="canonical" href="{{ request.url_root.rstrip('/') }}/pro/diagnose">
 <style>
 MANSION_CSS_PLACEHOLDER
 </style></head><body>
@@ -6497,6 +6532,8 @@ MANSION_PRO_FORM = """
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
 <title>購入診断(マンション)(PRO)｜HOME INDEX</title>
+<meta name="description" content="マンションの詳細診断。修繕積立金の残高と修繕履歴、管理の状態まで答えて、仲介業者に聞くことと重要事項説明書のどこを見るかを出します。">
+<link rel="canonical" href="{{ request.url_root.rstrip('/') }}/pro/mansion">
 <style>
 MANSION_CSS_PLACEHOLDER
 </style></head><body>
@@ -8386,6 +8423,7 @@ COPY_GUIDE = """
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>物件情報のコピーの仕方｜HOME INDEX</title>
+<link rel="canonical" href="{{ request.url_root.rstrip('/') }}/copy-guide">
 <meta name="description" content="SUUMOやアットホームのスマホアプリで文字がコピーできないときの対処。スクリーンショットから文字を読み取ってコピーする手順を、iPhone・Androidそれぞれで説明します。">
 FONT_LINK_PLACEHOLDER
 <style>
@@ -8564,6 +8602,8 @@ PRO_FINANCE_FORM = """
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
 <title>詳細な資金計画｜HOME INDEX PRO</title>
+<meta name="description" content="仲介手数料・印紙税・登録免許税・不動産取得税・司法書士報酬・火災保険を積み上げ、金利上昇・繰上返済・住宅ローン控除・引渡日の精算まで試算します。">
+<link rel="canonical" href="{{ request.url_root.rstrip('/') }}/pro/finance">
 <style>
  :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#5f6773;--acc:#111111;--line:#e5e5e5}
  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
@@ -8810,6 +8850,7 @@ PRO_FINANCE_RESULT = """
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
 {% if sample %}<title>詳細な資金計画の見本（諸費用の内訳つき）｜HOME INDEX</title>
+<link rel="canonical" href="{{ request.url_root.rstrip('/') }}/sample/finance">
 <meta name="description" content="中古戸建3,180万円を例に、仲介手数料・印紙税・登録免許税・不動産取得税・司法書士報酬・火災保険の内訳、金利が上がった場合の返済額、繰上返済の効果、住宅ローン控除、引渡日の精算金までを試算した見本です。根拠と出典つき。">
 {% else %}<title>資金計画の結果｜HOME INDEX PRO</title>{% endif %}
 <style>
@@ -9107,7 +9148,11 @@ _PRO_HUB_BODY = ("""
 @app.route("/pro")
 def pro_hub():
     """PROの入口。ここは案内なので、会員でなくても開ける。"""
-    return _legal_page("PRO", _PRO_HUB_BODY)
+    return _legal_page(
+        "PRO", _PRO_HUB_BODY, path="/pro",
+        desc="HOME INDEX PRO でできること。仲介業者に聞くことの一覧、"
+             "重要事項説明書のどこを見るか、諸費用まで含めた資金計画、"
+             "土地のつなぎ融資の利息と支払いの時系列。")
 
 
 def _finance_tmpl_kw():

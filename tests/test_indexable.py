@@ -74,3 +74,56 @@ def test_every_url_in_the_sitemap_is_indexable(env):
         r = c.get(p)
         assert r.status_code == 200, (p, r.status_code)
         assert NOINDEX not in r.get_data(as_text=True), p
+
+
+# ---- サイトマップのURLは、検索に出す作りになっていること -------------------
+
+def test_every_sitemap_url_has_a_canonical_and_a_description(env):
+    """Search Console の「検出 - インデックス未登録」に並んだ8件のうち
+    4件（/buy /mansion /land /pro）は、canonical も description も
+    持っていなかった。解説記事のほうには両方あった。
+    **一番出したいページだけが、検索に出す作りになっていなかった。**
+    """
+    import re
+    import os
+    os.environ["SHINDAN_MOCK"] = "1"
+    c = env.app.test_client()
+    missing = []
+    for path in env.SITEMAP_PATHS:
+        h = c.get(path).get_data(as_text=True)
+        can = re.search(r'<link rel="canonical" href="([^"]+)"', h)
+        desc = re.search(r'<meta name="description" content="([^"]{20,})"', h)
+        if not can:
+            missing.append(f"{path}: canonical なし")
+        elif not can.group(1).endswith(path if path != "/" else "/"):
+            missing.append(f"{path}: canonical が {can.group(1)}")
+        if not desc:
+            missing.append(f"{path}: description なし")
+    assert not missing, missing
+
+
+def test_the_sample_does_not_look_like_a_real_listing(env):
+    """題が住所のままだと、検索結果に本物の売り物件のように出る。"""
+    import re
+    import os
+    os.environ["SHINDAN_MOCK"] = "1"
+    c = env.app.test_client()
+    for path, word in (("/sample", "見本の診断結果（中古戸建）"),
+                       ("/sample/land", "見本の診断結果（土地")):
+        h = c.get(path).get_data(as_text=True)
+        title = re.search(r"<title>([^<]*)</title>", h).group(1)
+        assert word in title, f"{path}: {title}"
+
+
+def test_a_real_result_keeps_the_address_in_its_title(env):
+    """見本以外は、どの物件の結果か分かるほうがよい（共有されるため）。"""
+    import re
+    import os
+    os.environ["SHINDAN_MOCK"] = "1"
+    h = env.app.test_client().post("/diagnose", data={
+        "address": "神奈川県小田原市城山1-2-3", "price": "3880",
+        "ptype": "chuko_kodate", "land": "147", "building": "90",
+        "byear": "2005", "station": "12"}).get_data(as_text=True)
+    title = re.search(r"<title>([^<]*)</title>", h).group(1)
+    assert "小田原市城山" in title
+    assert "見本" not in title
