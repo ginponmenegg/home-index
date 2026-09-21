@@ -729,3 +729,42 @@ def test_the_second_cta_is_optional():
     from src import guides
     plain = [g for g in guides.GUIDES if not getattr(g, "cta2_href", "")]
     assert plain, "2つめを持たない記事もあること"
+
+
+# ---- 分類 ------------------------------------------------------------------
+
+def test_every_article_belongs_to_exactly_one_topic():
+    """足したのに分類し忘れると、一覧から静かに落ちる。"""
+    assert guides.unclassified() == [], "分類していない記事がある"
+    placed = [s for _t, _n, slugs in guides.TOPICS for s in slugs]
+    assert len(placed) == len(set(placed)), "2つの分類に入っている記事がある"
+    assert sorted(placed) == sorted(g.slug for g in guides.all_guides())
+
+
+def test_no_topic_points_at_an_article_that_does_not_exist():
+    """記事を消して分類だけ残すと、見出しだけの空の枠になる。"""
+    known = {g.slug for g in guides.all_guides()}
+    for _t, _n, slugs in guides.TOPICS:
+        for s in slugs:
+            assert s in known, s
+
+
+def test_each_topic_has_more_than_one_article():
+    """1本しかない分類は、分類になっていない。"""
+    for title, _n, items in guides.by_topic():
+        assert len(items) >= 2, title
+
+
+def test_the_index_shows_the_topics_and_keeps_every_article():
+    import re
+    h = _client().get("/guide").get_data(as_text=True)
+    heads = re.findall(r"<h2[^>]*>([^<]+)</h2>", h)
+    assert heads == [t for t, _n, _s in guides.TOPICS]
+    links = set(re.findall(r'href="/guide/([a-z0-9-]+)"', h))
+    assert links >= {g.slug for g in guides.all_guides()}, "一覧から落ちた記事がある"
+
+
+def test_the_articles_inside_a_topic_are_newest_first():
+    for title, _n, items in guides.by_topic():
+        days = [g.published for g in items]
+        assert days == sorted(days, reverse=True), title

@@ -1609,3 +1609,51 @@ def by_slug(slug: str) -> Optional[Guide]:
 def paths() -> List[str]:
     """サイトマップに載せるURL。一覧と各記事。"""
     return ["/guide"] + [f"/guide/{g.slug}" for g in all_guides()]
+
+
+# ---- 分類 ------------------------------------------------------------------
+# 16本が公開順に一列で並んでいるだけだった。増えるほど、読みたいものに
+# 辿り着けなくなる（診断の点数を知りたい人と、災害の区域を調べたい人は、
+# 別のものを探している）。
+#
+# 記事を足したときに分類し忘れると、一覧から静かに落ちる。そうならない
+# よう、下の表と GUIDES の突き合わせをテストで見る。
+TOPICS = (
+    ("点数の付け方",
+     "この診断が、何をどう数えているか",
+     ("kodate-mansion-haiten", "mansion-kanri-15ten", "kyu-taishin-mansion")),
+    ("建物と耐震・性能",
+     "いつ建ったか、何でできているかで変わるもの",
+     ("shin-taishin-kenchiku-kakunin", "keiryo-teppone-taiyo-nensu",
+      "shoene-kijun-tekigou")),
+    ("お金とローン",
+     "いくらまで借りるか、いくら戻るか、毎月いくら出ていくか",
+     ("hensai-futanritsu", "kinri-joushou-5nen-rule",
+      "jutaku-loan-koujo-1982", "shuzen-tsumitatekin-meyasu")),
+    ("災害リスク",
+     "ハザードマップの色が、実際に何を意味するか",
+     ("dosha-saigai-keikai-kuiki", "kouzui-shinsui-fukasa",
+      "jiban-ekijoka-morido")),
+    ("土地の法規制と将来",
+     "建てられるか、その地域がどうなっていくか",
+     ("shigaika-chosei-kuiki", "youto-chiiki-13-shurui",
+      "shorai-suikei-jinko-mesh")),
+)
+
+
+def by_topic() -> List[tuple]:
+    """(見出し, 説明, [Guide]) を並び順に返す。記事は新しい順。"""
+    out = []
+    for title, note, slugs in TOPICS:
+        got = [by_slug(s) for s in slugs]
+        items = sorted([g for g in got if g],
+                       key=lambda g: g.published, reverse=True)
+        if items:
+            out.append((title, note, items))
+    return out
+
+
+def unclassified() -> List[str]:
+    """どの分類にも入っていない記事。足したのに分けていないと出る。"""
+    placed = {s for _t, _n, slugs in TOPICS for s in slugs}
+    return sorted(g.slug for g in GUIDES if g.slug not in placed)

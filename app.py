@@ -767,12 +767,15 @@ def _legal_page(title, body):
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
             f'{FONT_LINK}{ICON_LINKS}'
             f'<title>{title}｜HOME INDEX</title><style>'
-            'body{margin:0;background:#f5f7fa;color:#1f2937;'
-            'font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}'
-            '.wrap{max-width:720px;margin:0 auto;padding:24px 16px}'
-            '.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:22px}'
-            'h1{font-size:20px;margin:0 0 6px}h2{font-size:15px;margin:20px 0 6px;color:#111}'
-            'p,li{font-size:14px;line-height:1.8}a{color:#111}.sub{color:#5f6773;font-size:12px}.logo-img{height:64px;width:auto;max-width:100%;display:block}'
+            # 枠・色・余白は共通のもの。規約も読みものなので、見出しと
+            # 本文だけ自前にする（カードの棒つきの見出しは当てない）。
+            + CARD_CSS
+            + 'h1{font-size:21px;margin:0 0 6px;letter-spacing:0}'
+            'h2{display:block;font-size:16px;font-weight:700;margin:26px 0 6px;'
+            'color:#111;letter-spacing:0}h2::before{content:none}'
+            'p,li{font-size:15px;line-height:1.9}a{color:#111}'
+            '.sub{color:var(--sub);font-size:13px}'
+            '.logo-img{height:64px;width:auto;max-width:100%;display:block}'
             + BRAND_CSS +
             '</style></head><body>'
             + brand_bar() +
@@ -2832,47 +2835,52 @@ def buy():
 # 評価されない。
 
 _GUIDE_CSS = (
-    'body{margin:0;background:#f5f7fa;color:#1f2937;'
-    'font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}'
-    '.wrap{max-width:720px;margin:0 auto;padding:24px 16px}'
-    '.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:22px}'
-    'h1{font-size:21px;margin:0 0 8px;line-height:1.55}'
+    # 枠・色・余白は共通のものを使う（CARD_CSS）。解説は読みものなので、
+    # 見出しと本文だけ自前にする。
+    CARD_CSS
+    + 'h1{font-size:21px;margin:0 0 8px;line-height:1.55;letter-spacing:0}'
+    # カードの見出しは棒つきの札。長文の記事には向かないので罫に戻す。
+    # ::before を content:none で消さないと、空の箱が残って字が寄る。
+    'h2{display:block;font-size:17px;font-weight:700;margin:34px 0 10px;'
+    'color:#111;border-left:3px solid #14395C;padding-left:10px;'
+    'line-height:1.55;letter-spacing:0;'
     # 目次から飛んだとき、見出しが上のバーに隠れないようにする
-    'h2{font-size:16px;margin:34px 0 10px;color:#111;'
-    'border-left:3px solid #14395C;padding-left:9px;line-height:1.55;'
     'scroll-margin-top:80px}'
+    'h2::before{content:none}'
     'p,li{font-size:15px;line-height:1.95}'
     'li{margin-bottom:4px}'
     'a{color:#111}'
-    '.sub{color:#5f6773;font-size:12px;line-height:1.8}'
-    '.meta{color:#5f6773;font-size:12px;margin:0 0 16px}'
-    '.lead{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:10px;'
+    '.sub{color:var(--sub);font-size:13px;line-height:1.8}'
+    '.meta{color:var(--sub);font-size:13px;margin:0 0 16px}'
+    '.lead{background:#fafbfc;border:1px solid var(--line);border-radius:14px;'
     'padding:14px 16px;margin:0 0 6px}'
-    '.formula{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:8px;'
+    '.formula{background:#fafbfc;border:1px solid var(--line);border-radius:10px;'
     'padding:11px 14px;text-align:center}'
-    '.toc{border:1px solid #e5e7eb;border-radius:10px;padding:14px 18px 15px;'
+    '.toc{border:1px solid var(--line);border-radius:14px;padding:14px 18px 15px;'
     'margin:20px 0 4px}'
-    '.toc>span{display:block;font-size:11px;color:#5f6773;letter-spacing:.14em;'
+    '.toc>span{display:block;font-size:11px;color:var(--sub);letter-spacing:.14em;'
     'margin-bottom:8px}'
     '.toc ol{margin:0;padding-left:1.35em}'
     '.toc li{font-size:14px;line-height:1.85;margin:0}'
     '.toc a{color:#1f2937;text-decoration:none}'
     '.toc a:hover{text-decoration:underline}'
+    # 記事の表は枠のあるほうが読みやすい。共通の罫だけの表とは別に持つ。
     'table{border-collapse:collapse;width:100%;margin:12px 0}'
-    'th,td{border:1px solid #e5e7eb;padding:7px 10px;text-align:left;font-size:13px}'
-    'th{background:#f6f8fa;font-weight:600}'
+    'th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;'
+    'font-size:14px;letter-spacing:0}'
+    'th{background:#fafbfc;font-weight:600;color:var(--ink)}'
     '.share{margin:26px 0 0;display:flex;align-items:center;gap:10px;'
     'flex-wrap:wrap;font-size:13px;color:#5f6773}'
-    '.share a,.share button{display:inline-block;border:1px solid #e5e7eb;'
-    'border-radius:8px;padding:7px 13px;font-size:13px;color:#1f2937;'
+    '.share a,.share button{display:inline-block;border:1px solid var(--line);'
+    'border-radius:999px;padding:8px 15px;font-size:13px;color:#1f2937;'
     'background:#fff;text-decoration:none;cursor:pointer;font-family:inherit}'
-    '.share a:hover,.share button:hover{border-color:#c6ced7}'
-    '.after{margin-top:34px;border-left:3px solid #14395C;background:#f6f8fa;'
-    'padding:14px 16px}'
-    '.after p{margin:0;font-size:14px;line-height:1.85}'
+    '.share a:hover,.share button:hover{border-color:#111}'
+    '.after{margin-top:34px;border-left:3px solid #14395C;background:#fafbfc;'
+    'padding:14px 16px;border-radius:0 14px 14px 0}'
+    '.after p{margin:0;font-size:15px;line-height:1.85}'
     '.after a{color:#14395C;font-weight:700}'
     '.cards{list-style:none;padding:0;margin:0}'
-    '.cards li{border-top:1px solid #e5e7eb;padding:16px 0;margin:0}'
+    '.cards li{border-top:1px solid #f0f2f5;padding:16px 0;margin:0}'
     '.cards li:first-child{border-top:none;padding-top:4px}'
     '.cards a{font-weight:700;font-size:16px;text-decoration:none;line-height:1.5}'
     '.logo-img{height:64px;width:auto;max-width:100%;display:block}'
@@ -3008,15 +3016,25 @@ def _breadcrumbs(base, extra=None):
 @app.route("/guide")
 def guide_index():
     base = _guide_base()
-    items = "".join(
-        f'<li><a href="/guide/{g.slug}">{html.escape(g.title)}</a>'
-        f'<p class="sub" style="margin:6px 0 0">{html.escape(g.description)}</p>'
-        f'<p class="meta" style="margin:6px 0 0">{g.published}</p></li>'
-        for g in guides.all_guides())
+
+    def _item(g):
+        return (f'<li><a href="/guide/{g.slug}">{html.escape(g.title)}</a>'
+                f'<p class="sub" style="margin:6px 0 0">'
+                f'{html.escape(g.description)}</p>'
+                f'<p class="meta" style="margin:6px 0 0">{g.published}</p></li>')
+
+    # 公開順に一列だと、増えるほど読みたいものに辿り着けない。
+    # 点数の話を知りたい人と、災害の区域を調べたい人は別のものを探している。
+    groups = "".join(
+        f'<h2>{html.escape(title)}</h2>'
+        f'<p class="sub" style="margin:0 0 4px">{html.escape(note)}'
+        f'（{len(items)}本）</p>'
+        f'<ul class="cards">{"".join(_item(g) for g in items)}</ul>'
+        for title, note, items in guides.by_topic())
     body = ('<h1>解説</h1>'
             '<p class="sub">診断で使っている数字の根拠を開いて書いています。'
             '出典は本文に明記します。</p>'
-            f'<ul class="cards">{items}</ul>')
+            f'{groups}')
     return _guide_shell(
         "解説", "住宅の購入判断に必要な公的データの読み方を、"
                 "出典を示して解説します。HOME INDEX の診断で使っている数字の根拠です。",
@@ -7738,30 +7756,30 @@ PLAN_PAGE = """
  <div class="tablewrap"><table class="cmp">
   <thead><tr><th class="rowlbl">できること</th><th>無料</th><th>PRO</th></tr></thead>
   <tbody>
-   <tr><th class="rowlbl">購入診断（戸建・マンション・土地）</th><td>○</td><td>○</td></tr>
-   <tr><th class="rowlbl">診断結果の保存</th><td>{{ free_limit }}件</td>
-    <td>{% if pro_limit %}{{ pro_limit }}件{% else %}無制限{% endif %}</td></tr>
-   <tr><th class="rowlbl">保存した物件の比較</th><td>○</td><td>○</td></tr>
+   <tr><th class="rowlbl">購入診断（戸建・マンション・土地）</th><td data-name="無料">○</td><td data-name="PRO">○</td></tr>
+   <tr><th class="rowlbl">診断結果の保存</th><td data-name="無料">{{ free_limit }}件</td>
+    <td data-name="PRO">{% if pro_limit %}{{ pro_limit }}件{% else %}無制限{% endif %}</td></tr>
+   <tr><th class="rowlbl">保存した物件の比較</th><td data-name="無料">○</td><td data-name="PRO">○</td></tr>
    <tr><th class="rowlbl">土地：建てられる家の大きさ<span class="sub"
      style="display:block;font-weight:400">延床と建築面積の上限・前面道路による容積率の制限</span></th>
-    <td>○</td><td>角地・地区計画も</td></tr>
+    <td data-name="無料">○</td><td data-name="PRO">角地・地区計画も</td></tr>
    <tr><th class="rowlbl">土地：近隣の坪単価の分布</th>
-    <td>町名で</td><td>条件を揃えて</td></tr>
-   <tr><th class="rowlbl">詳細診断（PRO）</th><td>—</td><td>○</td></tr>
+    <td data-name="無料">町名で</td><td data-name="PRO">条件を揃えて</td></tr>
+   <tr><th class="rowlbl">詳細診断（PRO）</th><td data-name="無料">—</td><td data-name="PRO">○</td></tr>
    <tr><th class="rowlbl">土地：つなぎ融資の利息と、支払いの時系列<span class="sub"
      style="display:block;font-weight:400"><a href="#tochi">中身を見る</a></span></th>
-    <td>—</td><td>○</td></tr>
-   <tr><th class="rowlbl">土地：現地と書類の確認（19項目）</th><td>—</td><td>○</td></tr>
+    <td data-name="無料">—</td><td data-name="PRO">○</td></tr>
+   <tr><th class="rowlbl">土地：現地と書類の確認（19項目）</th><td data-name="無料">—</td><td data-name="PRO">○</td></tr>
    <tr><th class="rowlbl">土地：重要事項説明書の、どこを見るか<span class="sub"
      style="display:block;font-weight:400"><a href="/sample/land">見本の診断を見る</a></span></th>
-    <td>—</td><td>○</td></tr>
-   <tr><th class="rowlbl">仲介業者に聞くことの一覧</th><td>—</td><td>○</td></tr>
+    <td data-name="無料">—</td><td data-name="PRO">○</td></tr>
+   <tr><th class="rowlbl">仲介業者に聞くことの一覧</th><td data-name="無料">—</td><td data-name="PRO">○</td></tr>
    <tr><th class="rowlbl">重要事項説明書で確認すること<span class="sub"
      style="display:block;font-weight:400"><a href="#juyo">中身を見る</a></span></th>
-    <td>—</td><td>○</td></tr>
+    <td data-name="無料">—</td><td data-name="PRO">○</td></tr>
    <tr><th class="rowlbl">詳細な資金計画（PDF）<span class="sub"
      style="display:block;font-weight:400"><a href="/sample/finance">見本を見る</a></span></th>
-    <td>—</td><td>○</td></tr>
+    <td data-name="無料">—</td><td data-name="PRO">○</td></tr>
   </tbody>
  </table></div>
 

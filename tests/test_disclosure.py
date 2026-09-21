@@ -171,7 +171,9 @@ def test_the_plan_table_lists_it_as_a_pro_only_row():
     rows = [r for r in re.findall(r"<tr>.*?</tr>", webapp.PLAN_PAGE, re.S)
             if "重要事項説明書で確認すること" in r]
     assert len(rows) == 1, rows
-    assert "<td>—</td>" in rows[0] and "<td>○</td>" in rows[0]
+    # スマホでは列の見出し（無料／PRO）が消えるので、セルごとに持たせる
+    assert '<td data-name="無料">—</td>' in rows[0]
+    assert '<td data-name="PRO">○</td>' in rows[0]
 
 
 def test_the_plan_page_shows_what_the_sheet_covers(env_free=None):
