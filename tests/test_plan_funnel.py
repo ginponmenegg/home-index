@@ -244,3 +244,45 @@ def test_the_card_does_not_promise_a_softer_score():
     h = _client().post("/diagnose", data=FREE_INPUT).get_data(as_text=True)
     i = h.index("契約の前に、つぶしておくこと")
     assert "PROで採点が甘くなることはありません" in h[i:i + 1400]
+
+
+# ---- 料金ページで料金を探させない ----------------------------------------
+
+def _visible(html):
+    """画面に出る文字だけにする。CSSとメニューを除く。"""
+    import re
+    s = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.S)
+    s = re.sub(r'<nav class="hi-menu".*?</nav>', " ", s, flags=re.S)
+    s = re.sub(r"<[^>]+>", " ", s)
+    s = re.sub(r"\s+", " ", s)
+    return s[s.index("プラン いまは"):]
+
+
+def test_the_price_comes_before_the_long_explanation(billing):
+    """上から、機能の表 → 土地PROの詳細 → 重説の欄名30個 → ようやく価格、
+    という並びだった。2,000字スクロールしないと金額が出てこない。
+    """
+    s = _visible(billing.app.test_client().get("/plan").get_data(as_text=True))
+    price = s.index("月額")
+    button = s.index("PROに申し込む")
+    table = s.index("購入診断（戸建・マンション・土地）")
+    land = s.index("土地（注文住宅）で、PROが足すもの")
+    juyo = s.index("「重要事項説明書で確認すること」の中身")
+    assert price < button < table < land < juyo
+    assert price < 200, f"金額が{price}字目。探させている"
+
+
+def test_the_long_explanation_is_still_there(billing):
+    """短くしたのではなく、順番を変えただけ。中身は減らさない。"""
+    s = _visible(billing.app.test_client().get("/plan").get_data(as_text=True))
+    for word in ("つなぎ融資", "地目が農地なら", "私道に関する負担",
+                 "修繕積立金の規約の定めと", "e-Gov"):
+        assert word in s, word
+
+
+def test_the_trial_notice_also_comes_first():
+    """課金前は、金額のかわりに試験公開の案内が同じ場所に出る。"""
+    s = _visible(webapp.app.test_client().get("/plan").get_data(as_text=True))
+    notice = s.index("PROは試験公開中です")
+    assert notice < s.index("購入診断（戸建・マンション・土地）")
+    assert "月額" not in s[:notice + 50]

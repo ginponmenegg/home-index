@@ -7683,6 +7683,58 @@ PLAN_PAGE = """
 <div class="card">
  <h1>プラン</h1>
  <p class="lead">いまは<b>{{ 'PRO' if pro else '無料プラン' }}</b>をご利用中です。</p>
+{% if not billing %}
+ <div class="note warn" style="margin-top:14px">
+  <b>PROは試験公開中です。</b>いまのところ料金はいただいていません。
+  どなたでも<a href="/pro/diagnose">戸建</a>・<a href="/pro/mansion">マンション</a>・
+  <a href="/pro/land">土地</a>の
+  詳細診断をお試しいただけます。<br>
+  有料でのご提供を始めるときは、事前にこのページでご案内します。
+ </div>
+{% elif pro and cancel_at %}
+ <div class="note" style="margin-top:14px">
+  <b>解約を受け付けました。</b>
+  {{ cancel_at[:10] }}まで、これまでどおりPROをご利用いただけます。<br>
+  その日以降は自動的に無料プランへ切り替わります。<b>追加の請求はありません。</b><br>
+  保存した診断は、そのあともご覧いただけます。
+ </div>
+ <p class="sub" style="margin-top:10px">
+  続けたくなったときは、この画面からいつでも再開できます。</p>
+{% elif pro %}
+ <div class="note ok" style="margin-top:14px">
+  PROをご利用中です。{{ price_label }}が毎月かかります。
+  {% if expires %}<br>次回の更新日：{{ expires[:10] }}{% endif %}
+ </div>
+ <p style="margin-top:14px"><a class="btn ghost" href="/plan/cancel">解約する</a></p>
+{% else %}
+ <div class="note" style="margin-top:14px">
+  {% if campaign %}
+  <p style="margin:0 0 6px"><b>PRO　{{ price_label }}</b>
+   <span class="sub" style="text-decoration:line-through">{{ normal_label }}</span></p>
+  <p style="margin:0 0 6px"><b>{{ campaign_until }}までにお申し込みの方は、
+   そのあともずっとこの金額です。</b>あとから通常価格に上がることはありません。</p>
+  {% else %}
+  <p style="margin:0 0 6px"><b>PRO　{{ price_label }}</b></p>
+  {% endif %}
+  <p style="margin:0">解約されるまで毎月自動で更新されます。
+   金額は初回も2回目以降も同じです。<br>
+   <b>マイページからいつでも解約できます。</b>
+   解約後も、保存した診断はそのままご覧いただけます。</p>
+  {% if campaign %}
+  <p class="sub" style="margin:6px 0 0">
+   いったん解約されますと、再開のお申し込みは通常価格になります。</p>
+  {% endif %}
+ </div>
+ <p style="margin-top:14px">
+  <a class="btn" href="/plan/confirm">PROに申し込む</a></p>
+ <p class="sub" style="margin-top:10px">
+  <a href="/tokushoho">特定商取引法に基づく表記</a>　・
+  <a href="/terms">利用規約</a>　・
+  <a href="/privacy">プライバシーポリシー</a></p>
+{% endif %}
+
+ <h2 style="margin:22px 0 0">無料とPROのちがい</h2>
+
  <div class="tablewrap"><table class="cmp">
   <thead><tr><th class="rowlbl">できること</th><th>無料</th><th>PRO</th></tr></thead>
   <tbody>
@@ -7765,55 +7817,6 @@ PLAN_PAGE = """
    条文は e-Gov 法令検索で確かめています。</p>
  </div>
 
-{% if not billing %}
- <div class="note warn" style="margin-top:14px">
-  <b>PROは試験公開中です。</b>いまのところ料金はいただいていません。
-  どなたでも<a href="/pro/diagnose">戸建</a>・<a href="/pro/mansion">マンション</a>・
-  <a href="/pro/land">土地</a>の
-  詳細診断をお試しいただけます。<br>
-  有料でのご提供を始めるときは、事前にこのページでご案内します。
- </div>
-{% elif pro and cancel_at %}
- <div class="note" style="margin-top:14px">
-  <b>解約を受け付けました。</b>
-  {{ cancel_at[:10] }}まで、これまでどおりPROをご利用いただけます。<br>
-  その日以降は自動的に無料プランへ切り替わります。<b>追加の請求はありません。</b><br>
-  保存した診断は、そのあともご覧いただけます。
- </div>
- <p class="sub" style="margin-top:10px">
-  続けたくなったときは、この画面からいつでも再開できます。</p>
-{% elif pro %}
- <div class="note ok" style="margin-top:14px">
-  PROをご利用中です。{{ price_label }}が毎月かかります。
-  {% if expires %}<br>次回の更新日：{{ expires[:10] }}{% endif %}
- </div>
- <p style="margin-top:14px"><a class="btn ghost" href="/plan/cancel">解約する</a></p>
-{% else %}
- <div class="note" style="margin-top:14px">
-  {% if campaign %}
-  <p style="margin:0 0 6px"><b>PRO　{{ price_label }}</b>
-   <span class="sub" style="text-decoration:line-through">{{ normal_label }}</span></p>
-  <p style="margin:0 0 6px"><b>{{ campaign_until }}までにお申し込みの方は、
-   そのあともずっとこの金額です。</b>あとから通常価格に上がることはありません。</p>
-  {% else %}
-  <p style="margin:0 0 6px"><b>PRO　{{ price_label }}</b></p>
-  {% endif %}
-  <p style="margin:0">解約されるまで毎月自動で更新されます。
-   金額は初回も2回目以降も同じです。<br>
-   <b>マイページからいつでも解約できます。</b>
-   解約後も、保存した診断はそのままご覧いただけます。</p>
-  {% if campaign %}
-  <p class="sub" style="margin:6px 0 0">
-   いったん解約されますと、再開のお申し込みは通常価格になります。</p>
-  {% endif %}
- </div>
- <p style="margin-top:14px">
-  <a class="btn" href="/plan/confirm">PROに申し込む</a></p>
- <p class="sub" style="margin-top:10px">
-  <a href="/tokushoho">特定商取引法に基づく表記</a>　・
-  <a href="/terms">利用規約</a>　・
-  <a href="/privacy">プライバシーポリシー</a></p>
-{% endif %}
  <p style="margin-top:14px"><a class="btn ghost sm" href="/mypage">マイページへ</a></p>
 </div>
 """
