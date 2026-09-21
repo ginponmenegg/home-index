@@ -685,6 +685,18 @@ def _looks_like_a_bot() -> bool:
     return (not ua) or any(h in ua for h in _BOT_HINTS)
 
 
+def _did(name: str) -> None:
+    """押された・進んだことを数える。
+
+    _seen と分けているのは、リンク元を数えないため。操作は画面の中から
+    起きるので、そこでリンク元を数えると「自分のサイトから来た」が
+    増えるだけで、外から入ってきた回数が読めなくなる。
+    """
+    if _looks_like_a_bot():
+        return
+    metrics.bump(name)
+
+
 def _seen(name: str) -> None:
     """画面が見られたことを数える（人だけ）。
 
@@ -6737,6 +6749,9 @@ def _require_pro():
         return _account_page("準備中", _OFF_BODY)
     if accounts.is_pro(current_user()):
         return None
+    # ここに来た人は、PROを開こうとして壁に当たった人。診断からPROへ
+    # 進もうとした回数そのものなので、導線が効いているかはこれで読める。
+    _did("pro_cta")
     return _pro_gate()
 
 
@@ -7865,6 +7880,7 @@ def plan_confirm():
         abort(404)
     if accounts.is_pro(current_user()):
         return redirect("/plan")
+    _did("plan_confirm")
     body = render_template_string(
         PLAN_CONFIRM, price_label=price_now()[1], price_yen=price_now()[0],
         campaign=campaign.active(), campaign_until=campaign.until_ja(),
@@ -7886,6 +7902,7 @@ def plan_subscribe():
     if accounts.is_pro(u):
         return redirect("/plan")
     base = request.url_root.rstrip("/")
+    _did("checkout")
     try:
         url = billing.checkout_url(
             email=u.get("email"), user_id=u["id"],

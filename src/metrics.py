@@ -62,6 +62,12 @@ EVENTS = {
     "mail_failed":  "ログインのメールを送れなかった",
     "saved":        "診断を保存",
     "plan_view":    "プランの画面を見た",
+    # 診断とプラン画面のあいだ、プラン画面と契約のあいだが空白だった。
+    # 0件の原因が「そこまで来ていない」のか「来たが払わない」のかは、
+    # この3つが無いと切り分けられない。
+    "pro_cta":      "PROの画面を開こうとした（未契約の人）",
+    "plan_confirm": "申込の最終確認画面に着いた",
+    "checkout":     "決済画面へ進んだ",
     "pro_start":    "PROの契約が始まった",
     "pro_cancel":   "PROを解約した",
     # 実際にブラウザで開かれた回数。HTMLを取るだけの巡回とは別に数える。
@@ -69,6 +75,8 @@ EVENTS = {
     # どこから来たか。ホスト名は残さず、この5つのどれかを1増やすだけ。
     "ref_x":        "Xから来た",
     "ref_threads":  "Threadsから来た",
+    "ref_instagram": "Instagramから来た",
+    "ref_tiktok":   "TikTokから来た",
     "ref_search":   "検索から来た",
     "ref_other":    "他のサイトから来た",
     "ref_none":     "リンク元なし（直接・アプリ内・巡回）",
@@ -77,10 +85,18 @@ EVENTS = {
 
 # リンク元のホスト名を、この枠に丸める。部分一致で見るので
 # 「t.co」は「x.com」と同じ枠に入る（Xの短縮URL）。
+# 上から順に見て、最初に当たった枠に入れる。**Threads を先に置く**。
+# instagram.com を先に見ると、Threads から来た人まで Instagram に
+# 入ってしまう。
+#
+# これまで Instagram は Threads と同じ枠だった。**過去の ref_threads には
+# Instagram 由来が混ざっている**ので、分けた日より前の数字は比べられない。
 REF_BUCKETS = (
-    ("ref_x",       ("x.com", "twitter.com", "t.co")),
-    ("ref_threads", ("threads.net", "threads.com", "instagram.com")),
-    ("ref_search",  ("google.", "yahoo.co.jp", "bing.com", "duckduckgo.com")),
+    ("ref_x",         ("x.com", "twitter.com", "t.co")),
+    ("ref_threads",   ("threads.net", "threads.com")),
+    ("ref_instagram", ("instagram.com",)),
+    ("ref_tiktok",    ("tiktok.com",)),
+    ("ref_search",    ("google.", "yahoo.co.jp", "bing.com", "duckduckgo.com")),
 )
 
 

@@ -241,3 +241,60 @@ def test_the_page_shows_what_was_counted(env):
     assert "戸建の診断が出た" in h
     assert "入力画面 → 診断" in h
     assert "個人も物件も記録していません" in h
+
+
+# ---- リンク元（TikTok と Instagram を分ける）------------------------------
+
+def test_tiktok_and_instagram_are_counted_on_their_own():
+    """Instagram はこれまで Threads と同じ枠だった。
+
+    どちらに手応えがあるか分からないまま投稿することになるので分ける。
+    分けた日より前の ref_threads には Instagram 由来が混ざっている。
+    """
+    from src.metrics import ref_bucket
+    host = "homeindex.jp"
+    assert ref_bucket("https://www.tiktok.com/@a/video/1", host) == "ref_tiktok"
+    assert ref_bucket("https://vt.tiktok.com/xxx/", host) == "ref_tiktok"
+    assert ref_bucket("https://www.instagram.com/p/abc/", host) == "ref_instagram"
+    assert ref_bucket("https://l.instagram.com/?u=x", host) == "ref_instagram"
+
+
+def test_threads_is_checked_before_instagram():
+    """instagram.com を先に見ると、Threads から来た人まで吸い込む。"""
+    from src.metrics import ref_bucket, REF_BUCKETS
+    host = "homeindex.jp"
+    assert ref_bucket("https://www.threads.net/@y", host) == "ref_threads"
+    assert ref_bucket("https://threads.com/@y", host) == "ref_threads"
+    names = [n for n, _ in REF_BUCKETS]
+    assert names.index("ref_threads") < names.index("ref_instagram")
+
+
+# ---- 導線の空白を埋める ---------------------------------------------------
+
+def test_the_funnel_between_the_result_and_the_payment_is_counted(env):
+    """診断 → プラン → 申込確認 → 決済 が、どこで切れているか読めること。"""
+    for name in ("diag_kodate", "plan_view", "pro_cta",
+                 "plan_confirm", "checkout", "pro_start"):
+        assert name in env.metrics.EVENTS, name
+
+
+def test_an_action_does_not_count_as_a_visit_from_somewhere(env):
+    """押した回数にリンク元を数えると、「自分のサイトから来た」が増える。
+
+    外から入ってきた回数が読めなくなるので、_seen と分けてある。
+    """
+    # UAが空だとクローラ扱いになるので、人のふりをさせる
+    with env.app.app.test_request_context(
+            "/pro/diagnose", method="POST",
+            headers={"User-Agent": "Mozilla/5.0 (iPhone)"}):
+        env.app._did("pro_cta")
+    t = env.metrics.totals(2)
+    assert t["pro_cta"] == 1
+    assert t["ref_none"] == 0 and t["ref_other"] == 0
+
+
+def test_a_crawler_does_not_count_as_a_press(env):
+    with env.app.app.test_request_context(
+            "/", headers={"User-Agent": "Googlebot/2.1"}):
+        env.app._did("pro_cta")
+    assert env.metrics.totals(2)["pro_cta"] == 0
