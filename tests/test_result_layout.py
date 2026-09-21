@@ -67,7 +67,7 @@ def test_the_summary_comes_before_the_evidence():
 def test_the_summary_is_above_the_pro_cards():
     """PROの案内をまたいだ先に要点を置かない。"""
     h = _house()
-    assert h.index(">強み<") < h.index("このまま詳細診断に進む")
+    assert h.index(">強み<") < h.index("契約の前に、つぶしておくこと")
 
 
 def test_the_risk_and_the_summary_are_one_card():

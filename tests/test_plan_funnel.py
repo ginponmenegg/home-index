@@ -14,6 +14,8 @@ PROの3つのうち、入力したその場で価値が完結するのは資金�
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import app as webapp
@@ -169,3 +171,76 @@ def test_the_sample_settlement_is_worth_showing():
     import datetime
     assert (d.month, d.day) == (3, 1)
     assert d > datetime.date.today()
+
+
+# ---- PROの案内は「仕組み」ではなく「何が片づくか」 ------------------------
+
+@pytest.fixture
+def billing(monkeypatch):
+    """課金が生きている状態にする。金額が出るのはこのときだけ。
+
+    app を読み込み直すので、**終わったら必ず戻す**。戻さないと、
+    このあとのテストが課金オンのままの app を見ることになる。
+    """
+    import importlib
+    for k, v in (("BILLING_ENABLED", "1"), ("OPERATOR_NAME", "山田 太郎"),
+                 ("OPERATOR_ADDRESS", "神奈川県小田原市栄町1-1-1"),
+                 ("OPERATOR_TEL", "0465-00-0000"),
+                 ("CONTACT_EMAIL", "support@example.jp"),
+                 ("STRIPE_SECRET_KEY", "sk_test_dummy"),
+                 ("STRIPE_PRICE_ID", "price_normal"),
+                 ("STRIPE_WEBHOOK_SECRET", "whsec_dummy"),
+                 ("SHINDAN_MOCK", "1")):
+        monkeypatch.setenv(k, v)
+    import app as w
+    importlib.reload(w)
+    yield w
+    monkeypatch.undo()
+    importlib.reload(w)
+
+
+def test_the_pro_card_leads_with_what_gets_settled():
+    """見出しが「詳細診断に進む」だと、何が片づくのか分からない。
+
+    情報充足度はこちらが作った言葉で、買う人の関心事ではない。
+    先に出すのは、その物件について何を潰せるか。
+    """
+    h = _client().post("/diagnose", data=FREE_INPUT).get_data(as_text=True)
+    i = h.index("契約の前に、つぶしておくこと")
+    card = h[i:i + 1200]
+    assert "仲介業者に聞くことの一覧" in card
+    assert "重要事項説明書の、どこを見るか" in card
+    # 情報充足度は残してよいが、先頭ではなく3つ目の補足として
+    assert card.index("聞くことの一覧") < card.index("情報充足度")
+
+
+def test_the_card_names_this_property_s_gaps():
+    """一般論ではなく、いま診断した物件の未確認項目を名指しする。"""
+    h = _client().post("/diagnose", data=FREE_INPUT).get_data(as_text=True)
+    i = h.index("契約の前に、つぶしておくこと")
+    assert "接道や再建築の可否" in h[i:i + 400]
+
+
+def test_the_price_is_shown_before_the_button_is_pressed(billing):
+    """押した先のゲートで初めて金額が出るのは、押させてから言う形。"""
+    h = billing.app.test_client().post(
+        "/diagnose", data=FREE_INPUT).get_data(as_text=True)
+    i = h.index("契約の前に、つぶしておくこと")
+    j = h.index("この物件を詳しく診断する（PRO）")
+    assert "月額" in h[i:j], "ボタンより前に金額が出ていない"
+    assert "いつでも解約できます" in h[i:j]
+
+
+def test_no_price_is_claimed_while_billing_is_off():
+    """試験公開のあいだは無料。金額を出すと嘘になる。"""
+    h = _client().post("/diagnose", data=FREE_INPUT).get_data(as_text=True)
+    i = h.index("契約の前に、つぶしておくこと")
+    j = h.index("この物件を詳しく診断する（PRO）")
+    assert "月額" not in h[i:j]
+
+
+def test_the_card_does_not_promise_a_softer_score():
+    """点数が甘くなると読まれると、採点そのものが信用されなくなる。"""
+    h = _client().post("/diagnose", data=FREE_INPUT).get_data(as_text=True)
+    i = h.index("契約の前に、つぶしておくこと")
+    assert "PROで採点が甘くなることはありません" in h[i:i + 1400]

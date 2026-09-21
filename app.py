@@ -1288,19 +1288,31 @@ BRAND_BAR
   </div>
 
   <div class="card" data-html2canvas-ignore style="border-color:#111">
-   <h2 style="margin-top:0">このまま詳細診断に進む（PRO）</h2>
-   <p class="muted" style="margin:6px 0 10px">
-    いまの診断は、{{handover_unknowns}}を
-    「未確認」として点数に入れていません。情報充足度は
-    <b>{{d.suff}}%</b> です。これらに答えると、その分だけ評価に反映されます。
-    <b>入力済みの内容はそのまま引き継がれます。</b>
-    答えられなかった項目は消えるのではなく、「仲介業者に聞くこと」になります。
-   </p>
+   <h2 style="margin-top:0">契約の前に、つぶしておくこと</h2>
+   <p style="margin:6px 0 10px">この物件は、<b>{{handover_unknowns}}</b>が
+    未確認のままです。PROでは、<b>この物件について</b>ここまで出します。</p>
+   <ul class="seen" style="margin:0">
+    <li><b>聞く</b><span><b>仲介業者に聞くことの一覧。</b>そのまま見せて
+     答えてもらえる形で出します。内見や商談に持っていけます。</span></li>
+    <li><b>読む</b><span><b>重要事項説明書の、どこを見るか。</b>契約の直前に
+     30ページ近いものを渡され、その場で読み上げられます。この物件で効く欄を、
+     <b>根拠の条文つき</b>で先に絞っておけます。</span></li>
+    <li><b>直す</b><span>答えが分かった項目は<b>点数に反映</b>されます
+     （いまの情報充足度は {{d.suff}}%）。答えられなかった項目は消えず、
+     「聞くこと」に回ります。</span></li>
+   </ul>
+   <p class="foot">入力済みの内容はそのまま引き継がれます。
+    点数の付け方は無料もPROも同じで、PROで採点が甘くなることはありません。</p>
+   {% if plan_price %}
+   <p style="margin:12px 0 0"><b>{{plan_price}}</b>
+    <span class="muted">／ いつでも解約できます。お申し込みには
+    メールアドレスでのログインが必要です。</span></p>
+   {% endif %}
    <form method="post" action="{{handover_action}}">
     {% for k, val in handover.items() %}
     <input type="hidden" name="{{k}}" value="{{val}}">
     {% endfor %}
-    <button type="submit">詳細診断に進む（{{handover_label}}）</button>
+    <button type="submit">この物件を詳しく診断する（PRO）</button>
    </form>
   </div>
   {% endif %}
@@ -1315,6 +1327,10 @@ BRAND_BAR
     <b>この物件の価格・面積・築年・借入条件は引き継がれます。</b><br>
     <a href="/sample/finance">どんな内容になるか、見本で見る</a>
    </p>
+   {% if plan_price %}
+   <p style="margin:12px 0 0"><b>{{plan_price}}</b>
+    <span class="muted">／ 上の詳細診断と同じPROに含まれます。</span></p>
+   {% endif %}
    <form method="post" action="/pro/finance_start">
     {% for k, val in finance_carry.items() %}
     <input type="hidden" name="{{k}}" value="{{val}}">
@@ -4861,6 +4877,11 @@ BRAND_BAR
   <p style="font-size:14px;margin:6px 0">PROでは、決済日と完成予定日から
    <b>つなぎ融資の利息</b>を計算し、<b>いつ・いくら手元から出ていくか</b>を
    時系列で出します。手付金のように、融資の前に現金で払うものも並べます。</p>
+  {% if plan_price %}
+  <p style="margin:12px 0 0"><b>{{plan_price}}</b>
+   <span class="muted">／ いつでも解約できます。お申し込みには
+   メールアドレスでのログインが必要です。</span></p>
+  {% endif %}
   <form method="post" action="/pro/land/start" style="margin-top:10px">
    {% for k, val in handover.items() %}
    <input type="hidden" name="{{k}}" value="{{val}}">
