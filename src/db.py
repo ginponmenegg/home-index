@@ -170,6 +170,7 @@ def schema_sql() -> list[str]:
         """CREATE TABLE IF NOT EXISTS observations (
               day TEXT NOT NULL,
               kind TEXT NOT NULL,
+              ptype TEXT,
               pref TEXT,
               city TEXT,
               city_code TEXT,
@@ -211,6 +212,8 @@ ADDED_COLUMNS = [
     # 解約を受け付けた日ではなく、使えなくなる日を持つ。
     # 「解約済みだが、まだ使える」という状態を画面に出すために要る。
     ("users", "plan_cancel_at", "TEXT"),
+    # 中古戸建と新築戸建では点数の出方が違う。まとめると読めない。
+    ("observations", "ptype", "TEXT"),
 ]
 
 

@@ -192,7 +192,7 @@ def test_the_csv_comes_out_readable(env):
     # Excel で開いたときに日本語が化けないよう、先頭に BOM を付ける
     assert text.startswith("﻿")
     head, first = text.lstrip("﻿").splitlines()[:2]
-    assert head.split(",")[:4] == ["day", "kind", "pref", "city"]
+    assert head.split(",")[:5] == ["day", "kind", "ptype", "pref", "city"]
     assert "小田原市" in first and "城山" in first
 
 
@@ -213,3 +213,63 @@ def test_the_input_screens_say_it_too(env):
     for url in ("/buy", "/mansion", "/land"):
         h = c.get(url).get_data(as_text=True)
         assert "町名まで" in h, url
+
+
+# ---- 見る画面 -------------------------------------------------------------
+
+def test_the_funnel_is_shown_as_steps(env):
+    """イベントの一覧表だけだと、毎回こちらで割り算することになる。"""
+    for name, n in (("diag_kodate", 10), ("plan_view", 4), ("pro_cta", 2),
+                    ("plan_confirm", 1), ("checkout", 1), ("pro_start", 0)):
+        if n:
+            env.app.metrics.bump(name, n)
+    h = env.app.app.test_client().get("/metrics?key=ひみつ").get_data(as_text=True)
+    import re
+    text = re.sub(r"<[^>]+>", " ", h)
+    assert "診断から決済まで" in text
+    for label in ("診断が出た", "プランの画面を見た", "PROの壁に当たった",
+                  "申込の最終確認へ", "決済画面へ進んだ", "契約が始まった"):
+        assert label in text, label
+    assert "40%" in text, "プラン画面への率（4/10）が出ていない"
+    assert "50%" in text, "壁に当たった率（2/4）が出ていない"
+
+
+def test_a_zero_denominator_does_not_blow_up(env):
+    """まだ1件も無いときに割らない。"""
+    h = env.app.app.test_client().get("/metrics?key=ひみつ")
+    assert h.status_code == 200
+    assert "診断から決済まで" in h.get_data(as_text=True)
+
+
+def test_the_page_summarises_what_was_diagnosed(env):
+    _diagnose(env, "/diagnose", HOUSE)
+    _diagnose(env, "/diagnose", dict(HOUSE, address="神奈川県小田原市栄町2-1"))
+    _diagnose(env, "/land_diagnose", LAND)
+    import re
+    h = env.app.app.test_client().get("/metrics?key=ひみつ").get_data(as_text=True)
+    text = re.sub(r"<[^>]+>", " ", h)
+    assert "診断された物件（3件）" in text
+    assert "小田原市" in text and "船橋市" in text
+    # 粗い種別の名前。保存の種別（chuko_kodate）とは別
+    assert "戸建" in text and "土地" in text
+    assert "物件 " not in text.split("種別")[1][:60], "名前が付いていない"
+    # 件数の少ない平均を、平均として読ませない
+    assert "件数と一緒に読んで" in text
+
+
+def test_the_property_type_is_kept_too(env):
+    """中古戸建と新築戸建では点数の出方が違う。まとめると読めない。"""
+    _diagnose(env, "/diagnose", HOUSE)
+    assert "ptype" in env.obs.COLUMNS
+    assert env.obs.rows()[0]["ptype"] == "chuko_kodate"
+
+
+def test_the_summary_can_be_narrowed_to_a_period(env):
+    """記事に使うとき「直近1年」のように期間を言えるように。"""
+    import datetime
+    _diagnose(env, "/diagnose", HOUSE)
+    old = (datetime.date.today() - datetime.timedelta(days=400)).isoformat()
+    env.db.run("INSERT INTO observations (day, kind, city, total_score)"
+               " VALUES (?, ?, ?, ?)", (old, "kodate", "むかし市", 50))
+    assert len(env.obs.by_city(days=30)) == 1
+    assert len(env.obs.by_city(days=None)) == 2

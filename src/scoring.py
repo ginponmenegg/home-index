@@ -238,14 +238,20 @@ def _shopping_score(shops):
         bits.append(f"大型商業施設{big.distance_m}m（{big.name or '名称不明'}）")
     else:
         big_raw = 0.35
-        bits.append("大型商業施設は OpenStreetMap では見つからず")
     # 日常：スーパーが徒歩圏にあるか
     if daily:
         daily_raw = _dist_score(daily.distance_m, 400, 700, 1200, 2000)
         bits.append(f"スーパー{daily.distance_m}m")
     else:
         daily_raw = 0.3
-        bits.append("スーパーは OpenStreetMap では見つからず")
+    # 両方とも無いときに同じ断りを2回並べない。OpenStreetMap に載って
+    # いないことは、存在しないことではない。
+    if not big and not daily:
+        bits.append("買い物施設は地図上で見つからず")
+    elif not daily:
+        bits.append("スーパーは地図上で見つからず")
+    elif not big:
+        bits.append("大型商業施設は地図上で見つからず")
     n = shops.count_within(1000)
     if n >= 3:
         bits.append(f"1km内に{n}店")
@@ -269,7 +275,7 @@ def _life_convenience(facility, shops):
             if facility.hospital_count_1km >= 5:
                 med = min(1.0, med + 0.05)
             parts["医療"] = med
-            bits.append(f"病院{hm}m・1km内{facility.hospital_count_1km}件")
+            bits.append(f"病院{hm}m")
 
         edu_vals = []
         sm = facility.nearest_school_m
@@ -279,9 +285,7 @@ def _life_convenience(facility, shops):
         pm = facility.nearest_preschool_m
         if pm is not None:
             edu_vals.append(_dist_score(pm, 400, 800, 1200, 2000))
-            bits.append(f"保育園・幼稚園{pm}m"
-                        + (f"・1km内{facility.preschool_count_1km}件"
-                           if facility.preschool_count_1km else ""))
+            bits.append(f"保育園・幼稚園{pm}m")
         if edu_vals:
             parts["教育"] = sum(edu_vals) / len(edu_vals)
 
@@ -295,7 +299,6 @@ def _life_convenience(facility, shops):
             pub_vals.append(_dist_score(hallm, 600, 1200, 2000, 3000))
         if facility.welfare_count_1km:
             pub_vals.append(min(1.0, 0.6 + 0.1 * facility.welfare_count_1km))
-            bits.append(f"福祉施設1km内{facility.welfare_count_1km}件")
         if pub_vals:
             parts["公共"] = sum(pub_vals) / len(pub_vals)
 
@@ -326,6 +329,10 @@ def _future_population_adj(change_pct):
     if change_pct >= -20:
         return -0.05, f"2050年に向けて人口{change_pct}%（減少）"
     return -0.10, f"2050年に向けて人口{change_pct}%（大きく減少）"
+
+
+# 理由文に並べる施設の数。全部並べると読めない長さになる。
+LIFE_BITS_SHOWN = 3
 
 
 def score_location(subj: SubjectProperty, use_district: Optional[str],
@@ -385,7 +392,13 @@ def score_location(subj: SubjectProperty, use_district: Optional[str],
         if shops is not None and getattr(shops, "checked", False):
             src.append("OpenStreetMap")
         suff = max(suff, 0.5 + 0.45 * coverage)
-        reason += "／" + "・".join(life_bits)
+        # 施設をすべて並べると、棒グラフの下の1行が99字になる（本番の
+        # 土地の結果で実際にそうなっていた）。近いものから3つまでにする。
+        # 件数は点数には使っていて、並べないだけ。
+        shown = life_bits[:LIFE_BITS_SHOWN]
+        if len(life_bits) > LIFE_BITS_SHOWN:
+            shown.append("ほか")
+        reason += "／" + "・".join(shown)
         # 施設ごとに並べると数が多くなるので、生活利便はまとめて1件にする。
         if life_raw >= 0.8:
             plus.append("周辺の生活利便施設が充実")

@@ -121,12 +121,14 @@ def record(kind: str, subject, diagnosis, enrichment=None,
             f"{c.name}:{c.points}" for c in (getattr(diagnosis, "categories",
                                                      None) or []))
         db.run(
-            "INSERT INTO observations (day, kind, pref, city, city_code,"
-            " district, price_yen, land_m2, building_m2, build_year,"
-            " station_min, use_district, total_score, grade, sufficiency,"
-            " risks, categories)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (_today().isoformat(), kind, pref, city, city_code, district,
+            "INSERT INTO observations (day, kind, ptype, pref, city,"
+            " city_code, district, price_yen, land_m2, building_m2,"
+            " build_year, station_min, use_district, total_score, grade,"
+            " sufficiency, risks, categories)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (_today().isoformat(), kind,
+             getattr(subject, "property_type", None),
+             pref, city, city_code, district,
              _num(getattr(subject, "price", None)),
              _num(getattr(subject, "land_area_m2", None)),
              _num(getattr(subject, "building_area_m2", None)
@@ -169,7 +171,7 @@ def purge() -> int:
     return 1
 
 
-COLUMNS = ("day", "kind", "pref", "city", "city_code", "district",
+COLUMNS = ("day", "kind", "ptype", "pref", "city", "city_code", "district",
            "price_yen", "land_m2", "building_m2", "build_year",
            "station_min", "use_district", "total_score", "grade",
            "sufficiency", "risks", "categories")
@@ -189,3 +191,51 @@ def count() -> int:
         return 0
     r = db.run("SELECT COUNT(*) AS n FROM observations", (), "one")
     return int(r["n"]) if r else 0
+
+
+# ---- 集計 ------------------------------------------------------------------
+# CSVを開かないと何も分からない、では見ない。よく見るものは画面に出す。
+# どれも日付で絞れるようにしてあるのは、記事に使うときに「直近1年」の
+# ように期間を言えるようにするため。
+
+def _since(days: Optional[int]) -> str:
+    if not days:
+        return "0000-01-01"
+    return (_today() - datetime.timedelta(days=int(days))).isoformat()
+
+
+def by_kind(days: Optional[int] = None):
+    """種別ごとの件数と平均点。"""
+    return db.run(
+        "SELECT kind, COUNT(*) AS n, AVG(total_score) AS avg_score,"
+        " AVG(sufficiency) AS avg_suff FROM observations"
+        " WHERE day >= ? GROUP BY kind ORDER BY n DESC",
+        (_since(days),), "all") or []
+
+
+def by_city(days: Optional[int] = None, limit: int = 12):
+    """市区町村ごとの件数と平均点。多い順。
+
+    件数が1件の市区町村でも隠さない。**平均を名乗れる数ではない**ので、
+    件数を必ず並べて出すこと。
+    """
+    return db.run(
+        "SELECT pref, city, COUNT(*) AS n, AVG(total_score) AS avg_score,"
+        " AVG(price_yen) AS avg_price FROM observations"
+        " WHERE day >= ? AND city IS NOT NULL"
+        " GROUP BY pref, city ORDER BY n DESC, city LIMIT ?",
+        (_since(days), int(limit)), "all") or []
+
+
+def common_risks(days: Optional[int] = None, limit: int = 10):
+    """よく出た注意項目。1行に「;」で複数入っているので、ここで開く。"""
+    rows = db.run("SELECT risks FROM observations"
+                  " WHERE day >= ? AND risks IS NOT NULL AND risks <> ''",
+                  (_since(days),), "all") or []
+    count = {}
+    for r in rows:
+        for name in str(r["risks"]).split(";"):
+            name = name.strip()
+            if name:
+                count[name] = count.get(name, 0) + 1
+    return sorted(count.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]

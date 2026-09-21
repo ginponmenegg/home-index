@@ -129,4 +129,6 @@ def test_shops_are_not_declared_absent_in_the_score_reason():
         os.path.abspath(__file__))), "src", "scoring.py"),
         encoding="utf-8").read()
     assert "は付近になし" not in src
-    assert "OpenStreetMap では見つからず" in src
+    # 棒グラフの下は要約の1行なので短くする。出典の断りは立地カードの
+    # 「商業施設は OpenStreetMap の範囲では見つかりませんでした」が担う。
+    assert "は地図上で見つからず" in src

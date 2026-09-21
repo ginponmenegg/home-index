@@ -698,6 +698,10 @@ def _did(name: str) -> None:
     metrics.bump(name)
 
 
+# 観測の種別。保存した診断の種別（chuko_kodate など）とは別の粗い分け方。
+_OBS_KIND_JA = {"kodate": "戸建", "mansion": "マンション", "tochi": "土地"}
+
+
 def _observe(kind, subject, res) -> None:
     """診断された物件を1行残す。**利用者を結びつける鍵は渡さない。**
 
@@ -3192,6 +3196,50 @@ def metrics_page():
     def rate(a, b):
         return f"{round(tot[a] / tot[b] * 100)}%" if tot[b] else "—"
 
+    # 診断から決済までの段。どこで切れているかは、並べないと読めない。
+    diag = tot["diag_kodate"] + tot["diag_mansion"] + tot["diag_land"]
+    steps = [("診断が出た", diag), ("プランの画面を見た", tot["plan_view"]),
+             ("PROの壁に当たった", tot["pro_cta"]),
+             ("申込の最終確認へ", tot["plan_confirm"]),
+             ("決済画面へ進んだ", tot["checkout"]),
+             ("契約が始まった", tot["pro_start"])]
+
+    def step_rows():
+        out = []
+        for i, (label, n) in enumerate(steps):
+            if i == 0:
+                pct = "—"
+            else:
+                prev = steps[i - 1][1]
+                pct = f"{round(n / prev * 100)}%" if prev else "—"
+            out.append(f'<tr><th class="rowlbl">{label}</th>'
+                       f'<td data-name="件数"><b>{n}</b></td>'
+                       f'<td data-name="前の段から">{pct}</td></tr>')
+        return "".join(out)
+
+    def _n(v, unit="", nd=0):
+        """集計の数字。Noneは「—」。平均は母数と一緒に出すこと。"""
+        if v is None:
+            return "—"
+        return f"{float(v):,.{nd}f}{unit}"
+
+    obs_total = observations.count()
+    kinds = "".join(
+        f'<tr><th class="rowlbl">{_OBS_KIND_JA.get(r["kind"], r["kind"])}</th>'
+        f'<td data-name="件数">{r["n"]}</td>'
+        f'<td data-name="平均点">{_n(r["avg_score"], "点", 1)}</td>'
+        f'<td data-name="平均の情報充足度">{_n(r["avg_suff"], "%", 0)}</td></tr>'
+        for r in observations.by_kind(days))
+    cities = "".join(
+        f'<tr><th class="rowlbl">{r["pref"] or ""}{r["city"]}</th>'
+        f'<td data-name="件数">{r["n"]}</td>'
+        f'<td data-name="平均点">{_n(r["avg_score"], "点", 1)}</td>'
+        f'<td data-name="平均価格">{_n((r["avg_price"] or 0) / 10000, "万円")}'
+        f'</td></tr>'
+        for r in observations.by_city(days))
+    risks = "・".join(f"{name} {n}件"
+                      for name, n in observations.common_risks(days)) or "—"
+
     body_html = f'''
 <div class="card">
  <h1>数字（直近{days}日）</h1>
@@ -3203,8 +3251,12 @@ def metrics_page():
   <span class="sub">差は、HTMLを取りに来ただけのものです。名乗らない巡回や
    調査スキャンは弾けないため、ここで見分けます。</span><br>
   <b>どこから来たか</b>　X {tot["ref_x"]}／Threads {tot["ref_threads"]}／
+  Instagram {tot["ref_instagram"]}／TikTok {tot["ref_tiktok"]}／
   検索 {tot["ref_search"]}／その他 {tot["ref_other"]}／
-  リンク元なし {tot["ref_none"]}
+  リンク元なし {tot["ref_none"]}<br>
+  <span class="sub">Instagram を Threads と分けて数え始めたのは
+   2026-09-18 です。それより前の Threads には Instagram が混ざっています。
+   </span>
  </div>
  <div class="note" style="margin:14px 0">
   <b>入力画面 → 診断</b>　{rate("diag_kodate", "view_buy")}（戸建）／
@@ -3219,6 +3271,34 @@ def metrics_page():
    "Renderのログで差出人ドメインの認証を確かめてください。"
    if tot["mail_failed"] else ""}
  </div>
+ <h2 style="margin:26px 0 0">診断から決済まで</h2>
+ <p class="sub" style="margin:0 0 4px">どこで切れているかを見る。
+  率は「ひとつ前の段から」です。</p>
+ <div class="tablewrap"><table class="cmp">
+  <thead><tr><th class="rowlbl">段</th><th>件数</th><th>前の段から</th></tr></thead>
+  <tbody>{step_rows()}</tbody>
+ </table></div>
+
+ <h2 style="margin:26px 0 0">診断された物件（{obs_total}件）</h2>
+ <p class="sub" style="margin:0 0 4px">町名まで記録しています。
+  利用者を結びつける情報は持っていません。
+  <a href="/metrics/data.csv?key={html.escape(request.args.get("key") or "")}">
+  CSVで書き出す</a></p>
+ <div class="tablewrap"><table class="cmp">
+  <thead><tr><th class="rowlbl">種別</th><th>件数</th><th>平均点</th>
+   <th>平均の情報充足度</th></tr></thead>
+  <tbody>{kinds or '<tr><td colspan="4">まだありません</td></tr>'}</tbody>
+ </table></div>
+ <div class="tablewrap" style="margin-top:10px"><table class="cmp">
+  <thead><tr><th class="rowlbl">市区町村</th><th>件数</th><th>平均点</th>
+   <th>平均価格</th></tr></thead>
+  <tbody>{cities or '<tr><td colspan="4">まだありません</td></tr>'}</tbody>
+ </table></div>
+ <p class="sub" style="margin:8px 0 0"><b>件数の少ない行の平均は、平均では
+  ありません。</b>必ず件数と一緒に読んでください。</p>
+ <p class="sub" style="margin:8px 0 0"><b>よく出た注意項目</b>　{risks}</p>
+
+ <h2 style="margin:26px 0 0">日ごと</h2>
  <div class="tablewrap"><table class="cmp">
   <thead><tr><th class="rowlbl">日付</th>{head}</tr></thead>
   <tbody><tr><th class="rowlbl">合計</th>{sums}</tr>{body}</tbody>

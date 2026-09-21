@@ -207,3 +207,82 @@ def test_the_house_result_does_not_print_raw_exceptions():
 def test_a_long_string_cannot_widen_the_page():
     """URLのような切れ目の無い文字列が入っても、横スクロールを出さない。"""
     assert "overflow-wrap:anywhere" in webapp._RESULT_CSS
+
+
+# ---- 棒グラフの下の1行 ----------------------------------------------------
+
+def test_the_location_reason_is_not_a_wall_of_facilities():
+    """本番の土地の結果で99字になっていた。
+
+        駅徒歩12分・用途:商業地域／大型商業施設は付近になし・スーパーは
+        付近になし・病院59m・1km内47件・学校206m・保育園・幼稚園77m・
+        1km内11件・図書館1754m・福祉施設1km内35件
+
+    戸建の他のカテゴリは12〜32字。ここだけ読めない長さだった。
+    件数は点数には使っていて、並べないだけ。
+    """
+    from src.models import SubjectProperty
+    from src.scoring import LIFE_BITS_SHOWN, score_location
+
+    class _F:
+        checked = True
+        nearest_hospital_m = 59
+        hospital_count_1km = 47
+        nearest_school_m = 206
+        nearest_preschool_m = 77
+        preschool_count_1km = 11
+        nearest_library_m = 1754
+        nearest_hall_m = None
+        welfare_count_1km = 35
+        nearest_station_m = None
+
+    class _S:
+        checked = True
+        nearest_big = None
+        nearest_daily = None
+
+        def count_within(self, m):
+            return 0
+
+    subj = SubjectProperty(property_type="chuko_kodate", price=21_000_000,
+                           address="x", station_walk_min=12)
+    c = score_location(subj, "商業地域", facility=_F(), shops=_S())
+    assert len(c.reason) < 60, f"{len(c.reason)}字: {c.reason}"
+    assert c.reason.count("・") <= LIFE_BITS_SHOWN + 2
+    # 同じ断りを2回並べない
+    assert c.reason.count("見つからず") == 1
+    # 並べきれなかったことは隠さない
+    assert "ほか" in c.reason
+    # 件数は点数には効いている（並べないだけ）
+    assert c.points > 0
+
+
+def test_a_short_facility_list_is_not_padded():
+    """3つ以下なら「ほか」は付けない。"""
+    from src.models import SubjectProperty
+    from src.scoring import score_location
+
+    class _F:
+        checked = True
+        nearest_hospital_m = 300
+        hospital_count_1km = 1
+        nearest_school_m = None
+        nearest_preschool_m = None
+        preschool_count_1km = 0
+        nearest_library_m = None
+        nearest_hall_m = None
+        welfare_count_1km = 0
+        nearest_station_m = None
+
+    class _S:
+        checked = True
+        nearest_big = None
+        nearest_daily = None
+
+        def count_within(self, m):
+            return 0
+
+    subj = SubjectProperty(property_type="chuko_kodate", price=21_000_000,
+                           address="x", station_walk_min=8)
+    c = score_location(subj, None, facility=_F(), shops=_S())
+    assert "ほか" not in c.reason, c.reason
