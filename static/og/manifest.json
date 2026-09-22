@@ -8,11 +8,20 @@
  "jiban-ekijoka-morido": {
   "title": "液状化と大規模盛土造成地は、浸水の色とは別に見る"
  },
+ "joho-jusokudo": {
+  "title": "情報充足度。調べていないことを、悪い点にも良い点にもしない"
+ },
  "jutaku-loan-koujo-1982": {
   "title": "中古の住宅ローン控除は、築年数ではなく1982年1月1日で分かれます"
  },
+ "kadochi-kenpeiritsu-shitei": {
+  "title": "角地だから建ぺい率＋10％、ではありません。指定が要ります"
+ },
  "keiryo-teppone-taiyo-nensu": {
   "title": "軽量鉄骨の耐用年数は19年か27年か。骨格材3mmで分かれます"
+ },
+ "kenpeiritsu-youto-chiiki": {
+  "title": "建ぺい率は、用途地域ごとに選べる値が決まっています"
  },
  "kinri-joushou-5nen-rule": {
   "title": "5年ルールが止めるのは返済額だけです。金利が1%上がったときの返済を試算しました"
@@ -52,6 +61,9 @@
  },
  "youto-chiiki-13-shurui": {
   "title": "用途地域は13種類。この診断では点数に入れていません"
+ },
+ "yudo-kyoju-menseki-suijun": {
+  "title": "4人家族で125㎡。誘導居住面積水準を、土地の採点に使っています"
  },
  "zenmen-douro-yousekiritsu": {
   "title": "指定容積率200%でも、前面道路が4mなら160%までです"
