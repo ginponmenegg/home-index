@@ -164,6 +164,49 @@ def test_the_sitemap_carries_the_guides():
         assert f"/guide/{g.slug}<" in h
 
 
+def test_the_sitemap_dates_each_article():
+    """lastmod が無いと、37個のURLが並んでいるだけになる。
+
+    どれが新しいのか伝わらないので、記事を足してサイトマップを出し直す
+    意味がほとんど無かった。記事は updated という本物の日付を持っている。
+    """
+    h = _client().get("/sitemap.xml").get_data(as_text=True)
+    for g in guides.GUIDES:
+        want = (f"<loc>http://localhost/guide/{g.slug}</loc>"
+                f"<lastmod>{g.updated}</lastmod>")
+        assert want in h, g.slug
+
+
+def test_the_index_is_dated_by_its_newest_article():
+    """記事が1本増えれば、一覧の中身も実際に変わる。だから嘘ではない。"""
+    h = _client().get("/sitemap.xml").get_data(as_text=True)
+    newest = max(g.updated for g in guides.GUIDES)
+    assert ("<loc>http://localhost/guide</loc>"
+            f"<lastmod>{newest}</lastmod>") in h
+
+
+def test_the_fixed_pages_carry_no_date():
+    """**最終デプロイ日は、そのページが変わった日ではない。**
+
+    毎回いまの日付を出すサイトマップは軽視される。本物の更新日を持って
+    いないURLには、何も書かないほうがよい。
+    """
+    h = _client().get("/sitemap.xml").get_data(as_text=True)
+    for path in ("/", "/buy", "/mansion", "/land", "/terms", "/privacy"):
+        assert f"<loc>http://localhost{path}</loc></url>" in h, path
+    assert h.count("<lastmod>") == len(guides.GUIDES) + 1
+
+
+def test_the_dates_are_the_format_the_protocol_wants():
+    """W3C Datetime。YYYY-MM-DD なら仕様に合う。"""
+    h = _client().get("/sitemap.xml").get_data(as_text=True)
+    found = re.findall(r"<lastmod>(.*?)</lastmod>", h)
+    assert found
+    for d in found:
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", d), d
+        datetime.date.fromisoformat(d)
+
+
 def test_the_landing_page_links_to_every_guide():
     """トップから各記事へ内部リンクを張る。フッターの一行だけでは、
     書いた記事に辿り着けない。記事が増えたら自動で並ぶこと。"""

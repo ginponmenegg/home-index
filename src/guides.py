@@ -2377,6 +2377,18 @@ def paths() -> List[str]:
     return ["/guide"] + [f"/guide/{g.slug}" for g in all_guides()]
 
 
+def lastmod() -> dict:
+    """サイトマップの lastmod。記事だけが持つ。
+
+    一覧（/guide）は、いちばん新しい記事の更新日にする。記事が1本増えれば
+    一覧の中身も実際に変わるので、これは嘘ではない。固定ページは持たない。
+    """
+    out = {f"/guide/{g.slug}": g.updated for g in GUIDES}
+    if out:
+        out["/guide"] = max(g.updated for g in GUIDES)
+    return out
+
+
 # ---- 分類 ------------------------------------------------------------------
 # 16本が公開順に一列で並んでいるだけだった。増えるほど、読みたいものに
 # 辿り着けなくなる（診断の点数を知りたい人と、災害の区域を調べたい人は、

@@ -3352,10 +3352,23 @@ def robots():
 
 @app.route("/sitemap.xml")
 def sitemap():
-    """lastmod は書かない。毎回今日の日付にすると軽視され、固定値を書くと嘘になる。"""
+    """lastmod は、本物の更新日があるURLにだけ書く。
+
+    毎回今日の日付を出すと軽視され、固定値を書くと嘘になる。だから長く
+    書いていなかった。記事は `updated` という本物の日付を持っているので、
+    そこだけ出す。**固定ページには付けない。**最終デプロイ日は、その
+    ページが変わった日ではない。
+
+    記事が37URL中24を占めるので、これで「どれが新しいか」は伝わる。
+    """
     from flask import Response
     base = request.url_root.rstrip("/")
-    urls = "".join(f"<url><loc>{base}{p}</loc></url>" for p in SITEMAP_PATHS)
+    mod = guides.lastmod()
+    urls = "".join(
+        f"<url><loc>{base}{p}</loc>"
+        + (f"<lastmod>{mod[p]}</lastmod>" if p in mod else "")
+        + "</url>"
+        for p in SITEMAP_PATHS)
     xml = ('<?xml version="1.0" encoding="UTF-8"?>'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
            f"{urls}</urlset>")
