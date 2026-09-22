@@ -4735,8 +4735,17 @@ BRAND_BAR
   {% if cap.max_total_floor_m2 %}
    <p class="big">延床の上限 {{cap.floor_m2}}㎡<span class="muted"
      style="font-size:15px;font-weight:400">（{{cap.floor_tsubo}}坪）</span></p>
-   <p class="muted">{{s.household}}人世帯の誘導居住面積水準は {{cap.guided}}㎡です
-    （国土交通省・住生活基本計画）。</p>
+   <p class="muted">{{s.household}}人世帯{% if s.household_assumed %}
+    （世帯人数の入力が無いため4人として計算）{% endif %}の誘導居住面積水準
+    （一般型）は {{cap.guided}}㎡です。住生活基本計画（全国計画）別紙3、
+    令和3年3月19日閣議決定によります。令和8年3月27日の新しい計画では
+    この別紙が無くなりましたが、達成率は指標として今も測られています。
+    <a href="/guide/yudo-kyoju-menseki-suijun">誘導居住面積水準とは</a></p>
+   {% if s.household > 1 %}
+   <p class="muted">お子さんの年齢による人数の割引（3歳未満は0.25人など）は、
+    年齢を伺っていないため<b>反映していません</b>。小さいお子さんがいる場合、
+    実際の水準はこれより小さくなります。</p>
+   {% endif %}
    <div class="kv">
     <div><b>{% if cap.coverage_relaxed %}建ぺい率（緩和後）{% else %}指定建ぺい率{% endif %}</b>{{cap.coverage or "—"}}%{% if cap.coverage_relaxed %}
      <span class="muted" style="font-size:11px">指定{{cap.designated_coverage}}%</span>{% endif %}</div>
@@ -5380,7 +5389,10 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
                 condition_attached=(subject.building_condition == "attached"),
                 budget=(man(subject.building_budget)
                         if subject.building_budget else None),
-                household=household, road_width=subject.road_width_m,
+                household=household,
+                # 4人は既定値。前提を隠さないので、既定を使ったことを書く。
+                household_assumed=not subject.household_size,
+                road_width=subject.road_width_m,
                 specs=" ・ ".join(bits))
 
     cap_ctx = dict(

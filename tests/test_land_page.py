@@ -318,3 +318,51 @@ def test_the_unit_survives_the_edit_button(client):
                     ).get_data(as_text=True)
     assert 'value="50"' in h
     assert '"tsubo" selected' in h
+# ---- 誘導居住面積水準を、どの計画の数字として出すか ------------------------
+
+def test_the_screen_names_which_plan_the_standard_came_from(client):
+    """「国土交通省・住生活基本計画」とだけ書いてあった。
+
+    令和8年3月27日に新しい全国計画が閣議決定され、誘導居住面積水準と
+    最低居住面積水準の**別紙が無くなっている**。どの計画の数字か書いて
+    いないと、いまの計画に載っているように読める。
+    """
+    h = _post(client)
+    assert "令和3年3月19日" in h, "どの計画の別紙か書いていない"
+    assert "別紙3" in h
+    assert "令和8年3月27日の新しい計画では" in h
+    assert "一般型" in h, "都市居住型（4人95㎡）と区別していない"
+    assert 'href="/guide/yudo-kyoju-menseki-suijun"' in h
+
+
+def test_the_screen_says_when_four_people_is_a_default(client):
+    """land_scoring.DEFAULT_HOUSEHOLD のコメントが、結果画面に明記する
+    ことと言っている。実際には書いていなかった。
+    """
+    h = _post(client, household="")
+    assert "4人世帯" in h
+    assert "世帯人数の入力が無いため4人として計算" in h
+
+
+def test_a_household_that_was_entered_is_not_called_a_guess(client):
+    h = _post(client, household="3")
+    assert "3人世帯" in h
+    assert "世帯人数の入力が無いため" not in h
+
+
+def test_the_screen_admits_the_child_discount_is_not_applied(client):
+    """3歳未満0.25人・3歳以上6歳未満0.5人・6歳以上10歳未満0.75人。
+
+    年齢を聞いていないので実装していない。小さい子のいる家庭には、
+    実際より厳しい水準を当てていることになる。
+    """
+    h = _post(client, household="4")
+    assert "3歳未満は0.25人" in h
+    assert "反映していません" in h
+
+
+def test_a_single_person_is_not_told_about_the_child_discount(client):
+    """単身者は55㎡の固定。割引の話はそもそも関係がない。"""
+    h = _post(client, household="1")
+    assert "1人世帯" in h
+    assert "3歳未満は0.25人" not in h
