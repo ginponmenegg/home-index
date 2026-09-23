@@ -1348,7 +1348,7 @@ BRAND_BAR
    </div>
    {% endif %}
   {% else %}
-   <p class="muted">類似成約が不足し価格評価できませんでした（情報不足）。</p>
+   <p class="muted" data-price="none">{{p.why|safe}}</p>
   {% endif %}
     {% endif %}
     {% if cat.name == "立地" and enr %}
@@ -3563,8 +3563,11 @@ _SAMPLE_CACHE = {"html": None, "at": 0.0}
 _SAMPLE_TTL = 6 * 60 * 60
 # 外部APIが一時的に落ちているときの結果を、6時間固定してしまわないための印。
 # SNSから来た人が最初に開く画面なので、痩せた結果を焼き付けると影響が長い。
-# 画面に出している文言そのものを使う（変えたら tests/test_sample.py が落ちる）。
-_PRICE_FAILED = "類似成約が不足し価格評価できませんでした"
+#
+# 以前は画面の文言そのものを印にしていた。**理由の文章は状況で変わる**
+# （市区町村コードが取れない／政令市で区が分からない／本当に事例が無い）
+# ので、文言に印を兼ねさせると書き直すたびに判定が壊れる。属性を印にする。
+_PRICE_FAILED = 'data-price="none"'
 
 
 @app.route("/sample")
@@ -3739,6 +3742,25 @@ def _mark_foldable(cats, foldable):
     return cats
 
 
+def _price_why(subject) -> str:
+    """価格を出せなかった理由。**「不足」で片づけない。**
+
+    取りに行っていないのに「類似成約が不足」と書くのは嘘になる。実際に
+    多いのは、住所から市区町村コードが決まらず成約データを1件も取得して
+    いない場合と、政令指定都市で区が分からない場合の2つ。
+    """
+    from src.citycode import is_designated_city
+    code = getattr(subject, "municipality_code", None)
+    if not code:
+        return ("住所から市区町村を特定できなかったため、成約データを"
+                "取得していません。<b>都道府県から入力</b>すると改善します。")
+    if is_designated_city(code):
+        return ("政令指定都市は<b>区まで入力</b>が必要です"
+                "（例：札幌市中央区）。成約データが市の単位では公開されて"
+                "いないため、区が分からないと1件も取得できません。")
+    return "近隣に、条件の近い成約が見つかりませんでした。"
+
+
 def _saying(d):
     """結果の一行目。**新しい判断を足さない。**
 
@@ -3814,6 +3836,7 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
                          price=man(t.trade_price),
                          unit=(f"{unit:,}円/㎡" if unit else "—")))
     price_ctx = dict(has=bool(p and p.verdict != "判定不可"), same=same,
+                     why=_price_why(subject),
                      same_label=(f"{subject.district_name}・{subject.build_year}年築"
                                  if same else ""))
     if price_ctx["has"]:
