@@ -3999,7 +3999,9 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
         # どの行を畳めるか。**中に入れるものが無い行は畳まない。**空の箱を
         # 開かせると、押した人が損をする。「詳しく」の札が出ている行だけが
         # 開く形にすると、押せる場所が一目で分かる。
-        cats=_mark_foldable(cats, {"価格": bool(price_ctx.get("has")),
+        # 価格はいつでも開く。**出せなかったときこそ理由が要る。**
+        # has で絞っていたため、理由を書いた場所ごと描かれていなかった。
+        cats=_mark_foldable(cats, {"価格": True,
                                    "立地": bool(enr), "資金": bool(loan)}),
         warnings=_public_warnings(res.warnings),
         enr=enr, ring_circ=round(circ, 1), ring_off=ring_off,

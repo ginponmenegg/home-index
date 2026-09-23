@@ -166,7 +166,8 @@ def score_price(price_a: Optional[PriceAnalysis]) -> CategoryScore:
     w = WEIGHTS["価格"]
     if not price_a or price_a.verdict == "判定不可":
         return CategoryScore("価格", w, 0.5, w * 0.5, 0.2,
-                             "類似成約が不足し価格評価できず", ["reinfolib:XIT001"])
+                             ("価格を評価できませんでした（理由は下）"),
+                             ["reinfolib:XIT001"])
     v = price_a.verdict
     d = price_a.deviation_pct or 0.0
     if v == "割安の可能性":

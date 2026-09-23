@@ -154,11 +154,6 @@ class CityCodeResolver:
             district = m
         return best["id"], (best.get("full") or best["name"]), district
 
-
-def is_designated_city(code: Optional[str]) -> bool:
-    """政令指定都市の「市」のコードか。区まで要る、という意味。"""
-    return bool(code) and code in DESIGNATED_CITIES
-
     def info(self, code: str) -> Tuple[Optional[str], Optional[str]]:
         """市区町村コード → (都道府県名, 市区町村名)。"""
         if not code or len(code) < 2:
@@ -169,6 +164,11 @@ def is_designated_city(code: Optional[str]) -> bool:
             if c["id"] == code:
                 return pref_name, c["name"]
         return pref_name, None
+
+
+def is_designated_city(code: Optional[str]) -> bool:
+    """政令指定都市の「市」のコードか。区まで要る、という意味。"""
+    return bool(code) and code in DESIGNATED_CITIES
 
 
 def _leading_district(after: str) -> Optional[str]:

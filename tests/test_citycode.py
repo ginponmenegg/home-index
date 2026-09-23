@@ -149,3 +149,35 @@ def test_the_marker_for_a_thin_result_is_not_a_sentence():
     """文章を印にすると、書き直すたびに判定が壊れる。"""
     assert webapp._PRICE_FAILED == 'data-price="none"'
     assert webapp._PRICE_FAILED in webapp.RESULT
+
+
+# ---- クラスの形が崩れていないこと ------------------------------------------
+
+def test_the_resolver_still_has_every_method():
+    """**関数をクラスの途中に差し込んで、後ろのメソッドを外に出した。**
+
+    import は通り、テストも通り、本番で初めて落ちた。呼ばれるのが
+    「取引が1件以上あるとき」だけだったので、コードが引けない間は
+    この道を通らなかった。形そのものを見る。
+    """
+    for name in ("_load_disk", "_save_disk", "_cities",
+                 "resolve_from_address", "info"):
+        assert callable(getattr(citycode.CityCodeResolver, name, None)), name
+
+
+def test_info_returns_the_prefecture_and_city():
+    r = citycode.CityCodeResolver(None)
+    assert r.info("12204") == ("千葉県", "船橋市")
+    assert r.info("01101") == ("北海道", "中央区")
+    assert r.info("") == (None, None)
+
+
+def test_the_distance_step_can_call_info():
+    """_geocode_districts が info() を呼ぶ。ここが落ちて /sample が500になった。"""
+    import inspect
+
+    from src import pipeline
+    src = inspect.getsource(pipeline._geocode_districts)
+    assert ".info(" in src
+    r = citycode.CityCodeResolver(None)
+    assert r.info("12204")[1], "呼べる形になっていない"
