@@ -181,3 +181,14 @@ def test_the_distance_step_can_call_info():
     assert ".info(" in src
     r = citycode.CityCodeResolver(None)
     assert r.info("12204")[1], "呼べる形になっていない"
+
+
+def test_health_reports_whether_the_table_loaded():
+    """外から確かめられるようにする。本番で空になったとき、切り分けに
+    時間がかかった。**先頭の ok は死活監視が見ているので外さない。**
+    """
+    h = webapp.app.test_client().get("/healthz")
+    assert h.status_code == 200
+    body = h.get_data(as_text=True)
+    assert body.startswith("ok"), "UptimeRobot が ok で見ている"
+    assert "cities=47" in body

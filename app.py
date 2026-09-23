@@ -945,7 +945,7 @@ BRAND_BAR
    </details>
   </details>
 
-  <button type="submit">この物件を診断する</button>
+  <button type="submit">この物件を診断する</button>
   <p class="hint" style="margin:10px 0 0">診断された物件は、サービスの改善のために<b>町名まで</b>を記録します（丁目・番地、世帯年収・頭金は記録しません）。<a href="/privacy">くわしく</a></p>
   <div class="hint" style="text-align:center;margin-top:8px">押したあと、公的データを集めるのに10〜30秒ほどかかります（混み合うときは1分ほど）</div>
  </form>
@@ -2619,7 +2619,15 @@ def _catcolor(raw):
 
 @app.route("/healthz")
 def healthz():
-    return "ok", 200
+    """死活監視。**先頭は必ず ok**（UptimeRobot が文字列で見ている）。
+
+    市区町村コードの表が読めているかを添える。この表が空になると住所を
+    解決できず、成約データを1件も取りに行かないまま「価格を評価できま
+    せんでした」と出る。本番でそうなっていたことがあり、外から確かめる
+    手段が無くて原因の切り分けに時間がかかった。
+    """
+    from src.citycode import BUNDLED_CITIES
+    return f"ok cities={len(BUNDLED_CITIES)}", 200
 
 
 _BILLING_TERMS = ("""<h2>第7条（有料プラン）</h2>
@@ -4227,7 +4235,7 @@ BRAND_BAR
     <div class="hint">未入力は35年</div></div>
   </div>
 
-  <button type="submit">このマンションを診断する</button>
+  <button type="submit">このマンションを診断する</button>
   <p class="hint" style="margin:10px 0 0">診断された物件は、サービスの改善のために<b>町名まで</b>を記録します（丁目・番地、世帯年収・頭金は記録しません）。<a href="/privacy">くわしく</a></p>
   <div class="hint">診断結果は公的データにもとづく推定です。契約の判断は専門家の確認を前提としてください。</div>
  </form>
@@ -4660,7 +4668,7 @@ BRAND_BAR
    <div></div>
   </div>
 
-  <button type="submit">この土地を診断する</button>
+  <button type="submit">この土地を診断する</button>
   <p class="hint" style="margin:10px 0 0">診断された物件は、サービスの改善のために<b>町名まで</b>を記録します（丁目・番地、世帯年収・頭金は記録しません）。<a href="/privacy">くわしく</a></p>
   <div class="hint">押したあと、公的データを集めるのに10〜30秒ほどかかります。
    診断結果は公的データにもとづく推定です。契約の判断は専門家の確認を
