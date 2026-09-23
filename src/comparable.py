@@ -7,6 +7,7 @@ XIT001 には緯度経度が無いため、位置は「市区町村コード＋�
 from __future__ import annotations
 from typing import List, Optional, Dict
 from .models import SubjectProperty, Transaction, Comparable
+from .citycode import same_town
 from .config import CONFIG
 
 # ---- 重み・ルール（config.json で上書き可能） ----
@@ -66,9 +67,8 @@ def _location_similarity(subj: SubjectProperty, txn: Transaction) -> float:
     if subj.municipality_code and txn.municipality_code:
         if subj.municipality_code != txn.municipality_code:
             return 0.0  # 別の市区町村は対象外
-    # 同一町名は最優先
-    if subj.district_name and txn.district_name and \
-            subj.district_name == txn.district_name:
+    # 同一町名は最優先。表記のゆれは吸収する（「北一条西」＝「北１条西」）
+    if same_town(subj.district_name, txn.district_name):
         return 1.0
     # 実距離が分かる場合は距離で評価（近いほど高い）
     dm = txn.distance_m
@@ -141,10 +141,9 @@ def extract_comparables(subj: SubjectProperty, txns: List[Transaction],
         if newbuild_only and not is_newbuild_txn(t):
             continue
         # 地理的範囲：同町 or 近接（実距離）に限定。距離が判明していて範囲外なら除外。
-        same_town = bool(subj.district_name and t.district_name
-                         and subj.district_name == t.district_name)
-        if radius_m is not None and not same_town and t.distance_m is not None \
-                and t.distance_m > radius_m:
+        in_same_town = same_town(subj.district_name, t.district_name)
+        if radius_m is not None and not in_same_town \
+                and t.distance_m is not None and t.distance_m > radius_m:
             continue
         # 築年が離れすぎた事例を除外（新築査定時はnewbuild条件が優先されるので緩和）
         if (not newbuild_only and max_year_gap is not None and subj.build_year

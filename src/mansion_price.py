@@ -12,6 +12,7 @@ price_analysis.py と同じで、集計の道具もそちらから借りてい�
 from __future__ import annotations
 from typing import List, Optional
 
+from .citycode import same_town
 from .models import MansionSubject, Transaction, Comparable, PriceAnalysis
 from .config import CONFIG
 # 集計の道具は戸建版と共有する（重複させると片方だけ直す事故が起きる）
@@ -90,7 +91,7 @@ def _location_similarity(subj: MansionSubject, t: Transaction,
             and subj.municipality_code != t.municipality_code:
         return 0.0
     if subj.district_name and t.district_name \
-            and subj.district_name == t.district_name:
+            and same_town(subj.district_name, t.district_name):
         return 1.0
     if t.distance_m is not None:
         if radius_m and t.distance_m > radius_m:
@@ -166,7 +167,7 @@ def same_building_candidates(subj: MansionSubject,
     if not subj.district_name or not subj.build_year:
         return []
     out = [c for c in comparables
-           if c.txn.district_name == subj.district_name
+           if same_town(c.txn.district_name, subj.district_name)
            and c.txn.build_year == subj.build_year]
     out.sort(key=lambda c: c.similarity_score, reverse=True)
     return out

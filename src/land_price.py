@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from .citycode import same_town
 from .models import Transaction
 
 LAND_TYPE = "宅地(土地)"
@@ -73,7 +74,7 @@ def analyze_land_market(txns: List[Transaction],
         m.notes.append("近隣の土地取引が見つかりませんでした")
         return m
 
-    same = [t for t in land if district_name and t.district_name == district_name]
+    same = [t for t in land if same_town(district_name, t.district_name)]
     if len(same) >= MIN_SAMPLES:
         use, m.district = same, district_name
     else:
@@ -123,7 +124,7 @@ def add_neighbourhood_traits(m: LandMarket, txns: List[Transaction],
     """
     land = [t for t in txns if is_land_txn(t)]
     if district_name:
-        same = [t for t in land if t.district_name == district_name]
+        same = [t for t in land if same_town(district_name, t.district_name)]
         if len(same) >= MIN_SAMPLES:
             land = same
     if len(land) < MIN_SAMPLES:
@@ -243,7 +244,7 @@ def analyze_matched_market(txns: List[Transaction], subj: dict,
     m = MatchedMarket()
     land = [t for t in txns if is_land_txn(t) and t.trade_price
             and t.land_area_m2 and t.land_area_m2 > 0]
-    same = [t for t in land if district_name and t.district_name == district_name]
+    same = [t for t in land if same_town(district_name, t.district_name)]
     pool = same if len(same) >= MIN_SAMPLES else land
     m.pool = len(pool)
     if m.pool < MIN_SAMPLES:

@@ -171,10 +171,63 @@ def is_designated_city(code: Optional[str]) -> bool:
     return bool(code) and code in DESIGNATED_CITIES
 
 
+# 町名の表記ゆれ。**両側に同じ変換をかけて比べる。**
+#
+# 実データで測ったときに出たもの。
+#   住所「北海道札幌市中央区北一条西2丁目」→ 切り出し「北一条西」
+#   成約データ側の町名                    →       「北１条西」
+# 漢数字と全角アラビア数字で書き分けられていて、一致しない。同じ町の
+# 成約を「別の町」として扱うため、札幌の例では comps が0件になり
+# 判定不可になっていた（直すと「概ね適正」が出る）。
+#
+# 「神宮前一丁目」のように丁目が町名に残るものもある（漢数字は
+# 「数字が始まる前まで」で切れない）。成約データ側は「神宮前」。
+#
+# 変換で「四谷」が「4谷」になるが、**両側に同じ変換をかけるので
+# 一致は壊れない。**別々の町が同じ形になる危険はごく小さい。
+_KANJI_DIGITS = {"〇": 0, "一": 1, "二": 2, "三": 3, "四": 4,
+                 "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+
+
+def _kanji_run_to_int(run: str) -> str:
+    if "十" not in run:
+        return "".join(str(_KANJI_DIGITS[c]) for c in run)
+    head, _, tail = run.partition("十")
+    tens = _KANJI_DIGITS[head] if head else 1
+    ones = _KANJI_DIGITS[tail] if tail else 0
+    return str(tens * 10 + ones)
+
+
+def normalize_town(name: Optional[str]) -> str:
+    """町名を突き合わせ用の形にする。表示には使わない。"""
+    import re
+    import unicodedata
+    if not name:
+        return ""
+    s = unicodedata.normalize("NFKC", str(name)).strip()   # 全角→半角
+    s = re.sub(r"^(大字|字)", "", s)
+    s = re.sub(r"[〇一二三四五六七八九十]+",
+               lambda m: _kanji_run_to_int(m.group(0)), s)
+    s = re.sub(r"\d+丁目$", "", s)
+    s = s.replace(" ", "").replace("　", "")
+    return s
+
+
+def same_town(a: Optional[str], b: Optional[str]) -> bool:
+    """同じ町か。表記のゆれを吸収して比べる。"""
+    na, nb = normalize_town(a), normalize_town(b)
+    return bool(na) and na == nb
+
+
 def _leading_district(after: str) -> Optional[str]:
     import re
-    # 市区町村名の後ろの、数字が始まる前までの漢字/かなを町名とみなす
+    # 市区町村名の後ろの、数字が始まる前までの漢字/かなを町名とみなす。
+    # 漢数字は「数字」で止まらないので、丁目が付いてきたら落とす
+    # （「神宮前一丁目」→「神宮前」）。表示にも使うので、ここでは
+    # 数字の表記は変えない。
     m = re.match(r"[\s　]*([一-龥ぁ-んァ-ヶーヶ々]+)", after or "")
-    if m:
-        return m.group(1)[:10]
-    return None
+    if not m:
+        return None
+    town = m.group(1)[:10]
+    town = re.sub(r"[〇一二三四五六七八九十]+丁目$", "", town)
+    return town or None

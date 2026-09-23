@@ -192,3 +192,58 @@ def test_health_reports_whether_the_table_loaded():
     body = h.get_data(as_text=True)
     assert body.startswith("ok"), "UptimeRobot が ok で見ている"
     assert "cities=47" in body
+
+
+# ---- 町名の表記ゆれ --------------------------------------------------------
+# 実データで測って出たもの。
+#   住所「北海道札幌市中央区北一条西2丁目」→ 切り出し「北一条西」
+#   成約データ側                        →       「北１条西」
+# 漢数字と全角アラビア数字で書き分けられていて、一致しなかった。同じ町の
+# 成約を「別の町」として扱うため、この住所は comps が0件＝判定不可だった。
+# 直すと「概ね適正」が出る。12住所で測って、一致8件→10件。
+
+@pytest.mark.parametrize("a,b", [
+    ("北一条西", "北１条西"),          # 漢数字 と 全角アラビア
+    ("北十条西", "北１０条西"),
+    ("神宮前一丁目", "神宮前"),         # 丁目が町名に残る
+    ("前原西", "前原西"),
+    ("大字甘地", "甘地"),
+    ("四谷三栄町", "四谷三栄町"),       # 変換しても両側同じなら壊れない
+])
+def test_the_same_town_written_differently_is_the_same_town(a, b):
+    assert citycode.same_town(a, b) is True
+
+
+@pytest.mark.parametrize("a,b", [
+    ("経堂", "梅ヶ丘"),
+    ("一番町", "十番町"),              # 1番町 と 10番町。混ぜない
+    ("北一条西", "北一条東"),
+    ("前原西", ""),
+    (None, "前原西"),
+])
+def test_different_towns_stay_different(a, b):
+    assert citycode.same_town(a, b) is False
+
+
+def test_the_trailing_chome_is_dropped_when_it_is_in_kanji():
+    """「数字が始まる前まで」で切ると、漢数字の丁目が町名に残る。"""
+    assert citycode._leading_district("神宮前一丁目1番") == "神宮前"
+    assert citycode._leading_district("経堂1丁目") == "経堂"
+    assert citycode._leading_district("北一条西2丁目") == "北一条西"
+    # 町名そのものの漢数字は残す（表示に使うので）
+    assert citycode._leading_district("四谷三栄町11-4") == "四谷三栄町"
+    assert citycode._leading_district("一番町1丁目") == "一番町"
+
+
+def test_no_module_compares_town_names_raw():
+    """**両側に同じ変換をかけないと意味がない。**1か所でも生の == が
+    残っていると、そこだけ表記ゆれを拾えない。
+    """
+    import glob
+    bad = []
+    for path in glob.glob(os.path.join(ROOT, "src", "*.py")):
+        with open(path, encoding="utf-8") as f:
+            for i, line in enumerate(f, 1):
+                if "district_name ==" in line or "== district_name" in line:
+                    bad.append(f"{os.path.basename(path)}:{i}")
+    assert not bad, "生の比較が残っている: " + ", ".join(bad)
