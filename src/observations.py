@@ -178,12 +178,23 @@ COLUMNS = ("day", "kind", "ptype", "pref", "city", "city_code", "district",
 
 
 def rows(limit: int = 50000):
-    """新しい順に返す。書き出し用。"""
+    """新しい順に返す。書き出し用。
+
+    **rowid は sqlite にしかない。**本番は PostgreSQL なので、ここに書くと
+    手元のテストは全部通ったまま本番だけ500になる（実際になった）。
+    テストが sqlite で走る以上、走らせて気づくことはできない。
+
+    この表は主キーを持たない。だから同じ日の中の並び順は、そもそも
+    決められない。決められないものを決めたふりにせず、日付のあとは
+    中身で並べる。COALESCE を挟むのは、NULL の並び順が sqlite と
+    postgres で逆になるため（前に来るか、後ろに来るか）。
+    """
     if not db.enabled():
         return []
     return db.run(
         f"SELECT {', '.join(COLUMNS)} FROM observations"
-        " ORDER BY day DESC, rowid DESC LIMIT ?", (int(limit),), "all") or []
+        " ORDER BY day DESC, COALESCE(pref, ''), COALESCE(city, ''),"
+        " COALESCE(district, ''), kind LIMIT ?", (int(limit),), "all") or []
 
 
 def count() -> int:
