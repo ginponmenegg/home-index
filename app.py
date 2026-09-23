@@ -1158,12 +1158,15 @@ CARD_CSS_PLACEHOLDER
  /* 畳む行。**畳んであることを記号と言葉の両方で出す。**記号だけだと
     気づかれないまま、下の説明が読まれずに終わる。 */
  .rows{margin-top:12px}
- details.row{background:var(--card);border-radius:16px;margin-top:8px;
+ .rows .rowsttl{margin:22px 4px 2px}
+ .row{background:var(--card);border-radius:16px;margin-top:8px;
   box-shadow:0 1px 2px rgba(16,24,40,.04),0 10px 26px -16px rgba(16,24,40,.2);
   overflow:hidden}
- details.row>summary{list-style:none;cursor:pointer;padding:14px 16px;
-  display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;
-  align-items:center;-webkit-tap-highlight-color:transparent}
+ /* 開く行と開かない行で、中身の並びは同じにする（Jinjaのマクロで共通化）。 */
+ .rowgrid{padding:14px 16px;display:grid;
+  grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center}
+ details.row>summary{list-style:none;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
  details.row>summary::-webkit-details-marker{display:none}
  details.row>summary:active{background:#f7f9fb}
  .rname{font-weight:700;font-size:15px;min-width:3.6em}
@@ -1173,6 +1176,7 @@ CARD_CSS_PLACEHOLDER
  .rwhy{grid-column:1/-1;font-size:13px;color:var(--sub);line-height:1.7;
   margin-top:2px}
  .rbody{padding:2px 16px 18px;border-top:1px solid #f2f4f7;margin-top:6px}
+ .rbody h2{margin:14px 0 10px}
  .more{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--sub);
   font-weight:600;white-space:nowrap}
  .chev{width:8px;height:8px;border-right:2px solid #aab2bb;
@@ -1285,7 +1289,35 @@ BRAND_BAR
  </div>
  {% endif %}
 
+
+
+
+
+{% macro rowhead(cat) %}
+   <span class="rname">{{cat.name}}</span>
+   <span class="rbar"><span style="width:{{cat.pct}}%;background:{{cat.color}}"></span></span>
+   <span class="rpts">{{cat.points}} / {{cat.weight}}</span>
+   {% if cat.fold %}<span class="more"><span class="lbl">詳しく</span><i class="chev"></i></span>
+   {% else %}<span></span>{% endif %}
+   <span class="rwhy">{{cat.reason}}</span>
+{% endmacro %}
+ {% if pro %}
  <div class="card">
+  <div class="banner">
+   <b>PRO診断：情報充足度 {{pro.free_suff}}% → {{pro.suff}}%</b>
+   （総合 {{pro.free_total}}点 → {{pro.total}}点／{{"%+d"|format(pro.diff)}}点）<br>
+   <span class="muted">点数が動いたのは、無料診断では評価に入れていなかった項目に回答があったためです。推定価格レンジは無料診断と同じ計算です。</span>
+  </div>
+ </div>
+ {% endif %}
+ <div class="rows">
+  <h2 class="rowsttl">スコア内訳</h2>
+  {% for cat in cats %}
+  {% if cat.fold %}
+  <details class="row">
+   <summary class="rowgrid">{{ rowhead(cat) }}</summary>
+   <div class="rbody">
+    {% if cat.name == "価格" %}
   <h2>価格評価</h2>
   {% if p.has %}
    <p style="margin:4px 0"><span class="verdict {{p.vclass}}">{{p.verdict}}</span>
@@ -1318,32 +1350,29 @@ BRAND_BAR
   {% else %}
    <p class="muted">類似成約が不足し価格評価できませんでした（情報不足）。</p>
   {% endif %}
- </div>
-
- {% if enr %}
- <div class="card">
+    {% endif %}
+    {% if cat.name == "立地" and enr %}
   <h2>立地・防災・人口</h2>
   <p class="muted" style="margin:2px 0 4px">用途地域：{{enr.use_district}}　／　人口：{{enr.population}}（動向 {{enr.trend}}）</p>
   {% if enr.districts %}<p class="muted" style="margin:2px 0 0">学区：{{enr.districts}}</p>{% endif %}
   {% if enr.facilities %}<p class="muted" style="margin:2px 0 8px">周辺施設：{{enr.facilities}}</p>{% endif %}
   {% for label,val,kind in enr.hazard_items %}<span class="hz hz-{{kind}}">{{label}}：{{val}}</span>{% endfor %}
- </div>
- {% endif %}
-
- <div class="card">
-  {% if pro %}
-  <div class="banner" style="margin-bottom:10px">
-   <b>PRO診断：情報充足度 {{pro.free_suff}}% → {{pro.suff}}%</b>
-   （総合 {{pro.free_total}}点 → {{pro.total}}点／{{"%+d"|format(pro.diff)}}点）<br>
-   <span class="muted">点数が動いたのは、無料診断では評価に入れていなかった項目に回答があったためです。推定価格レンジは無料診断と同じ計算です。</span>
-  </div>
+    {% endif %}
+    {% if cat.name == "資金" %}
+  <h2>住宅ローン（無料版：月々返済額まで）</h2>
+  <p style="margin:4px 0">借入額 {{loan.principal}}（頭金 {{loan.down}}） 金利{{loan.rate}}% {{loan.years}}年</p>
+  <p style="font-size:20px;font-weight:700;margin:6px 0">月々 約 {{loan.monthly}}
+    {% if loan.extra %}<span class="muted" style="font-size:14px">＋ 管理費・修繕積立金 {{loan.extra}}</span>{% endif %}</p>
+  {% if loan.extra %}<p style="font-size:18px;font-weight:700;margin:2px 0 6px">
+    実質の月額負担 約 {{loan.total_monthly}}
+    {% if loan.burden %}<span class="muted" style="font-size:14px">／ 負担率 {{loan.burden}}%（管理費等込み）</span>{% endif %}</p>
+  {% elif loan.burden %}<p class="muted" style="font-size:14px;margin:2px 0 6px">返済負担率 {{loan.burden}}%</p>{% endif %}
+    {% endif %}
+   </div>
+  </details>
+  {% else %}
+  <div class="row rowgrid">{{ rowhead(cat) }}</div>
   {% endif %}
-  <h2>スコア内訳</h2>
-  {% for c in cats %}
-  <div class="cat"><div class="top"><span>{{c.name}}</span>
-    <span class="muted">{{c.points}} / {{c.weight}}</span></div>
-   <div class="bar"><span style="width:{{c.pct}}%;background:{{c.color}}"></span></div>
-   <div class="muted">{{c.reason}}</div></div>
   {% endfor %}
  </div>
 
@@ -1435,16 +1464,7 @@ BRAND_BAR
   </div>
   {% endif %}
 
- <div class="card">
-  <h2>住宅ローン（無料版：月々返済額まで）</h2>
-  <p style="margin:4px 0">借入額 {{loan.principal}}（頭金 {{loan.down}}） 金利{{loan.rate}}% {{loan.years}}年</p>
-  <p style="font-size:20px;font-weight:700;margin:6px 0">月々 約 {{loan.monthly}}
-    {% if loan.extra %}<span class="muted" style="font-size:14px">＋ 管理費・修繕積立金 {{loan.extra}}</span>{% endif %}</p>
-  {% if loan.extra %}<p style="font-size:18px;font-weight:700;margin:2px 0 6px">
-    実質の月額負担 約 {{loan.total_monthly}}
-    {% if loan.burden %}<span class="muted" style="font-size:14px">／ 負担率 {{loan.burden}}%（管理費等込み）</span>{% endif %}</p>
-  {% elif loan.burden %}<p class="muted" style="font-size:14px;margin:2px 0 6px">返済負担率 {{loan.burden}}%</p>{% endif %}
- </div>
+
 
 
   {% if disc %}
@@ -3712,6 +3732,13 @@ def _hazard_items(hz):
     return items
 
 
+def _mark_foldable(cats, foldable):
+    """行の中に畳めるものがあるかを入れる。cats をそのまま返す。"""
+    for c in cats:
+        c["fold"] = bool(foldable.get(c["name"]))
+    return cats
+
+
 def _saying(d):
     """結果の一行目。**新しい判断を足さない。**
 
@@ -3727,8 +3754,13 @@ def _saying(d):
                 out.append(n)
         return out
 
-    return dict(good=names(getattr(d, "strengths", None)),
-                bad=names(getattr(d, "weaknesses", None)),
+    good, bad = names(getattr(d, "strengths", None)),         names(getattr(d, "weaknesses", None))
+    # 同じカテゴリが両方に出ることがある（「建てられる家」は延床が足りて
+    # いても接道で引っかかる、など）。事実としては正しいが、1行目と2行目に
+    # 同じ名前が並ぶと、読んだ人は画面の不具合だと思う。**気をつける側に
+    # だけ残す。**良かった事実のほうは、下の強みの欄にそのまま出ている。
+    good = [n for n in good if n not in bad]
+    return dict(good=good, bad=bad,
                 todo=len(getattr(d, "to_confirm", None) or []))
 
 
@@ -3816,7 +3848,7 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
     cats = [dict(name=_CATEGORY_JA.get(c.name, c.name),
                  points=c.points, weight=c.weight,
                  pct=int(round(c.raw * 100)), color=_catcolor(c.raw),
-                 reason=c.reason) for c in d.categories]
+                 fold=False, reason=c.reason) for c in d.categories]
     dctx = dict(total=d.total_score, grade=d.grade, suff=d.data_sufficiency,
                 comment=d.comment,
                 risks=[dict(sev=_sevja(r.severity), type=r.type,
@@ -3940,7 +3972,12 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
     return render_template_string(
         RESULT, s=sctx, price_man=man(subject.price), age=age, save=save,
         sample=bool(sample),
-        p=price_ctx, cats=cats, d=dctx, loan=loan,
+        p=price_ctx, d=dctx, loan=loan,
+        # どの行を畳めるか。**中に入れるものが無い行は畳まない。**空の箱を
+        # 開かせると、押した人が損をする。「詳しく」の札が出ている行だけが
+        # 開く形にすると、押せる場所が一目で分かる。
+        cats=_mark_foldable(cats, {"価格": bool(price_ctx.get("has")),
+                                   "立地": bool(enr), "資金": bool(loan)}),
         warnings=_public_warnings(res.warnings),
         enr=enr, ring_circ=round(circ, 1), ring_off=ring_off,
         grade_color=grade_color, grade_comment=grade_comment,
@@ -4761,11 +4798,24 @@ BRAND_BAR
    <div class="gradebox">
     <div class="gletter" style="color:{{grade_color}}">{{d.grade}}</div>
     <div class="gcomment" style="color:{{grade_color}}">{{grade_comment}}</div>
-    <div class="muted">情報充足度 {{d.suff}}%</div>
-    <div class="muted" style="font-size:12px"><b>点数ではありません。</b>採点に
-     使えた情報の割合です。未確認の項目は点数に入れていません</div>
    </div>
   </div>
+  {% if say.good or say.bad or say.todo %}
+  <div class="saying">
+   {% if say.good %}<p class="good"><b>よかったのは</b>　{{say.good|join("・")}}</p>{% endif %}
+   {% if say.bad %}<p class="bad"><b>気をつけるのは</b>　{{say.bad|join("・")}}</p>{% endif %}
+   {% if say.todo %}<p class="todo"><b>まだ確かめていないこと</b>　{{say.todo}}件</p>{% endif %}
+  </div>
+  {% endif %}
+  <div class="suffwrap">
+   <div class="lab"><span>情報充足度</span><span>{{d.suff}}%</span></div>
+   <div class="suffbar"><span style="width:{{d.suff}}%"></span></div>
+  </div>
+  <div class="muted" style="font-size:13px;margin-top:8px"><b>点数ではありません。</b>
+   採点に使えた情報の割合です。未確認の項目は点数に入れていません</div>
+  {% if say.todo %}
+  <div class="heroacts no-print"><a class="pri" href="#ask">確かめること {{say.todo}}件</a></div>
+  {% endif %}
  </div>
 
  {% if save %}
@@ -4957,17 +5007,6 @@ BRAND_BAR
  </div>
  {% endif %}
 
- <div class="card">
-  <h2>スコア内訳</h2>
-  {% for c in cats %}
-  <div class="cat"><div class="top"><span>{{c.name}}</span>
-    <span class="muted">{{c.points}} / {{c.weight}}</span></div>
-   <div class="bar"><span style="width:{{c.pct}}%;background:{{c.color}}"></span></div>
-   <div class="muted">{{c.reason}}</div></div>
-  {% endfor %}
-  <div class="foot">{{d.comment}}</div>
- </div>
-
  {% if d.strengths or d.weaknesses %}
  <div class="card">
   {% if d.strengths %}<h2 style="color:#0ea5e9">強み</h2><ul class="strong">
@@ -4977,6 +5016,47 @@ BRAND_BAR
    {% for t in d.weaknesses %}<li>{{t}}</li>{% endfor %}</ul>{% endif %}
  </div>
  {% endif %}
+{% macro rowhead(cat) %}
+   <span class="rname">{{cat.name}}</span>
+   <span class="rbar"><span style="width:{{cat.pct}}%;background:{{cat.color}}"></span></span>
+   <span class="rpts">{{cat.points}} / {{cat.weight}}</span>
+   {% if cat.fold %}<span class="more"><span class="lbl">詳しく</span><i class="chev"></i></span>
+   {% else %}<span></span>{% endif %}
+   <span class="rwhy">{{cat.reason}}</span>
+{% endmacro %}
+ <div class="rows">
+  <h2 class="rowsttl">スコア内訳</h2>
+  {% for cat in cats %}
+  {% if cat.fold %}
+  <details class="row">
+   <summary class="rowgrid">{{ rowhead(cat) }}</summary>
+   <div class="rbody">
+    {% if cat.name == "資金" %}
+  <h2>{% if fin %}住宅ローン本体{% else %}資金{% endif %}</h2>
+  <h2>{% if fin %}住宅ローン本体{% else %}資金{% endif %}</h2>
+  <p class="big">総額 {{loan.total}}</p>
+  <p class="muted">土地 {{s.price}} ＋ 建物予算 {{s.budget or "未入力"}}</p>
+  <div class="kv">
+   <div><b>借入額</b>{{loan.principal}}</div>
+   <div><b>頭金</b>{{loan.down}}</div>
+   <div><b>月々返済</b>{{loan.monthly}}</div>
+   <div><b>返済負担率</b>{% if loan.burden %}{{loan.burden}}%{% else %}—{% endif %}</div>
+  </div>
+  <div class="foot"><b>この総額には、外構・地盤改良・付帯工事・諸費用が
+   入っていません。</b>注文住宅ではこれらが数百万円単位でかかります。
+   特に地盤改良は、地盤調査をするまで金額が分かりません。
+   金利は年1.25%・元利均等で試算しています。</div>
+    {% endif %}
+   </div>
+  </details>
+  {% else %}
+  <div class="row rowgrid">{{ rowhead(cat) }}</div>
+  {% endif %}
+  {% endfor %}
+  <div class="foot">{{d.comment}}</div>
+ </div>
+
+
 
  {% if d.risks %}
  <div class="card">
@@ -5056,21 +5136,7 @@ BRAND_BAR
  </div>
  {% endif %}
 
- <div class="card">
-  <h2>{% if fin %}住宅ローン本体{% else %}資金{% endif %}</h2>
-  <p class="big">総額 {{loan.total}}</p>
-  <p class="muted">土地 {{s.price}} ＋ 建物予算 {{s.budget or "未入力"}}</p>
-  <div class="kv">
-   <div><b>借入額</b>{{loan.principal}}</div>
-   <div><b>頭金</b>{{loan.down}}</div>
-   <div><b>月々返済</b>{{loan.monthly}}</div>
-   <div><b>返済負担率</b>{% if loan.burden %}{{loan.burden}}%{% else %}—{% endif %}</div>
-  </div>
-  <div class="foot"><b>この総額には、外構・地盤改良・付帯工事・諸費用が
-   入っていません。</b>注文住宅ではこれらが数百万円単位でかかります。
-   特に地盤改良は、地盤調査をするまで金額が分かりません。
-   金利は年1.25%・元利均等で試算しています。</div>
- </div>
+
 
  {% if disc %}
  <div class="card">
@@ -5197,14 +5263,14 @@ BRAND_BAR
  <p class="foot" style="text-align:center;font-weight:700;color:#111;font-size:13px">
   homeindex.jp　土地を100点で採点します</p>
 </div>
+<div class="dock no-print" data-html2canvas-ignore>
+ {% if dock.share %}
+ <button onclick="saveReport()" type="button">📷 画像</button>
+ <button onclick="shareReport()" type="button">🔗 共有</button>
+ {% endif %}
+ {% if dock.cta %}<a class="pri" href="{{dock.cta}}">{{dock.cta_text}}</a>{% endif %}
+</div>
 <div class="wrap no-print" style="padding-top:0">
- <div class="card" style="text-align:center">
-  <button onclick="saveReport()" class="sub" type="button">📷 画像を保存</button>
-  <button onclick="shareReport()" class="sub" type="button"
-    style="margin-left:8px">🔗 共有する</button>
-  <div class="muted" style="margin-top:6px;font-size:12px">
-   結果カードを1枚の画像にして保存・共有できます</div>
- </div>
  LAND_FOOTER_PLACEHOLDER
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -5590,7 +5656,7 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
 
     cats = [dict(name=x.name, points=x.points, weight=x.weight,
                  pct=int(round(x.raw * 100)), color=_catcolor(x.raw),
-                 reason=x.reason) for x in d.categories]
+                 fold=False, reason=x.reason) for x in d.categories]
     dctx = dict(total=d.total_score, grade=d.grade, suff=d.data_sufficiency,
                 comment=d.comment, strengths=d.strengths,
                 weaknesses=d.weaknesses, confirm=d.to_confirm,
@@ -5629,7 +5695,13 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
 
     circ = 2 * 3.14159265 * 58
     return render_template_string(
-        LAND_RESULT, s=sctx, d=dctx, cats=cats, cap=cap_ctx, mk=mk,
+        LAND_RESULT, s=sctx, d=dctx, cap=cap_ctx, mk=mk,
+        say=_saying(d),
+        # **敷地図は畳まない。**土地診断の目玉なので、最初の画面から絵が
+        # 消えると何の画面か分からなくなる。畳めるのは資金だけ。
+        cats=_mark_foldable(cats, {"資金": bool(loan)}),
+        dock=_dock(sample_href=("/land" if f.get("sample") else None),
+                   pro=bool(pro), handover=handover),
         fig=fig,
         loan=loan, capped=capped, warnings=_public_warnings(res.warnings),
         fin=fin, pro=pro, handover=handover, procedures=procedures,

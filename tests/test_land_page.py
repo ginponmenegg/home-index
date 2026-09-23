@@ -246,10 +246,26 @@ def test_the_things_to_check_can_be_printed_on_their_own(client):
 
 
 def test_the_result_can_be_saved_as_an_image(client):
+    """保存と共有は下の固定バーへ移した。
+
+    6,000px下の最下部に置いてあって、ほぼ誰にも届いていなかった。
+    """
     h = _post(client)
     assert "saveReport" in h
     assert "html2canvas.min.js" in h
-    assert "🔗 共有する" in h
+    assert '<div class="dock no-print"' in h
+    assert "🔗 共有" in h
+
+
+def test_the_image_opens_the_folded_rows_before_it_is_taken():
+    """畳んだ <details> の中身は描かれない。撮る前に開かないと写らない。"""
+    import app as a
+    for tpl in (a.RESULT, a.LAND_RESULT):
+        i = tpl.index("async function makeReportImage")
+        head = tpl[i:i + 700]
+        assert "details:not([open])" in head
+        assert "d.open=true" in head
+        assert "d.open=false" in head, "開いたままにしない"
 
 
 def test_the_footer_is_still_there(client):

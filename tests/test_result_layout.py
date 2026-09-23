@@ -55,13 +55,41 @@ def _house_page():
 # ---- 読む順 ---------------------------------------------------------------
 
 def test_the_summary_comes_before_the_evidence():
-    """点数 → 要点 → 根拠。要点がいちばん下にあった。"""
+    """点数 → 要点 → 根拠。要点がいちばん下にあった。
+
+    根拠の置き場所が変わった。価格評価・立地・住宅ローンは独立したカード
+    をやめ、スコア内訳の**対応する行の中へ畳んだ**ので、「価格評価」の
+    文字はスコア内訳より後ろに来る。読む順（点数→要点→根拠）は変わって
+    いない。
+    """
     h = _house()
     score = h.index("情報充足度")
     summary = h.index(">強み<")
-    price = h.index("価格評価")
     breakdown = h.index("スコア内訳")
-    assert score < summary < price < breakdown
+    assert score < summary < breakdown
+
+
+def test_the_evidence_is_folded_into_the_row_it_explains():
+    """価格の根拠は、価格の行の中にある。
+
+    カードが12枚あって全高6,000pxを超えていた。根拠をそれぞれの行に
+    しまうと、読む順は変えずに半分になる。
+    """
+    h = _house()
+    assert h.index("スコア内訳") < h.index("価格評価")
+    assert '<details class="row">' in h
+    # 中身のある行だけが開く。空の箱を開かせない。
+    assert h.count('<details class="row">') <= h.count('class="row rowgrid"')         + h.count('<details class="row">')
+    assert ">詳しく<" in h, "畳んであることが分かる札が要る"
+
+
+def test_a_row_with_nothing_inside_is_not_a_folding_row():
+    """物件・資産性には畳めるものが無い。押しても何も出ない行を作らない。"""
+    h = _house()
+    import re
+    # 「詳しく」の数と <details> の数は一致する
+    assert h.count(">詳しく<") == h.count('<details class="row">')
+    assert re.search(r'<div class="row rowgrid">', h), "開かない行も在ること"
 
 
 def test_the_summary_is_above_the_pro_cards():

@@ -131,7 +131,7 @@ def test_the_site_questions_are_on_the_form(client):
 
 def test_the_site_answers_move_the_risk_score(client):
     def risk(h):
-        m = re.search(r"リスク</span>\s*<span class=\"muted\">([\d.]+) / 25", h)
+        m = re.search(r">リスク</span>.*?<span class=\"rpts\">([\d.]+) / 25", h, re.S)
         return float(m.group(1))
     assert risk(_post(client, **BAD_SITE)) < risk(_post(client, **GOOD_SITE))
 
@@ -139,7 +139,7 @@ def test_the_site_answers_move_the_risk_score(client):
 def test_leaving_the_site_questions_blank_does_not_dock_the_score(client):
     """調べていないことを、悪い土地として採点しない。"""
     def risk(h):
-        m = re.search(r"リスク</span>\s*<span class=\"muted\">([\d.]+) / 25", h)
+        m = re.search(r">リスク</span>.*?<span class=\"rpts\">([\d.]+) / 25", h, re.S)
         return float(m.group(1))
     blank = risk(_post(client))
     free = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
@@ -238,7 +238,7 @@ RULE_KEYS = ("corner", "fire_zone", "height_district", "district_plan",
 
 
 def _build(h):
-    m = re.search(r"建てられる家</span>\s*<span class=\"muted\">([\d.]+) / 25", h)
+    m = re.search(r">建てられる家</span>.*?<span class=\"rpts\">([\d.]+) / 25", h, re.S)
     return float(m.group(1))
 
 
@@ -292,12 +292,12 @@ def test_the_floors_needed_to_use_the_far_are_spelled_out(client):
 
 # ---- C群（買えるかどうか・いつ着工できるか）----
 def _asset(h):
-    m = re.search(r"資産性</span>\s*<span class=\"muted\">([\d.]+) / 10", h)
+    m = re.search(r">資産性</span>.*?<span class=\"rpts\">([\d.]+) / 10", h, re.S)
     return float(m.group(1))
 
 
 def _access(h):
-    m = re.search(r"接道</span>\s*<span class=\"muted\">([\d.]+) / 15", h)
+    m = re.search(r">接道</span>.*?<span class=\"rpts\">([\d.]+) / 15", h, re.S)
     return float(m.group(1))
 
 
