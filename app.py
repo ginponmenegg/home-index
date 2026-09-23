@@ -1134,6 +1134,65 @@ CARD_CSS_PLACEHOLDER
    .asklist input{-webkit-appearance:none;appearance:none;
      border:1px solid #888;border-radius:3px}
  }
+ /* ---- 案A：まず結論、あとは畳む ---------------------------------- */
+ /* 一行の結論。`.verdict` という名前は、売出価格の判定の札がすでに
+    使っている。同じ名前を足すと、あとに書いたほうが勝って札が壊れる。
+    なお**CSSのコメントは <head> に入って本文と区別がつかない**ので、
+    画面に出したくない語をここに書かないこと（実際にテストが落ちた）。 */
+ .saying{margin:16px 0 0;font-size:16px;line-height:1.85}
+ .saying p{margin:2px 0}
+ .saying b{font-weight:700}
+ .saying .good b{color:#0284c7}
+ .saying .bad b{color:#dc2626}
+ .saying .todo b{color:#9a3412}
+ .suffwrap{margin-top:14px}
+ .suffwrap .lab{display:flex;justify-content:space-between;font-size:12px;
+  color:var(--sub);margin-bottom:6px}
+ .suffbar{height:8px;border-radius:99px;background:#eef1f4;overflow:hidden}
+ .suffbar span{display:block;height:100%;background:#14395C;border-radius:99px}
+ .heroacts{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+ .heroacts a{flex:1;min-width:140px;text-align:center;text-decoration:none;
+  border-radius:999px;padding:13px 10px;font-size:14px;font-weight:700;
+  border:1px solid var(--line);color:var(--ink);background:#fff}
+ .heroacts a.pri{background:#14395C;color:#fff;border-color:#14395C}
+ /* 畳む行。**畳んであることを記号と言葉の両方で出す。**記号だけだと
+    気づかれないまま、下の説明が読まれずに終わる。 */
+ .rows{margin-top:12px}
+ details.row{background:var(--card);border-radius:16px;margin-top:8px;
+  box-shadow:0 1px 2px rgba(16,24,40,.04),0 10px 26px -16px rgba(16,24,40,.2);
+  overflow:hidden}
+ details.row>summary{list-style:none;cursor:pointer;padding:14px 16px;
+  display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;
+  align-items:center;-webkit-tap-highlight-color:transparent}
+ details.row>summary::-webkit-details-marker{display:none}
+ details.row>summary:active{background:#f7f9fb}
+ .rname{font-weight:700;font-size:15px;min-width:3.6em}
+ .rbar{height:7px;border-radius:99px;background:#eef1f4;overflow:hidden}
+ .rbar span{display:block;height:100%;border-radius:99px}
+ .rpts{font-size:13px;color:var(--sub);white-space:nowrap}
+ .rwhy{grid-column:1/-1;font-size:13px;color:var(--sub);line-height:1.7;
+  margin-top:2px}
+ .rbody{padding:2px 16px 18px;border-top:1px solid #f2f4f7;margin-top:6px}
+ .more{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--sub);
+  font-weight:600;white-space:nowrap}
+ .chev{width:8px;height:8px;border-right:2px solid #aab2bb;
+  border-bottom:2px solid #aab2bb;transform:rotate(45deg) translate(-1px,-1px);
+  transition:transform .18s}
+ details.row[open] .chev{transform:rotate(-135deg) translate(-1px,-1px)}
+ details.row[open] .more .lbl::after{content:"を閉じる"}
+ /* 下の固定バー。画像の保存と共有は、いままで6,000px下にあった。 */
+ body{padding-bottom:78px}
+ .dock{position:fixed;left:0;right:0;bottom:0;z-index:30;
+  background:rgba(255,255,255,.94);backdrop-filter:saturate(1.6) blur(12px);
+  border-top:1px solid var(--line);
+  padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px}
+ .dock a,.dock button{flex:1;text-align:center;text-decoration:none;
+  border-radius:999px;padding:12px 6px;font-size:13.5px;font-weight:700;
+  border:1px solid var(--line);color:var(--ink);background:#fff;
+  font-family:inherit;cursor:pointer}
+ .dock a.pri,.dock button.pri{flex:1.5;background:#14395C;color:#fff;
+  border-color:#14395C}
+ @media print{ .dock{display:none} }
  BRAND_CSS_PLACEHOLDER
 </style></head><body>
 BRAND_BAR
@@ -1178,14 +1237,28 @@ BRAND_BAR
    <div class="gradebox">
     <div class="gletter" style="color:{{grade_color}}">{{d.grade}}</div>
     <div class="gcomment" style="color:{{grade_color}}">{{grade_comment}}</div>
-    <div class="muted">情報充足度 {{d.suff}}%</div>
-    <div class="muted" style="font-size:13px"><b>点数ではありません。</b>採点に
-     使えた情報の割合です。未確認の項目は点数に入れていません</div>
    </div>
   </div>
+  {% if say.good or say.bad or say.todo %}
+  <div class="saying">
+   {% if say.good %}<p class="good"><b>よかったのは</b>　{{say.good|join("・")}}</p>{% endif %}
+   {% if say.bad %}<p class="bad"><b>気をつけるのは</b>　{{say.bad|join("・")}}</p>{% endif %}
+   {% if say.todo %}<p class="todo"><b>まだ確かめていないこと</b>　{{say.todo}}件</p>{% endif %}
+  </div>
+  {% endif %}
+  <div class="suffwrap">
+   <div class="lab"><span>情報充足度</span><span>{{d.suff}}%</span></div>
+   <div class="suffbar"><span style="width:{{d.suff}}%"></span></div>
+  </div>
+  <div class="muted" style="font-size:13px;margin-top:8px"><b>点数ではありません。</b>
+   採点に使えた情報の割合です。未確認の項目は点数に入れていません</div>
+  {% if say.todo %}
+  <div class="heroacts no-print">
+   <a class="pri" href="#todo">確かめること {{say.todo}}件</a></div>
+  {% endif %}
  </div>
 
- <div class="card">
+ <div class="card" id="todo">
   {% if d.risks %}
  <h2 style="color:#9a3412">重大リスク</h2>
   {% for r in d.risks %}<span class="rsk"><b>［{{r.sev}}］{{r.type}}</b>{% if r.status %}（{{r.status}}）{% endif %}：{{r.ev}}</span>{% endfor %}{% endif %}
@@ -1272,9 +1345,10 @@ BRAND_BAR
    <div class="bar"><span style="width:{{c.pct}}%;background:{{c.color}}"></span></div>
    <div class="muted">{{c.reason}}</div></div>
   {% endfor %}
+ </div>
 
   {% if handover %}
-  <div class="card" data-html2canvas-ignore style="border-color:#111">
+  <div class="card" data-html2canvas-ignore id="pro" style="border-color:#111">
    <h2 style="margin-top:0">無料でここまで／PROでここまで</h2>
    <div class="tablewrap">
     <table class="pc">
@@ -1339,7 +1413,7 @@ BRAND_BAR
   {% endif %}
 
   {% if finance_carry %}
-  <div class="card" data-html2canvas-ignore style="border-color:#111">
+  <div class="card" data-html2canvas-ignore id="finance" style="border-color:#111">
    <h2 style="margin-top:0">諸費用まで含めて資金を見る（PRO）</h2>
    <p class="muted" style="margin:6px 0 10px">
     上のローン試算は月々の返済額までです。仲介手数料・印紙税・登録免許税・
@@ -1360,8 +1434,6 @@ BRAND_BAR
    </form>
   </div>
   {% endif %}
-
- </div>
 
  <div class="card">
   <h2>住宅ローン（無料版：月々返済額まで）</h2>
@@ -1447,18 +1519,26 @@ BRAND_BAR
  <p class="foot" style="text-align:center;font-weight:700;color:#111;font-size:13px">
   homeindex.jp　住まいを100点で採点します</p>
 </div>
-<div class="wrap" style="padding-top:0">
-<div class="card" style="text-align:center">
-  <button onclick="saveReport()" class="sub" type="button">📷 画像を保存</button>
-  <button onclick="shareReport()" class="sub" type="button" style="margin-left:8px">🔗 共有する</button>
-  <div class="hint" style="margin-top:6px">結果カードを1枚の画像にして保存・共有できます</div>
+<div class="dock no-print" data-html2canvas-ignore>
+ {% if dock.share %}
+ <button onclick="saveReport()" type="button">📷 画像</button>
+ <button onclick="shareReport()" type="button">🔗 共有</button>
+ {% endif %}
+ {% if dock.cta %}<a class="pri" href="{{dock.cta}}">{{dock.cta_text}}</a>{% endif %}
 </div>
+<div class="wrap" style="padding-top:0">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
 async function makeReportImage(){
   const el=document.getElementById('report');
-  const canvas=await html2canvas(el,{scale:2,backgroundColor:'#ffffff',useCORS:true});
-  return new Promise(res=>canvas.toBlob(res,'image/png'));
+  // 畳んだ <details> の中身は描かれない。撮る前に全部開き、
+  // 閉じていたものだけ元に戻す（開いていたものは開いたままにする）。
+  const shut=[...el.querySelectorAll('details:not([open])')];
+  shut.forEach(d=>d.open=true);
+  try{
+    const canvas=await html2canvas(el,{scale:2,backgroundColor:'#ffffff',useCORS:true});
+    return await new Promise(res=>canvas.toBlob(res,'image/png'));
+  } finally { shut.forEach(d=>d.open=false); }
 }
 async function saveReport(){
   const blob=await makeReportImage();
@@ -3632,6 +3712,42 @@ def _hazard_items(hz):
     return items
 
 
+def _saying(d):
+    """結果の一行目。**新しい判断を足さない。**
+
+    強み・弱み・要確認は、すでに画面に並んでいるものをそのまま使う。
+    ここで文章を組み立てると、どこにも根拠の無い言い切りが増える。だから
+    出すのは**カテゴリの名前と件数だけ**にする。中身は下の欄で読める。
+    """
+    def names(items):
+        out = []
+        for t in items or []:
+            n = _CATEGORY_JA.get(t.split(": ", 1)[0], t.split(": ", 1)[0])
+            if n not in out:
+                out.append(n)
+        return out
+
+    return dict(good=names(getattr(d, "strengths", None)),
+                bad=names(getattr(d, "weaknesses", None)),
+                todo=len(getattr(d, "to_confirm", None) or []))
+
+
+def _dock(sample_href=None, pro=False, handover=None, finance_carry=None):
+    """下の固定バー。**画面ごとに中身が違う。**
+
+    見本に「保存」「共有」を出しても使い道がない。PRO会員に「PROで詳しく」
+    を出すのは失礼にあたる。出せるものだけ出す。
+    """
+    if sample_href:
+        return dict(share=False, cta=sample_href, cta_text="自分の物件で診断する")
+    cta, text = None, None
+    if pro and finance_carry:
+        cta, text = "#finance", "資金計画に進む"
+    elif not pro and handover:
+        cta, text = "#pro", "PROで詳しく"
+    return dict(share=True, cta=cta, cta_text=text)
+
+
 def _render_result(res, subject, sctx, down_yen, loan_years,
                    free_diagnosis=None, carry=None, questions=None,
                    questions_note=None, redo=None, finance_carry=None,
@@ -3834,6 +3950,10 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
         disc=disclosure_points,
         questions_note=questions_note, finance_carry=finance_carry,
         plan_price=(price_now()[1] if billing_on() else None),
+        say=_saying(d),
+        dock=_dock(sample_href=("/buy" if sample else None),
+                   pro=bool(pro_delta), handover=handover,
+                   finance_carry=finance_carry),
         edit=edit)
 
 
@@ -5091,8 +5211,14 @@ BRAND_BAR
 <script>
 async function makeReportImage(){
   const el=document.getElementById('report');
-  const canvas=await html2canvas(el,{scale:2,backgroundColor:'#ffffff',useCORS:true});
-  return new Promise(res=>canvas.toBlob(res,'image/png'));
+  // 畳んだ <details> の中身は描かれない。撮る前に全部開き、
+  // 閉じていたものだけ元に戻す（開いていたものは開いたままにする）。
+  const shut=[...el.querySelectorAll('details:not([open])')];
+  shut.forEach(d=>d.open=true);
+  try{
+    const canvas=await html2canvas(el,{scale:2,backgroundColor:'#ffffff',useCORS:true});
+    return await new Promise(res=>canvas.toBlob(res,'image/png'));
+  } finally { shut.forEach(d=>d.open=false); }
 }
 async function saveReport(){
   const blob=await makeReportImage();
