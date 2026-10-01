@@ -20,6 +20,9 @@
  "keiryo-teppone-taiyo-nensu": {
   "title": "軽量鉄骨の耐用年数は19年か27年か。骨格材3mmで分かれます"
  },
+ "kenchiku-jouken-tsuki-tochi": {
+  "title": "建築条件付きの土地は、注文住宅の土地ではありません"
+ },
  "kenpeiritsu-youto-chiiki": {
   "title": "建ぺい率は、用途地域ごとに選べる値が決まっています"
  },
@@ -38,6 +41,9 @@
  "mansion-kanri-15ten": {
   "title": "マンションの100点中15点は管理です。ただし見ているのは積立金の水準だけです"
  },
+ "mokuzou-kansan-jikuchikunen": {
+  "title": "RC造の築30年は、木造の築14年として採点しています"
+ },
  "setsudou-2m-saikenchiku": {
   "title": "敷地は道路に2m以上。足りないと、建て替えができません"
  },
@@ -53,11 +59,20 @@
  "shorai-suikei-jinko-mesh": {
   "title": "2050年の人口は250mメッシュで見ています。市区町村の平均では分からない"
  },
+ "shougyou-shisetsu-openstreetmap": {
+  "title": "買い物施設だけ、公的データではなくOpenStreetMapを見ています"
+ },
  "shuzen-tsumitatekin-meyasu": {
   "title": "修繕積立金の目安は㎡あたり月いくらか。国交省ガイドラインの読み方"
  },
+ "torihiki-kakaku-tatemonomei": {
+  "title": "取引価格情報にマンション名は入っていません。町名と築年までです"
+ },
  "tsunagi-yushi-risoku": {
   "title": "注文住宅のつなぎ融資。利息は住宅ローンとは別にかかります"
+ },
+ "yousekiritsu-kaisuu": {
+  "title": "容積率200%でも、2階建てなら150㎡止まりです"
  },
  "youto-chiiki-13-shurui": {
   "title": "用途地域は13種類。この診断では点数に入れていません"
