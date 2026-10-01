@@ -1986,7 +1986,10 @@ footer{padding:30px 0 46px; text-align:center}
 footer p{margin:0 0 6px; font-size:12px; color:var(--sub); line-height:1.9}
 footer a{color:var(--ink)}
 
-.glist{list-style:none; padding:0; margin:18px 0 14px;
+.gtopic{display:flex; align-items:baseline; gap:10px; margin:26px 0 0}
+.gtopic h3{margin:0; font-size:13px; font-weight:700; letter-spacing:.08em}
+.gtopic span{font-size:12px; color:var(--sub)}
+.glist{list-style:none; padding:0; margin:8px 0 0;
   display:grid; gap:2px}
 .glist li{border-top:1px solid var(--line, rgba(240,238,233,.14))}
 .glist li:last-child{border-bottom:1px solid var(--line, rgba(240,238,233,.14))}
@@ -2415,7 +2418,7 @@ LP_MENU_PLACEHOLDER
     <h2>点数の根拠は、開いて書いています。</h2>
     <p class="lead-sm">どの公的データのどの区分を、何点として扱っているか。
      採点に使っている数字そのものを記事にしています。</p>
-    <ul class="glist">GUIDE_LINKS_PLACEHOLDER</ul>
+    GUIDE_LINKS_PLACEHOLDER
     <p class="fine"><a href="/guide">解説の一覧を見る →</a></p>
   </div>
 </section>
@@ -2560,9 +2563,19 @@ LP_MENU_PLACEHOLDER
 
 # トップから各記事へ内部リンクを張る。記事は src/guides.py が持っている
 # ので、増えれば自動で並ぶ。手で書くと、書き足すたびに直し忘れる。
+#
+# 23本が公開順に一列で並んでいた。増えるほど読みたいものに辿り着けない
+# （点数の話を知りたい人と、災害の区域を調べたい人は別のものを探している）。
+# /guide と同じ分類で束ねる。分類は src/guides.py の TOPICS が持つので、
+# 片方だけ直して食い違う、ということが起きない。
 _LP_GUIDE_LINKS = "".join(
-    f'<li><a href="/guide/{g.slug}">{html.escape(g.title)}</a></li>'
-    for g in guides.all_guides())
+    f'<div class="gtopic"><h3>{html.escape(title)}</h3>'
+    f'<span>{len(items)}本</span></div>'
+    f'<ul class="glist">'
+    + "".join(f'<li><a href="/guide/{g.slug}">{html.escape(g.title)}</a></li>'
+              for g in items)
+    + '</ul>'
+    for title, _note, items in guides.by_topic())
 
 LP = (LP.replace("GUIDE_LINKS_PLACEHOLDER", _LP_GUIDE_LINKS)
       .replace("LP_FONT_LINK_PLACEHOLDER", LP_FONT_LINK)
