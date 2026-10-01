@@ -2996,6 +2996,11 @@ _GUIDE_CSS = (
     # 目次から飛んだとき、見出しが上のバーに隠れないようにする
     'scroll-margin-top:80px}'
     'h2::before{content:none}'
+    # 長い記事では h2 だけだと節が大きくなりすぎる。中見出しを足す。
+    # カードの棒つきの札は当てない（h2 と同じ理由）。
+    'h3{font-size:15px;font-weight:700;margin:24px 0 6px;color:#111;'
+    'letter-spacing:0;line-height:1.6;scroll-margin-top:80px}'
+    'h3::before{content:none}'
     'p,li{font-size:15px;line-height:1.95}'
     'li{margin-bottom:4px}'
     'a{color:#111}'

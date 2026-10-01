@@ -1,4 +1,7 @@
 {
+ "chuko-jutaku-katte-wa-ikenai": {
+  "title": "中古住宅で避けるべきなのは、あとから直せないものがある家です"
+ },
  "dosha-saigai-keikai-kuiki": {
   "title": "土砂災害の警戒区域と特別警戒区域。違うのは規制の中身です"
  },
@@ -13,6 +16,9 @@
  },
  "jutaku-loan-koujo-1982": {
   "title": "中古の住宅ローン控除は、築年数ではなく1982年1月1日で分かれます"
+ },
+ "juyo-jiko-setsumeisho-doko-wo-miru": {
+  "title": "重要事項説明書のどこを見るか。条文の号まで指して並べました"
  },
  "kadochi-kenpeiritsu-shitei": {
   "title": "角地だから建ぺい率＋10％、ではありません。指定が要ります"
@@ -41,8 +47,17 @@
  "mansion-kanri-15ten": {
   "title": "マンションの100点中15点は管理です。ただし見ているのは積立金の水準だけです"
  },
+ "mansion-kanrihi-takai": {
+  "title": "マンションの管理費が高いかどうかは、金額では決まりません"
+ },
  "mokuzou-kansan-jikuchikunen": {
   "title": "RC造の築30年は、木造の築14年として採点しています"
+ },
+ "naiken-checklist-chuko-kodate": {
+  "title": "中古戸建の内見で見る5か所。採点で重く見ている順に並べました"
+ },
+ "nakai-gyousha-ni-kiku-koto": {
+  "title": "不動産屋に聞くことリスト。1枚の書類を頼むほうが、10個の質問より早い"
  },
  "setsudou-2m-saikenchiku": {
   "title": "敷地は道路に2m以上。足りないと、建て替えができません"
