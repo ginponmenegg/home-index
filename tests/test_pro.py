@@ -505,7 +505,7 @@ def test_neutrality_is_stated_before_the_last_call_to_action():
     howto = body.index("物件ページのコピペから")
     stance = body.index('class="stance"')
     shikumi = body.index('id="shikumi"')
-    last_cta = body.index("いま採点してみますか")
+    last_cta = body.index("まず採点を")
     assert sample < howto < stance < shikumi < last_cta
     # 匿名で「売りません」と言うより、誰が言っているかを示すほうが強い。
     # YMYLでは書き手が分からないと内容が評価されないという事情もある。
@@ -526,6 +526,16 @@ def test_the_input_time_is_the_same_everywhere_on_the_top_page():
     body = html[html.index("<body>"):]
     assert "入力は3分" not in body
     assert body.count("入力は約1分") == 2, "帯と使い方の見出しの両方"
+
+
+def test_the_faq_starts_closed_and_the_hero_does_not_protest():
+    """よくある質問は押すまで開かない。「売り込みなし」とわざわざ言わない（2026-10-05）。"""
+    html = _client().get("/").data.decode("utf-8")
+    body = html[html.index("<body>"):]
+    faq = body[body.index('id="faq"'):body.index('id="guides"')]
+    assert "<details open" not in faq
+    assert "売り込みなし" not in body
+    assert 'class="sample-link" href="/sample"' in body
 
 
 if __name__ == "__main__":

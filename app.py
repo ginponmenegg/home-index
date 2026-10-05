@@ -1812,6 +1812,12 @@ a{color:inherit}
 .hero .btn-ghost{color:var(--paper); border-color:rgba(240,238,233,.38); background:rgba(240,238,233,.04)}
 .hero .btn-ghost:hover{background:rgba(240,238,233,.11)}
 .micro{font-size:12.5px; margin:16px 0 0; color:var(--paper-dim)}
+.sample-link{display:inline-flex; align-items:center; gap:8px; margin-top:18px;
+  padding:11px 18px; border-radius:999px; font-size:15px; font-weight:700;
+  color:var(--paper); text-decoration:none; border:1px solid rgba(240,238,233,.45);
+  background:rgba(240,238,233,.07)}
+.sample-link:hover{background:rgba(240,238,233,.14)}
+.sample-link svg{width:14px; height:14px; flex:0 0 auto}
 
 /* 入力の手順。ファーストビューのすぐ下に置いて、「何をすればいいか」を
    スクロールせずに分からせる。URLではなく本文をコピーする点が伝わらないと
@@ -2069,11 +2075,13 @@ LP_MENU_PLACEHOLDER
       <a class="btn btn-ghost" href="/mansion">マンションを診断する</a>
       <a class="btn btn-ghost" href="/land">土地を診断する</a>
     </div>
-    <!-- 本文から「物件は売りません」を外したぶん、ここで拾う。中立性は
-         このサービスの一番の武器なので、ファーストビューから消せない。 -->
-    <p class="micro">会員登録なし ／ 料金なし ／ 売り込みなし ／ 入力は約1分</p>
-    <p class="micro" style="margin-top:14px">
-     <a href="/sample" style="color:inherit">物件がまだ無い方は、見本の結果を見る →</a></p>
+    <!-- 営業をしない旨の一語は、わざわざ言うことでかえって構えさせるので外した
+         （2026-10-05）。中立性は、結果サンプル直後の帯が担っている。 -->
+    <p class="micro">会員登録なし ／ 料金なし ／ 入力は約1分</p>
+    <!-- 物件がまだ無い人の入口。小さな文字では見落とされるので、
+         ボタンより一段弱い枠つきの導線にしている。 -->
+    <a class="sample-link" href="/sample">物件がまだ無い方は、見本の結果を見る
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h11M9 4l4.2 4L9 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
   </div>
   <div class="howto">
     <div class="wrap">
@@ -2367,7 +2375,7 @@ LP_MENU_PLACEHOLDER
 
 <div class="band">
   <div class="wrap">
-    <h2>気になっている物件、いま採点してみますか。</h2>
+    <h2>迷っている物件があれば、まず採点を。</h2>
     <p>入力は物件説明のコピペから。会員登録も費用もかかりません。</p>
     <div class="cta-row">
       <a class="btn btn-primary" href="/buy">
@@ -2384,8 +2392,8 @@ LP_MENU_PLACEHOLDER
 <section id="faq">
   <div class="wrap reveal">
     <p class="eyebrow">よくある質問</p>
-    <h2>先に聞かれることを、先に答えます。</h2>
-    <details open>
+    <h2>使う前に、よくいただく質問。</h2>
+    <details>
       <summary>本当に無料ですか。あとから請求されませんか。</summary>
       <p>無料です。会員登録も不要で、料金が発生する画面はありません。物件の仲介やローンの紹介も行わないため、診断後に営業の連絡が来ることもありません。</p>
     </details>
@@ -2415,7 +2423,7 @@ LP_MENU_PLACEHOLDER
 <section id="guides">
   <div class="wrap reveal">
     <p class="eyebrow">解説</p>
-    <h2>点数の根拠は、開いて書いています。</h2>
+    <h2>点数の根拠は、記事で解説しています。</h2>
     <p class="lead-sm">どの公的データのどの区分を、何点として扱っているか。
      採点に使っている数字そのものを記事にしています。</p>
     GUIDE_LINKS_PLACEHOLDER
@@ -3190,7 +3198,7 @@ def guide_index():
         f'<ul class="cards">{"".join(_item(g) for g in items)}</ul>'
         for title, note, items in guides.by_topic())
     body = ('<h1>解説</h1>'
-            '<p class="sub">診断で使っている数字の根拠を開いて書いています。'
+            '<p class="sub">診断で使っている数字の根拠を、記事で解説しています。'
             '出典は本文に明記します。</p>'
             f'{groups}')
     return _guide_shell(
