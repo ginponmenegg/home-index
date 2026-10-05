@@ -2214,7 +2214,7 @@ LP_MENU_PLACEHOLDER
   <section>
     <div class="wrap reveal">
       <p class="eyebrow">使い方</p>
-      <h2>入力は3分。物件ページのコピペから。</h2>
+      <h2>入力は約1分。物件ページのコピペから。</h2>
       <p class="sub">用意するものは、気になっている物件のページだけです。
        URLではなく、そこに書かれている<b>説明文</b>をコピーします。</p>
       <div class="steps">

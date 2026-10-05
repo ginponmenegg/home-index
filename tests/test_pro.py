@@ -502,7 +502,7 @@ def test_neutrality_is_stated_before_the_last_call_to_action():
     html = _client().get("/").data.decode("utf-8")
     body = html[html.index("<body>"):]
     sample = body.index("SAMPLE")
-    howto = body.index("入力は3分")
+    howto = body.index("物件ページのコピペから")
     stance = body.index('class="stance"')
     shikumi = body.index('id="shikumi"')
     last_cta = body.index("いま採点してみますか")
@@ -518,7 +518,15 @@ def test_the_steps_are_followed_by_a_call_to_action():
     """手順を読み終えた直後がいちばん動きやすいので、そこにも導線を置く。"""
     html = _client().get("/").data.decode("utf-8")
     body = html[html.index("<body>"):]
-    assert body.index("入力は3分") < body.index("cta-mid")         < body.index('class="stance"')
+    assert body.index("物件ページのコピペから") < body.index("cta-mid")         < body.index('class="stance"')
+
+def test_the_input_time_is_the_same_everywhere_on_the_top_page():
+    """上の帯で「約1分」、下の使い方で「3分」と書いていたことがある。"""
+    html = _client().get("/").data.decode("utf-8")
+    body = html[html.index("<body>"):]
+    assert "入力は3分" not in body
+    assert body.count("入力は約1分") == 2, "帯と使い方の見出しの両方"
+
 
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
