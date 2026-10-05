@@ -834,8 +834,8 @@ FORM = """
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
-<title>HOME INDEX｜購入診断</title>
-<meta name="description" content="中古戸建の価格・災害リスク・住宅ローン返済を、国土交通省の成約データなど公的データから100点で採点します。所在地と価格だけで診断できます。無料・会員登録不要。">
+<title>中古戸建の購入診断｜価格・災害・ローンを公的データで100点採点｜HOME INDEX</title>
+<meta name="description" content="中古戸建の購入診断ツール。価格・災害リスク・住宅ローン返済を、国土交通省の成約データなど公的データから100点で採点します。所在地と価格だけで診断できます。無料・会員登録不要。">
 <link rel="canonical" href="{{ request.url_root.rstrip('/') }}/buy">
 <style>
 CARD_CSS_PLACEHOLDER
@@ -1641,8 +1641,8 @@ RESULT = (RESULT.replace("CARD_CSS_PLACEHOLDER", CARD_CSS)
 LP = """<!doctype html><html lang="ja"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>この家、かっていい？｜中古戸建を無料で100点診断 HOME INDEX</title>
-<meta name="description" content="気になる中古戸建の価格・災害リスク・住宅ローン返済を、国土交通省の成約データなど公的データから100点で採点します。会員登録不要・無料。物件は売りません。">
+<title>住宅購入の診断ツール｜物件を公的データで100点採点｜HOME INDEX</title>
+<meta name="description" content="中古戸建・マンション・土地の購入前に、価格・災害リスク・住宅ローン返済を国土交通省の成約データなど公的データから100点で採点する無料の診断ツール。建物の検査（インスペクション）ではありません。会員登録不要。物件は売りません。">
 <!-- Google Search Console の所有権確認。トップページに置く必要がある。外すと確認が外れるので消さないこと。 -->
 <meta name="google-site-verification" content="tER7-_YVLyWZvwij74TSUG5JBXrwLA9Z8xQ2GdtbRLc">
 <link rel="canonical" href="CANONICAL_URL">
@@ -4143,8 +4143,8 @@ MANSION_FORM = """
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
-<title>HOME INDEX｜マンション購入診断</title>
-<meta name="description" content="中古マンションを100点で採点します。近隣の成約価格との比較、修繕積立金が国土交通省の目安の幅に入っているか、災害リスク、返済負担率まで。所在地と価格だけで診断できます。無料。">
+<title>中古マンションの購入診断｜成約価格・修繕積立金・災害リスク｜HOME INDEX</title>
+<meta name="description" content="中古マンションの購入診断ツール。100点で採点します。近隣の成約価格との比較、修繕積立金が国土交通省の目安の幅に入っているか、災害リスク、返済負担率まで。所在地と価格だけで診断できます。無料。">
 <link rel="canonical" href="{{ request.url_root.rstrip('/') }}/mansion">
 <style>
 MANSION_CSS_PLACEHOLDER
@@ -4551,8 +4551,8 @@ LAND_FORM = """
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
-<title>HOME INDEX｜土地診断（注文住宅）</title>
-<meta name="description" content="注文住宅を建てる土地を100点で採点します。建ぺい率・容積率・前面道路から延床の上限を計算し、近隣の土地の成約から坪単価の分布を出します。無料・会員登録不要。">
+<title>注文住宅の土地診断｜建ぺい率・容積率・坪単価を100点で採点｜HOME INDEX</title>
+<meta name="description" content="注文住宅を建てる土地の診断ツール。100点で採点します。建ぺい率・容積率・前面道路から延床の上限を計算し、近隣の土地の成約から坪単価の分布を出します。無料・会員登録不要。">
 <link rel="canonical" href="{{ request.url_root.rstrip('/') }}/land">
 <style>
 LAND_CSS_PLACEHOLDER
