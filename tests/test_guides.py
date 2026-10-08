@@ -811,3 +811,71 @@ def test_the_articles_inside_a_topic_are_newest_first():
     for title, _n, items in guides.by_topic():
         days = [g.published for g in items]
         assert days == sorted(days, reverse=True), title
+
+# ---- 2026-10-08 に足した8本 ------------------------------------------------
+
+def test_the_new_flood_article_matches_the_risk_scoring():
+    """浸水想定区域の記事も、浸水深の段ごとの扱いを採点と同じにする。"""
+    body = guides.by_slug("shinsui-souteikuiki-kau").body
+    w = CONFIG["category_weights"]["リスク"]
+    assert f"リスクは{w}点満点" in body
+    for rank in (3, 4):
+        assert f"{_pt(w * _risk_raw(flood_rank=rank))}点以下に抑える" in body
+    for rank in (1, 2):
+        assert f"{_pt(w * (1.0 - _risk_raw(flood_rank=rank)))}点引く" in body
+
+
+def test_the_age_article_matches_the_building_scoring():
+    """築年の記事の段（何%を掛けるか）が score_building と一致すること。"""
+    from src.models import SubjectProperty
+    from src.scoring import score_building
+    body = guides.by_slug("chikunensu-nannen-made").body
+    w = CONFIG["category_weights"]["物件"]
+    assert f"100点のうち{w}点が物件の点" in body
+    # 木造で、各段の内側と端を通す。端は「以下」側に入る
+    for age, pct in ((5, 100), (6, 85), (15, 85), (16, 70), (25, 70),
+                     (26, 50), (35, 50), (36, 35), (45, 35), (46, 20)):
+        subj = SubjectProperty("chuko_kodate", 30_000_000, "x",
+                               build_year=2026 - age, structure="木造")
+        raw = score_building(subj, 2026).raw
+        assert round(raw * 100) == pct, f"築{age}年 → {raw}"
+        assert f"<td>{pct}%</td>" in body, f"{pct}% が記事に無い"
+
+
+def test_the_cost_article_matches_the_finance_sample():
+    """諸費用の記事の金額は、資金計画の見本がいま出している金額と同じであること。
+
+    見本の前提（finance_config.json や見本の入力）を変えると、ここが落ちる。
+    そのときは記事の表と本文を直す。
+    """
+    sample = _client().get("/sample/finance").get_data(as_text=True)
+    body = guides.by_slug("chuko-shohiyou-uchiwake").body
+    for amount in ("238.56万円", "111.54万円", "64.21万円", "27.5万円",
+                   "25.5万円", "2.91万円", "9.22万円", "44.05万円"):
+        assert amount in sample, f"見本に {amount} が無い（見本が変わった）"
+        assert amount in body, f"記事に {amount} が無い"
+    # 割合は記事が自分で書いている数字。計算が合っているかを見る
+    assert f"{238.56 / 3180 * 100:.1f}%" == "7.5%"
+    assert f"{(238.56 - 64.21) / 3180 * 100:.1f}%" == "5.5%"
+    assert "174.35万円" in body
+
+
+def test_the_contract_articles_name_the_law_they_rely_on():
+    """条文が答えになる記事は、条文番号を本文に書く（記憶で書かない約束の裏返し）。"""
+    need = {
+        "tetsukekin-kaijo": ("第557条", "第39条", "第41条", "第3条の5", "第38条"),
+        "keiyaku-futekigou-sekinin": ("562条", "第566条", "572条", "40条",
+                                      "消費者契約法8条", "品確法95条"),
+        "home-inspection-hitsuyou": ("第15条の7", "第15条の8", "34条の2第1項4号",
+                                     "35条1項6号の2", "37条1項2号の2",
+                                     "第16条の2の2"),
+        "jiyu-sekkei-mansion-kikaku": ("第4条第6項第2号", "第7条", "第33条",
+                                       "第36条"),
+        "yokoku-koukoku-kakaku-mitei": ("第4条第6項第3号", "第9条第4項",
+                                        "施行規則第5条第3項"),
+        "shinsui-souteikuiki-kau": ("水防法 第14条", "第16条の4の3第3号の2"),
+    }
+    for slug, words in need.items():
+        body = guides.by_slug(slug).body
+        for w in words:
+            assert w in body, f"{slug} に「{w}」が無い"

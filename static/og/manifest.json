@@ -2,8 +2,14 @@
  "baibai-keiyaku-toujitsu-nagare": {
   "title": "売買契約の当日。何が行われ、何を持っていくか"
  },
+ "chikunensu-nannen-made": {
+  "title": "中古住宅は築何年まで買えるか。分かれ目は年数ではなく日付です"
+ },
  "chuko-jutaku-katte-wa-ikenai": {
   "title": "中古住宅で避けるべきなのは、あとから直せないものがある家です"
+ },
+ "chuko-shohiyou-uchiwake": {
+  "title": "中古戸建の諸費用は物件価格の何%か。3,180万円で内訳を全部出しました"
  },
  "dosha-saigai-keikai-kuiki": {
   "title": "土砂災害の警戒区域と特別警戒区域。違うのは規制の中身です"
@@ -11,8 +17,14 @@
  "hensai-futanritsu": {
   "title": "返済負担率の基準は30%と35%。年収400万円で線が変わります"
  },
+ "home-inspection-hitsuyou": {
+  "title": "ホームインスペクションとデータの診断は、見ているものが違います"
+ },
  "jiban-ekijoka-morido": {
   "title": "液状化と大規模盛土造成地は、浸水の色とは別に見る"
+ },
+ "jiyu-sekkei-mansion-kikaku": {
+  "title": "自由設計型マンション企画は、まだ売り出しではありません"
  },
  "jizen-shinsa-hon-shinsa": {
   "title": "事前審査は人を見ます。本審査は、家も見ます"
@@ -31,6 +43,9 @@
  },
  "keiryo-teppone-taiyo-nensu": {
   "title": "軽量鉄骨の耐用年数は19年か27年か。骨格材3mmで分かれます"
+ },
+ "keiyaku-futekigou-sekinin": {
+  "title": "個人の売主は「責任を負わない」で売れる。中古戸建の契約不適合責任を読む"
  },
  "kenchiku-jouken-tsuki-tochi": {
   "title": "建築条件付きの土地は、注文住宅の土地ではありません"
@@ -77,6 +92,9 @@
  "shin-taishin-kenchiku-kakunin": {
   "title": "新耐震かどうかは築年では決まりません。境目は1981年6月の建築確認"
  },
+ "shinsui-souteikuiki-kau": {
+  "title": "浸水想定区域の家は買ってはいけないのか。深さと床の高さで考えます"
+ },
  "shoene-kijun-tekigou": {
   "title": "「省エネ基準に適合」は2025年4月から義務です。加点材料ではなくなりました"
  },
@@ -89,6 +107,9 @@
  "shuzen-tsumitatekin-meyasu": {
   "title": "修繕積立金の目安は㎡あたり月いくらか。国交省ガイドラインの読み方"
  },
+ "tetsukekin-kaijo": {
+  "title": "手付金はいくら払うか。手付で解除できるのは、いつまでか"
+ },
  "tochi-sagashi-chumon-jutaku": {
   "title": "注文住宅の土地の探し方。広さと価格より先に見るものがあります"
  },
@@ -97,6 +118,9 @@
  },
  "tsunagi-yushi-risoku": {
   "title": "注文住宅のつなぎ融資。利息は住宅ローンとは別にかかります"
+ },
+ "yokoku-koukoku-kakaku-mitei": {
+  "title": "「価格未定」の予告広告で分かること。本広告までは申込みできません"
  },
  "yousekiritsu-kaisuu": {
   "title": "容積率200%でも、2階建てなら150㎡止まりです"

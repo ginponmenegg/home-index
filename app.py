@@ -3086,6 +3086,19 @@ def _guide_og(base: str, g=None) -> str:
 _H2 = re.compile(r"<h2>(.*?)</h2>", re.S)
 
 
+# 日本語は語のあいだに空白を置かない。記事のソースは読みやすさのために文の
+# 途中で改行しているが、ブラウザは改行を空白1つとして描くので、「制度を 見て
+# います」のように文の中に隙間が出ていた（全記事。2026-10-08に気づいた）。
+# 改行の前後が日本語（またはリンク・太字の境目）のときだけ詰める。英数字どうしの
+# 改行は語の区切りなので、空白として残す。
+_JA_BREAK = re.compile(
+    r"([^\x00-\x7f]|</a>|</b>)[ \t]*\r?\n[ \t]*(?=[^\x00-\x7f]|<a |<b>)")
+
+
+def _join_ja_lines(text: str) -> str:
+    return _JA_BREAK.sub(r"\1", text)
+
+
 def _with_toc(body: str):
     """本文の見出しから目次を作り、あわせて見出しに id を振る。
 
@@ -3231,14 +3244,14 @@ def guide_page(slug):
     head = _jsonld({"@context": "https://schema.org",
                     "@graph": [article, _breadcrumbs(base, g.title)]})
     updated = (f"　更新 {g.updated}" if g.updated != g.published else "")
-    toc, article = _with_toc(g.body)
+    toc, article = _with_toc(_join_ja_lines(g.body))
     body = ('<p class="meta"><a href="/guide">← 解説の一覧</a></p>'
             f'<h1>{html.escape(g.title)}</h1>'
             f'<p class="meta">{g.published}{updated}'
             + (f'　/　{html.escape(OPERATOR)}（宅地建物取引士）'
                '　<a href="/about">運営者について</a>' if operator_named() else '')
             + '</p>'
-            f'<div class="lead"><p style="margin:0">{g.lead}</p></div>'
+            f'<div class="lead"><p style="margin:0">{_join_ja_lines(g.lead)}</p></div>'
             + toc + article
             + '<div class="after"><p>この記事の数字は、診断の採点にそのまま'
               f'使っています。<a href="{g.cta_href}">{html.escape(g.cta_text)}'
