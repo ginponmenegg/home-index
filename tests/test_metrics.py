@@ -298,3 +298,47 @@ def test_a_crawler_does_not_count_as_a_press(env):
             "/", headers={"User-Agent": "Googlebot/2.1"}):
         env.app._did("pro_cta")
     assert env.metrics.totals(2)["pro_cta"] == 0
+
+
+# ---- 期間と累計（2026-10-09）----------------------------------------------
+# 「昨日まで160件だったのが今日140件」と聞かれた。直近30日の枠が進んで、
+# 古い日が外れただけだった。減らない累計を並べ、枠の日数も名前どおりにする。
+
+def _put(env, day, name, n):
+    env.db.run("INSERT INTO daily_counts (day, name, n) VALUES (?, ?, ?)",
+               (day.isoformat(), name, n))
+
+
+def test_the_last_30_days_are_30_days_including_today(env):
+    m = env.metrics
+    t = m.today()
+    _put(env, t - datetime.timedelta(days=29), "diag_kodate", 1)   # 30日目
+    _put(env, t - datetime.timedelta(days=30), "diag_kodate", 100)  # 31日目
+    assert m.totals(30)["diag_kodate"] == 1
+    assert m.since(30) == t - datetime.timedelta(days=29)
+    assert m.since(1) == t
+
+
+def test_the_all_time_total_does_not_shrink_with_the_window(env):
+    m = env.metrics
+    t = m.today()
+    _put(env, t - datetime.timedelta(days=400), "diag_kodate", 20)
+    _put(env, t, "diag_kodate", 3)
+    ever, first = m.all_time()
+    assert ever["diag_kodate"] == 23
+    assert first == (t - datetime.timedelta(days=400)).isoformat()
+    assert m.totals(30)["diag_kodate"] == 3
+
+
+def test_the_page_shows_the_window_and_the_all_time_total(env):
+    t = env.metrics.today()
+    _put(env, t - datetime.timedelta(days=100), "diag_land", 7)
+    _put(env, t, "diag_kodate", 2)
+    h = env.app.app.test_client().get("/metrics?key=ひみつ&days=7").get_data(as_text=True)
+    assert "診断の累計" in h and ">9<" in h, "累計（7＋2）が出ていない"
+    assert "累計は減りません" in h
+    # 日ごとは1日1行。記録の無い日も行になる（7日なら7行）
+    assert h.count('<details class="mx-day">') == 7
+    # 30列を横に並べた表はもう無い
+    assert "日付</th>" not in h
+

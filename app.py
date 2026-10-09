@@ -3343,6 +3343,22 @@ def metrics_csv():
                  f'attachment; filename="homeindex-{today}.csv"'})
 
 
+# 数字の画面で、項目を並べる順と見出し。ここに無い項目は「その他」に入る
+# （EVENTS に足したのにここを直し忘れても、画面から消えない）。
+_METRIC_GROUPS = (
+    ("画面を見た", ("view_lp", "browser", "view_buy", "view_mansion",
+                    "view_land", "view_guide", "view_sample",
+                    "view_sample_finance")),
+    ("診断と保存", ("diag_kodate", "diag_mansion", "diag_land", "pro_diag",
+                    "paste_used", "saved")),
+    ("会員とPRO", ("signup", "plan_view", "pro_cta", "plan_confirm",
+                   "checkout", "pro_start", "pro_cancel")),
+    ("どこから来たか", ("ref_x", "ref_threads", "ref_instagram", "ref_tiktok",
+                        "ref_search", "ref_other", "ref_none")),
+    ("不具合", ("mail_failed",)),
+)
+
+
 @app.route("/metrics")
 def metrics_page():
     """数字を見る画面。合鍵を知っている人だけ。
@@ -3358,26 +3374,66 @@ def metrics_page():
         days = max(1, min(180, int(request.args.get("days") or 30)))
     except ValueError:
         days = 30
+    import datetime
     tot = metrics.totals(days)
-    rows = metrics.by_day(days)
-    names = list(metrics.EVENTS)
+    rows = dict(metrics.by_day(days))
+    ever, first_day = metrics.all_time()
+    key_q = html.escape(request.args.get("key") or "")
 
-    def cell(v):
-        return f"<td>{v}</td>" if v else '<td style="color:#cbd5e1">·</td>'
-
-    head = "".join(f"<th>{metrics.EVENTS[n]}</th>" for n in names)
-    body = "".join(
-        f"<tr><th class=\"rowlbl\">{day}</th>"
-        + "".join(cell(vals.get(n, 0)) for n in names) + "</tr>"
-        for day, vals in rows)
-    sums = "".join(f"<td><b>{tot[n]}</b></td>" for n in names)
-
-    # 見たいのは率。母数が0のときに割らない。
     def rate(a, b):
+        """見たいのは率。母数が0のときに割らない。"""
         return f"{round(tot[a] / tot[b] * 100)}%" if tot[b] else "—"
 
-    # 診断から決済までの段。どこで切れているかは、並べないと読めない。
-    diag = tot["diag_kodate"] + tot["diag_mansion"] + tot["diag_land"]
+    def diag_of(vals):
+        return sum(vals.get(n, 0) for n in ("diag_kodate", "diag_mansion",
+                                             "diag_land"))
+
+    diag = diag_of(tot)
+    diag_ever = diag_of(ever)
+    today_ = metrics.today()
+    diag_today = diag_of(rows.get(today_.isoformat(), {}))
+
+    # ---- 上の大きな数字 -------------------------------------------------
+    # 以前は日ごとの表のいちばん上に「合計」の行があるだけで、横に30列以上
+    # 並ぶ表を右へ送らないと、診断が何件かすら読めなかった。
+    def tile(label, value, sub=""):
+        return (f'<div class="mx-tile"><div class="k">{label}</div>'
+                f'<div class="v">{value}</div>'
+                + (f'<div class="s">{sub}</div>' if sub else "") + '</div>')
+
+    since_ = metrics.since(days)
+    tiles = "".join([
+        tile(f"診断（直近{days}日）", f"{diag:,}",
+             f"戸建 {tot['diag_kodate']}・マンション {tot['diag_mansion']}"
+             f"・土地 {tot['diag_land']}"),
+        tile("診断の累計", f"{diag_ever:,}",
+             f"{first_day} から" if first_day else "まだありません"),
+        tile("今日の診断", f"{diag_today:,}", today_.isoformat()),
+        tile(f"会員登録（直近{days}日）", f"{tot['signup']:,}",
+             f"累計 {ever['signup']:,}"),
+        tile("PRO", f"開始 {tot['pro_start']}",
+             f"解約 {tot['pro_cancel']}（累計 開始 {ever['pro_start']}）"),
+        tile("トップをブラウザで開いた", f"{tot['browser']:,}",
+             f"HTMLの取得 {tot['view_lp']:,} のうち {rate('browser', 'view_lp')}"),
+    ])
+
+    periods = "".join(
+        (f'<b>{d}日</b>' if d == days else
+         f'<a href="/metrics?key={key_q}&amp;days={d}">{d}日</a>')
+        for d in (7, 30, 90, 180))
+
+    # ---- どこから来たか（棒） -------------------------------------------
+    refs = sorted(((metrics.EVENTS[n].replace("から来た", "").split("（")[0], tot[n])
+                   for n in metrics.EVENTS if n.startswith("ref_")),
+                  key=lambda x: -x[1])
+    ref_max = max([n for _l, n in refs] + [1])
+    ref_rows = "".join(
+        f'<div class="mx-bar"><span class="l">{label}</span>'
+        f'<span class="b"><i style="width:{n / ref_max * 100:.0f}%"></i></span>'
+        f'<span class="n">{n:,}</span></div>'
+        for label, n in refs)
+
+    # ---- 診断から決済まで -----------------------------------------------
     steps = [("診断が出た", diag), ("プランの画面を見た", tot["plan_view"]),
              ("PROの壁に当たった", tot["pro_cta"]),
              ("申込の最終確認へ", tot["plan_confirm"]),
@@ -3420,50 +3476,136 @@ def metrics_page():
     risks = "・".join(f"{name} {n}件"
                       for name, n in observations.common_risks(days)) or "—"
 
+    # ---- 項目ごと：期間と累計を縦に ----------------------------------------
+    # 横に30列並べると、スマートフォンでは右へ送り続けないと読めない。
+    # 項目を行にして、数字は「期間」と「累計」の2列だけにする。
+    placed = {n for _g, names in _METRIC_GROUPS for n in names}
+    groups = list(_METRIC_GROUPS) + [
+        ("その他", tuple(n for n in metrics.EVENTS if n not in placed))]
+    event_rows = ""
+    for gname, names in groups:
+        names = [n for n in names if n in metrics.EVENTS]
+        if not names:
+            continue
+        event_rows += f'<tr class="grp"><th colspan="3">{gname}</th></tr>'
+        event_rows += "".join(
+            f'<tr><th class="rowlbl">{metrics.EVENTS[n]}</th>'
+            f'<td>{tot[n]:,}</td><td class="ever">{ever[n]:,}</td></tr>'
+            for n in names)
+
+    # ---- 日ごと：1日1行。押すとその日の内訳 ------------------------------
+    # 記録の無い日も行として出す。抜けている日が見えないと、休んだ日と
+    # 数えられなかった日の区別がつかない。
+    day_list = [since_ + datetime.timedelta(days=i) for i in range(days)]
+    day_list = [d for d in day_list if d <= today_][::-1]
+    diag_max = max([diag_of(rows.get(d.isoformat(), {})) for d in day_list] + [1])
+    wd = "月火水木金土日"
+    day_rows = []
+    for d in day_list:
+        vals = rows.get(d.isoformat(), {})
+        dn = diag_of(vals)
+        items = "".join(
+            f'<li>{metrics.EVENTS[n]}<b>{vals[n]:,}</b></li>'
+            for n in metrics.EVENTS if vals.get(n))
+        day_rows.append(
+            f'<details class="mx-day"><summary>'
+            f'<span class="d">{d.month}/{d.day}<small>（{wd[d.weekday()]}）</small></span>'
+            f'<span class="b"><i style="width:{dn / diag_max * 100:.0f}%"></i></span>'
+            f'<span class="n">{dn}</span>'
+            f'<span class="o">開いた {vals.get("browser", 0)}・記事 {vals.get("view_guide", 0)}</span>'
+            f'</summary>'
+            + (f'<ul>{items}</ul>' if items else
+               '<p class="sub" style="margin:6px 0 0">記録はありません</p>')
+            + '</details>')
+
+    mail_warn = (
+        f'<div class="note" style="margin:14px 0;border-color:#fecaca;background:#fef2f2">'
+        f'<b style="color:#b91c1c">ログインのメールを送れなかった {tot["mail_failed"]}回</b>。'
+        'この数が0でないあいだ、誰もログインできず、会員登録もできません。'
+        'Renderのログで差出人ドメインの認証を確かめてください。</div>'
+        if tot["mail_failed"] else "")
+
     body_html = f'''
+<style>
+.card .sub{{font-size:12.5px;color:#64748b;line-height:1.7}}
+.mx-period{{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 0;font-size:14px}}
+.mx-period a,.mx-period b{{padding:6px 12px;border-radius:999px;border:1px solid #e2e8f0;
+  text-decoration:none;color:inherit}}
+.mx-period b{{background:#0f172a;color:#fff;border-color:#0f172a}}
+.mx-tiles{{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:10px;margin:16px 0 4px}}
+.mx-tile{{border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;background:#fff}}
+.mx-tile .k{{font-size:12.5px;color:#64748b}}
+.mx-tile .v{{font-size:26px;font-weight:800;line-height:1.25;margin-top:2px}}
+.mx-tile .s{{font-size:12px;color:#94a3b8;margin-top:2px;line-height:1.5}}
+.mx-bar{{display:grid;grid-template-columns:7.5em 1fr 3.5em;gap:8px;align-items:center;
+  font-size:13.5px;padding:3px 0}}
+.mx-bar .b,.mx-day .b{{height:10px;background:#f1f5f9;border-radius:5px;overflow:hidden}}
+.mx-bar .b i,.mx-day .b i{{display:block;height:100%;background:#0f766e;border-radius:5px}}
+.mx-bar .n,.mx-day .n{{text-align:right;font-variant-numeric:tabular-nums}}
+table.mx-ev{{width:100%;border-collapse:collapse;font-size:13.5px}}
+table.mx-ev th,table.mx-ev td{{padding:6px 4px;border-bottom:1px solid #f1f5f9;text-align:right;
+  font-variant-numeric:tabular-nums}}
+table.mx-ev th.rowlbl{{text-align:left;font-weight:400}}
+table.mx-ev td.ever{{color:#64748b}}
+table.mx-ev tr.grp th{{text-align:left;padding-top:14px;font-size:12.5px;color:#64748b;
+  border-bottom:1px solid #e2e8f0}}
+table.mx-ev thead th{{font-size:12px;color:#64748b;font-weight:600}}
+.mx-day{{border-bottom:1px solid #f1f5f9}}
+.mx-day summary{{display:grid;grid-template-columns:5.2em 1fr 2.4em;gap:8px;align-items:center;
+  list-style:none;cursor:pointer;padding:8px 0;font-size:14px}}
+.mx-day summary::-webkit-details-marker{{display:none}}
+.mx-day summary .d small{{color:#94a3b8;font-size:11px}}
+.mx-day summary .o{{grid-column:1 / -1;font-size:12px;color:#94a3b8;margin-top:-4px}}
+.mx-day[open] summary{{font-weight:700}}
+.mx-day ul{{list-style:none;margin:0 0 10px;padding:0;display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:2px 16px;font-size:13px}}
+.mx-day li{{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dotted #e2e8f0;
+  padding:3px 0}}
+</style>
 <div class="card">
- <h1>数字（直近{days}日）</h1>
- <p class="lead">日付は日本時間。個人も物件も記録していません。
-  件数だけです。</p>
- <div class="note" style="margin:14px 0">
-  <b>トップ　{tot["view_lp"]}件のうち、ブラウザで開かれた {tot["browser"]}件</b>
-  （{rate("browser", "view_lp")}）<br>
-  <span class="sub">差は、HTMLを取りに来ただけのものです。名乗らない巡回や
-   調査スキャンは弾けないため、ここで見分けます。</span><br>
-  <b>どこから来たか</b>　X {tot["ref_x"]}／Threads {tot["ref_threads"]}／
-  Instagram {tot["ref_instagram"]}／TikTok {tot["ref_tiktok"]}／
-  検索 {tot["ref_search"]}／その他 {tot["ref_other"]}／
-  リンク元なし {tot["ref_none"]}<br>
-  <span class="sub">Instagram を Threads と分けて数え始めたのは
-   2026-09-18 です。それより前の Threads には Instagram が混ざっています。
-   </span>
- </div>
- <div class="note" style="margin:14px 0">
+ <h1>数字</h1>
+ <p class="lead">日付は日本時間。個人も物件も記録していません。件数だけです。</p>
+ <div class="mx-period">{periods}</div>
+ <p class="sub" style="margin:6px 0 0">直近{days}日＝{since_.isoformat()}〜{today_.isoformat()}（今日を含む）。
+  日付が進むと古い日が外れるので、期間の数字は減ることがあります。累計は減りません。</p>
+ <div class="mx-tiles">{tiles}</div>
+ {mail_warn}
+
+ <h2 style="margin:26px 0 6px">どこから来たか</h2>
+ {ref_rows}
+ <p class="sub" style="margin:6px 0 0">Instagram を Threads と分けて数え始めたのは
+  2026-09-18 です。それより前の Threads には Instagram が混ざっています。</p>
+
+ <div class="note" style="margin:18px 0">
   <b>入力画面 → 診断</b>　{rate("diag_kodate", "view_buy")}（戸建）／
   {rate("diag_mansion", "view_mansion")}（マンション）／
   {rate("diag_land", "view_land")}（土地）<br>
-  <b>診断 → 会員登録</b>　{tot["signup"]}人／
-  診断{tot["diag_kodate"] + tot["diag_mansion"] + tot["diag_land"]}件<br>
-  <b>PRO</b>　開始 {tot["pro_start"]}／解約 {tot["pro_cancel"]}
-  {"<br><b style='color:#b91c1c'>ログインのメールを送れなかった "
-   f"{tot['mail_failed']}回</b>。この数が0でないあいだ、"
-   "誰もログインできず、会員登録もできません。"
-   "Renderのログで差出人ドメインの認証を確かめてください。"
-   if tot["mail_failed"] else ""}
+  <b>診断 → 会員登録</b>　{tot["signup"]}人／診断{diag}件
  </div>
+
  <h2 style="margin:26px 0 0">診断から決済まで</h2>
  <p class="sub" style="margin:0 0 4px">どこで切れているかを見る。
   率は「ひとつ前の段から」です。</p>
- <div class="tablewrap"><table class="cmp">
+ <table class="mx-ev">
   <thead><tr><th class="rowlbl">段</th><th>件数</th><th>前の段から</th></tr></thead>
   <tbody>{step_rows()}</tbody>
- </table></div>
+ </table>
+
+ <h2 style="margin:26px 0 0">日ごと</h2>
+ <p class="sub" style="margin:0 0 4px">棒は診断の件数。押すと、その日の内訳が開きます。</p>
+ {"".join(day_rows)}
+
+ <h2 style="margin:26px 0 0">項目ごと</h2>
+ <table class="mx-ev">
+  <thead><tr><th class="rowlbl"></th><th>直近{days}日</th><th>累計</th></tr></thead>
+  <tbody>{event_rows}</tbody>
+ </table>
 
  <h2 style="margin:26px 0 0">診断された物件（{obs_total}件）</h2>
  <p class="sub" style="margin:0 0 4px">町名まで記録しています。
   利用者を結びつける情報は持っていません。
-  <a href="/metrics/data.csv?key={html.escape(request.args.get("key") or "")}">
-  CSVで書き出す</a></p>
+  <a href="/metrics/data.csv?key={key_q}">CSVで書き出す</a></p>
  <div class="tablewrap"><table class="cmp">
   <thead><tr><th class="rowlbl">種別</th><th>件数</th><th>平均点</th>
    <th>平均の情報充足度</th></tr></thead>
@@ -3477,14 +3619,6 @@ def metrics_page():
  <p class="sub" style="margin:8px 0 0"><b>件数の少ない行の平均は、平均では
   ありません。</b>必ず件数と一緒に読んでください。</p>
  <p class="sub" style="margin:8px 0 0"><b>よく出た注意項目</b>　{risks}</p>
-
- <h2 style="margin:26px 0 0">日ごと</h2>
- <div class="tablewrap"><table class="cmp">
-  <thead><tr><th class="rowlbl">日付</th>{head}</tr></thead>
-  <tbody><tr><th class="rowlbl">合計</th>{sums}</tr>{body}</tbody>
- </table></div>
- <p class="sub" style="margin-top:12px">
-  期間を変えるには <code>?days=90</code> を足してください（最大180日）。</p>
 </div>'''
     return _account_page("数字", body_html, chip="運営")
 

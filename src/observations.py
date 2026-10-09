@@ -212,7 +212,8 @@ def count() -> int:
 def _since(days: Optional[int]) -> str:
     if not days:
         return "0000-01-01"
-    return (_today() - datetime.timedelta(days=int(days))).isoformat()
+    # 今日を1日目に数える（metrics.since と同じ。直近30日が31日ぶんにならない）
+    return (_today() - datetime.timedelta(days=int(days) - 1)).isoformat()
 
 
 def by_kind(days: Optional[int] = None):

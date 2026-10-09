@@ -141,13 +141,21 @@ def bump(name: str, n: int = 1) -> None:
         print(f"[metrics] {name} を数えられませんでした: {e}")
 
 
+def since(days: int) -> datetime.date:
+    """「直近N日」の初日。今日を1日目に数えるので、N日前ではなくN-1日前。
+
+    以前は N日前から数えていて、「直近30日」が実際には31日ぶんになっていた。
+    """
+    return today() - datetime.timedelta(days=max(1, int(days)) - 1)
+
+
 def series(days: int = 30) -> list[dict]:
     """直近の記録を新しい順に返す。"""
     if not db.enabled():
         return []
-    since = (today() - datetime.timedelta(days=days)).isoformat()
+    since_ = since(days).isoformat()
     return db.run("SELECT day, name, n FROM daily_counts WHERE day >= ? "
-                  "ORDER BY day DESC, name", (since,), "all") or []
+                  "ORDER BY day DESC, name", (since_,), "all") or []
 
 
 def totals(days: int = 30) -> dict:
@@ -157,6 +165,24 @@ def totals(days: int = 30) -> dict:
         if r["name"] in out:
             out[r["name"]] += int(r["n"])
     return out
+
+
+def all_time() -> tuple[dict, str | None]:
+    """記録を始めた日からの累計と、その初日。
+
+    画面の「直近N日」は枠が1日ずつ進むので、古い日が外れると合計が減る。
+    それを数字が消えたと読まないように、減らない累計を並べて出す。
+    """
+    out = {k: 0 for k in EVENTS}
+    if not db.enabled():
+        return out, None
+    rows = db.run("SELECT name, SUM(n) AS n FROM daily_counts GROUP BY name",
+                  (), "all") or []
+    for r in rows:
+        if r["name"] in out:
+            out[r["name"]] += int(r["n"] or 0)
+    first = db.run("SELECT MIN(day) AS d FROM daily_counts", (), "one")
+    return out, (first or {}).get("d")
 
 
 def by_day(days: int = 30) -> list[tuple]:
