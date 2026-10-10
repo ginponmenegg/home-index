@@ -19,6 +19,7 @@ Resendの無料枠は1日100通。誰かがフォームを叩き続けると、�
 from __future__ import annotations
 
 import hashlib
+import os
 import secrets
 import datetime
 import re
@@ -167,8 +168,32 @@ def get_user(user_id) -> dict | None:
     return db.run("SELECT * FROM users WHERE id = ?", (_uid(user_id),), "one")
 
 
+# 運営者のアカウント。決済を通さず、期限なしでPROにする。
+#
+# DBの plan を書き換える方法もあるが、それだと本人が解約ボタンを押した
+# 瞬間に free へ落ちるし、DBを作り直せば消える。環境変数に置けば、
+# Render の画面で誰に付けているかが見え、外すのも1行消すだけで済む。
+# メールアドレスをコードに書かないのは、リポジトリに個人の連絡先を
+# 残さないため。ログインはメールのリンクでしか成立しないので、この
+# アドレスでログインできるのは、そのアドレスの持ち主だけ。
+COMP_ENV = "PRO_EMAILS"
+
+
+def comp_emails() -> set:
+    """PRO_EMAILS をカンマか空白で区切って読む。小文字にそろえる。"""
+    raw = os.environ.get(COMP_ENV) or ""
+    return {normalize_email(x) for x in re.split(r"[,\s]+", raw) if x.strip()}
+
+
+def is_comped(user: dict | None) -> bool:
+    """運営者として、無料・期限なしでPROにしているアカウントか。"""
+    return bool(user) and normalize_email(user.get("email")) in comp_emails()
+
+
 def is_pro(user: dict | None) -> bool:
     """有料プランが有効か。期限切れは free として扱う。"""
+    if is_comped(user):
+        return True
     if not user or user.get("plan") != PLAN_PRO:
         return False
     exp = user.get("plan_expires_at")

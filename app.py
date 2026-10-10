@@ -8262,7 +8262,12 @@ PLAN_PAGE = """
 <div class="card">
  <h1>プラン</h1>
  <p class="lead">いまは<b>{{ 'PRO' if pro else '無料プラン' }}</b>をご利用中です。</p>
-{% if not billing %}
+{% if comped %}
+ <div class="note ok" style="margin-top:14px">
+  <b>運営者のアカウントです。</b>PROを無料・期限なしでご利用いただけます。
+  請求はありません。解約の手続きも要りません。
+ </div>
+{% elif not billing %}
  <div class="note warn" style="margin-top:14px">
   <b>PROは試験公開中です。</b>いまのところ料金はいただいていません。
   どなたでも<a href="/pro/diagnose">戸建</a>・<a href="/pro/mansion">マンション</a>・
@@ -8540,7 +8545,8 @@ def plan_page():
     _seen("plan_view")
     u = current_user()
     body = render_template_string(
-        PLAN_PAGE, pro=accounts.is_pro(u), billing=billing_on(),
+        PLAN_PAGE, pro=accounts.is_pro(u), comped=accounts.is_comped(u),
+        billing=billing_on(),
         cancel_at=(u or {}).get("plan_cancel_at"),   # 未ログインでも開ける
         campaign=campaign.active(), campaign_until=campaign.until_ja(),
         normal_label=PRICE_LABEL,
@@ -8784,7 +8790,7 @@ def plan_cancel():
     if r is not None:
         return r
     u = current_user()
-    if not accounts.is_pro(u):
+    if not accounts.is_pro(u) or accounts.is_comped(u):
         return redirect("/plan")
     if u.get("plan_cancel_at"):
         return redirect("/plan")      # すでに解約済み。二重に受けない

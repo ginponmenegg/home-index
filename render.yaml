@@ -33,6 +33,10 @@ services:
       - key: MAIL_FROM           # 例）HOME INDEX <login@example.com>
         sync: false
       # --- 有料プラン。5つすべて揃うまで課金の画面は出ない ---
+      # 運営者のアカウント。決済を通さず期限なしでPROにする。カンマ区切り。
+      # ログインに使うメールアドレスをそのまま書く（コードには書かない）
+      - key: PRO_EMAILS
+        sync: false
       - key: BILLING_ENABLED    # "1" で有効。課金開始日が決まってから立てる
         sync: false
       # 氏名だけを入れる。屋号や肩書きは混ぜない（画面側で併記している）

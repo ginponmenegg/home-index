@@ -857,3 +857,39 @@ def test_a_pdf_is_not_rewritten(billing):
     r = billing.app.app.test_client().get("/sample/finance.pdf")
     assert r.mimetype == "application/pdf"
     assert r.data[:4] == b"%PDF"
+
+
+# ---- 運営者のアカウント（2026-10-10）---------------------------------------
+# 決済を通さず、期限なしでPROにする。DBではなく環境変数 PRO_EMAILS で持つ。
+
+def test_an_operator_address_is_pro_without_paying(billing, monkeypatch):
+    c, uid = _login(billing, "owner@example.jp")
+    # 大文字が混ざっていても、区切りが空白でも当たる
+    monkeypatch.setenv("PRO_EMAILS", "someone@example.com,  Owner@Example.JP")
+    u = billing.accounts.get_user(uid)
+    assert u["plan"] == "free", "DBは書き換えない"
+    assert billing.accounts.is_comped(u)
+    assert billing.accounts.is_pro(u)
+    h = c.get("/plan").get_data(as_text=True)
+    assert "運営者のアカウントです" in h
+    assert "/plan/cancel" not in h, "解約するものが無いので、解約の導線を出さない"
+
+
+def test_an_operator_cannot_cancel_by_accident(billing, monkeypatch):
+    c, uid = _login(billing, "owner2@example.jp")
+    monkeypatch.setenv("PRO_EMAILS", "owner2@example.jp")
+    assert c.get("/plan/cancel").status_code == 302
+    assert c.post("/plan/cancel").status_code == 302
+    assert billing.accounts.is_pro(billing.accounts.get_user(uid))
+
+
+def test_nobody_is_comped_unless_listed(billing, monkeypatch):
+    _c, uid = _login(billing, "plain@example.jp")
+    u = billing.accounts.get_user(uid)
+    monkeypatch.setenv("PRO_EMAILS", "")
+    assert not billing.accounts.is_comped(u)
+    assert not billing.accounts.is_pro(u)
+    monkeypatch.setenv("PRO_EMAILS", "plain@example.jp.evil.com")
+    assert not billing.accounts.is_comped(u), "部分一致で当てない"
+    assert not billing.accounts.is_comped(None)
+
