@@ -686,6 +686,52 @@ def _looks_like_a_bot() -> bool:
     return (not ua) or any(h in ua for h in _BOT_HINTS)
 
 
+# ---- 運営者の閲覧は数えない ------------------------------------------------
+# 運営者が自分で画面を確かめるたびに数字が増えると、利用者の動きが読めない。
+# PRO_EMAILS に書いたアカウントでログインしている間は数えない。
+#
+# ログアウトしても同じブラウザなら外れるよう、ログインした時点で署名つきの
+# 印を置く（中身はメールアドレスの署名だけ）。利用者には置かない。
+# PRO_EMAILS から外したら、印が残っていても効かなくなる。
+_OP_COOKIE = "hi_op"
+_OP_COOKIE_DAYS = 400
+
+
+def _op_signer():
+    from itsdangerous import URLSafeSerializer
+    return URLSafeSerializer(app.secret_key, salt="hi-operator")
+
+
+def _is_operator_browser() -> bool:
+    """運営者のアカウントか、運営者が使っているブラウザか。1リクエスト1回だけ調べる。"""
+    from flask import g
+    if "op" in g:
+        return g.op
+    op = False
+    raw = request.cookies.get(_OP_COOKIE)
+    if raw:
+        try:
+            email = accounts.normalize_email(_op_signer().loads(raw))
+            op = email in accounts.comp_emails()
+        except Exception:
+            op = False
+    if not op and session.get("uid"):
+        op = accounts.is_comped(current_user())
+    g.op = op
+    return op
+
+
+def _bump(name: str) -> None:
+    """操作の件数。運営者の操作は数えない。"""
+    if not _is_operator_browser():
+        metrics.bump(name)
+
+
+def _skip_counting() -> bool:
+    """閲覧を数えないとき。巡回か、運営者。"""
+    return _looks_like_a_bot() or _is_operator_browser()
+
+
 def _did(name: str) -> None:
     """押された・進んだことを数える。
 
@@ -693,7 +739,7 @@ def _did(name: str) -> None:
     起きるので、そこでリンク元を数えると「自分のサイトから来た」が
     増えるだけで、外から入ってきた回数が読めなくなる。
     """
-    if _looks_like_a_bot():
+    if _skip_counting():
         return
     metrics.bump(name)
 
@@ -706,9 +752,9 @@ def _observe(kind, subject, res) -> None:
     """診断された物件を1行残す。**利用者を結びつける鍵は渡さない。**
 
     クローラは数えない。数字のほうと同じ扱いにしておかないと、巡回の
-    ぶんが地域の傾向に混ざる。
+    ぶんが地域の傾向に混ざる。運営者が試した診断も混ぜない。
     """
-    if _looks_like_a_bot():
+    if _skip_counting():
         return
     observations.record(
         kind, subject, res.diagnosis,
@@ -724,7 +770,7 @@ def _seen(name: str) -> None:
     あわせて、どこから来たかを数える。内部の移動（トップ→診断）は
     数えない。数えたいのは「外から入ってきた回数」なので。
     """
-    if _looks_like_a_bot():
+    if _skip_counting():
         return
     metrics.bump(name)
     bucket = metrics.ref_bucket(request.headers.get("Referer") or "",
@@ -743,7 +789,7 @@ _PIXEL = base64.b64decode(
 @app.route("/_h.gif")
 def _heartbeat_pixel():
     from flask import Response
-    if not _looks_like_a_bot():
+    if not _skip_counting():
         metrics.bump("browser")
     return Response(_PIXEL, mimetype="image/gif", headers={
         "Cache-Control": "no-store, max-age=0"})
@@ -3675,7 +3721,7 @@ def resolve_city():
 def parse():
     text = request.form.get("listing", "")
     if text.strip():
-        metrics.bump("paste_used")
+        _bump("paste_used")
     if not text.strip():
         return render_template_string(FORM, v=_example_v(), listing="",
                                       banner="貼り付け欄が空です。物件説明を貼り付けてください。")
@@ -4280,7 +4326,7 @@ def _run_diagnose(f, datetime):
             "structure": subject.structure or "",
             "reno": "1" if subject.renovated else "",
             "loan_years": str(loan_years)}
-    metrics.bump("diag_kodate")
+    _bump("diag_kodate")
     _observe("kodate", subject, res)
     return _render_result(res, subject, sctx,
                           to_yen(f.get("down")) or 0, loan_years, carry=carry,
@@ -4534,7 +4580,7 @@ def mansion_parse():
     from src.extract import parse_mansion_text
     text = request.form.get("listing", "")
     if text.strip():
-        metrics.bump("paste_used")
+        _bump("paste_used")
     if not text.strip():
         return render_template_string(
             MANSION_FORM, v=_mansion_example_v(), directions=DIRECTIONS,
@@ -4686,7 +4732,7 @@ def _run_mansion_diagnose(f):
             "mfee": f.get("mfee") or "", "rfund": f.get("rfund") or "",
             "reno": "1" if subject.renovated else "",
             "loan_years": str(loan_years)}
-    metrics.bump("diag_mansion")
+    _bump("diag_mansion")
     _observe("mansion", subject, res)
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           carry=carry, redo=redo,
@@ -5694,7 +5740,7 @@ def _run_land_diagnose(f):
         loan_years=loan_years,
         estat_appid=os.environ.get("ESTAT_APPID"),
         estat_table=os.environ.get("ESTAT_TABLE", "0000020201"))
-    metrics.bump("diag_land")
+    _bump("diag_land")
     _observe("tochi", subject, res)
     return _render_land_result(res, subject, f, down_yen, loan_years)
 
@@ -6409,7 +6455,7 @@ def _run_land_pro(f):
     procedures = [x for x in (lps.farmland_procedure(legal, urban),
                               lps.heritage_notice(legal)) if x]
 
-    metrics.bump("pro_diag")
+    _bump("pro_diag")
     return _render_land_result(res, subject, f, down_yen, loan_years,
                                fin=_land_fin_ctx(bridge, total, events),
                                pro=True, procedures=procedures,
@@ -6839,7 +6885,7 @@ def _run_pro_diagnose(f):
                 ptype=("新築戸建（PRO）" if ptype == "shinchiku_kodate"
                        else "中古戸建（PRO）"),
                 specs=" ・ ".join(bits))
-    metrics.bump("pro_diag")
+    _bump("pro_diag")
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           free_diagnosis=free, questions=questions,
                           questions_note=questions_note,
@@ -7194,7 +7240,7 @@ def _run_mansion_pro(f):
     sctx = dict(address=(f"{subject.address}　{subject.name}"
                          if subject.name else subject.address),
                 ptype="中古マンション（PRO）", specs=" ・ ".join(bits))
-    metrics.bump("pro_diag")
+    _bump("pro_diag")
     return _render_result(res, subject, sctx, down_yen, loan_years,
                           free_diagnosis=free, questions=questions,
                           questions_note=questions_note,
@@ -7576,7 +7622,7 @@ def login_verify(token):
     except Exception:
         user = None
     if user and user.get("_is_new"):
-        metrics.bump("signup")
+        _bump("signup")
     if not user:
         body = ('<div class="card"><h1>リンクが使えません</h1>'
                 '<div class="note warn">期限が切れているか、すでに使われたリンクです。'
@@ -7587,7 +7633,12 @@ def login_verify(token):
     session.clear()
     session["uid"] = user["id"]
     session.permanent = True
-    return redirect("/mypage")
+    resp = redirect("/mypage")
+    if accounts.is_comped(user):
+        resp.set_cookie(_OP_COOKIE, _op_signer().dumps(user["email"]),
+                        max_age=_OP_COOKIE_DAYS * 86400, httponly=True,
+                        secure=request.is_secure, samesite="Lax")
+    return resp
 
 
 @app.route("/logout", methods=["POST"])
@@ -7637,7 +7688,7 @@ def save_diagnosis():
         return redirect("/mypage?full=1")
     except Exception:
         return redirect("/mypage?err=1")
-    metrics.bump("saved")
+    _bump("saved")
     return redirect("/mypage?added=1")
 
 
@@ -8752,7 +8803,7 @@ def _apply_stripe_event(kind, obj):
                 print(f"[stripe] period lookup failed: {e}")
         accounts.set_plan(uid, accounts.PLAN_PRO, expires)
         accounts.set_cancel_at(uid, None)     # 再開なら解約予定を消す
-        metrics.bump("pro_start")
+        _bump("pro_start")
         return
 
     if kind in ("customer.subscription.updated",
@@ -8832,7 +8883,7 @@ def plan_cancel():
         # 決済を伴わないPRO）。ここでPROのまま期限なしにすると、解約
         # した人が永久にPROになる。
         accounts.set_plan(u["id"], accounts.PLAN_FREE, None)
-    metrics.bump("pro_cancel")
+    _bump("pro_cancel")
     body = render_template_string(PLAN_CANCELED, expires=expires,
                                   reasons=CANCEL_REASONS)
     return _account_page("解約しました", body, chip="プラン")

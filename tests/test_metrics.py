@@ -342,3 +342,66 @@ def test_the_page_shows_the_window_and_the_all_time_total(env):
     # 30列を横に並べた表はもう無い
     assert "日付</th>" not in h
 
+
+# ---- 運営者は数えない（2026-10-10）-----------------------------------------
+# 運営者が自分で確かめるたびに数字が増えると、利用者の動きが読めない。
+
+_UA = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)"}
+
+
+def _login_as(env, c, email):
+    c.get("/login/" + env.accounts.issue_login_token(email))
+
+
+def _diagnose(c):
+    os.environ["SHINDAN_MOCK"] = "1"
+    return c.post("/diagnose", headers=_UA, data={
+        "address": "神奈川県小田原市城山1-2-3", "price": "3880",
+        "ptype": "chuko_kodate", "land": "147", "building": "90",
+        "byear": "2005", "station": "12"})
+
+
+def test_the_operator_is_not_counted(env, monkeypatch):
+    monkeypatch.setenv("PRO_EMAILS", "owner@example.jp")
+    c = env.app.app.test_client()
+    _login_as(env, c, "owner@example.jp")
+    _human(c, "/buy")
+    _human(c, "/")
+    c.get("/_h.gif", headers=_UA)
+    assert _diagnose(c).status_code == 200
+    t = env.metrics.totals(1)
+    assert t["view_buy"] == 0 and t["view_lp"] == 0 and t["browser"] == 0
+    assert t["diag_kodate"] == 0
+    from src import observations
+    assert observations.count() == 0, "運営者の診断を物件の記録に混ぜない"
+
+
+def test_the_operator_browser_stays_uncounted_after_logout(env, monkeypatch):
+    monkeypatch.setenv("PRO_EMAILS", "owner@example.jp")
+    c = env.app.app.test_client()
+    _login_as(env, c, "owner@example.jp")
+    c.post("/logout")
+    _human(c, "/buy")
+    assert env.metrics.totals(1)["view_buy"] == 0
+    # PRO_EMAILS から外したら、印が残っていても効かない
+    monkeypatch.setenv("PRO_EMAILS", "")
+    _human(c, "/buy")
+    assert env.metrics.totals(1)["view_buy"] == 1
+
+
+def test_other_people_are_still_counted(env, monkeypatch):
+    monkeypatch.setenv("PRO_EMAILS", "owner@example.jp")
+    c = env.app.app.test_client()
+    _login_as(env, c, "someone@example.jp")
+    _human(c, "/buy")
+    assert _diagnose(c).status_code == 200
+    t = env.metrics.totals(1)
+    assert t["view_buy"] == 1 and t["diag_kodate"] == 1
+    from src import observations
+    assert observations.count() == 1, "利用者の診断は記録される（上の0件が空振りでない証拠）"
+    # 署名の無い印は効かない
+    c2 = env.app.app.test_client()
+    c2.set_cookie("hi_op", "owner@example.jp")
+    _human(c2, "/buy")
+    assert env.metrics.totals(1)["view_buy"] == 2
+
