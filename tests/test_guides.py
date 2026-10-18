@@ -879,3 +879,74 @@ def test_the_contract_articles_name_the_law_they_rely_on():
         body = guides.by_slug(slug).body
         for w in words:
             assert w in body, f"{slug} に「{w}」が無い"
+
+
+# ---- 2026-10-18 に足した6本 ------------------------------------------------
+
+def test_the_mansion_avoid_article_lists_every_pro_risk():
+    """重大なリスクの表は、PROが実際に出すものと同じ顔ぶれであること。"""
+    from src.mansion_pro_scoring import mansion_pro_risks
+    from src.models import MansionProDetail, MansionSubject
+    d = MansionProDetail(long_term_plan="none", major_repair="never",
+                         arrears="many", management_form="self",
+                         reserve_increase="steep", land_right="leasehold",
+                         quake_diagnosis="need")
+    subj = MansionSubject(price=30_000_000, address="x", build_year=1995)
+    body = guides.by_slug("chuko-mansion-katte-wa-ikenai").body
+    risks = mansion_pro_risks(d, subj)
+    assert len(risks) == 7
+    for r in risks:
+        key = r.type.replace("築15年超で", "築15年を超えて").replace(
+            "管理費等の", "管理費・修繕積立金の").replace("借地権", "借地権")
+        assert key in body or r.type in body, f"{r.type} が表に無い"
+
+
+def test_the_management_tables_match_the_mansion_pro_scoring():
+    from src import mansion_pro_scoring as m
+    def word(v):
+        return f"{abs(v):.2f}".rstrip("0") + (" 加える" if v > 0 else " 引く")
+    jishu = guides.by_slug("jishu-kanri-mansion").body
+    for key in ("full", "partial", "self"):
+        assert word(m.MANAGEMENT_FORM[key][0]) in jishu, key
+    age = guides.by_slug("chuko-mansion-chikunensu").body
+    for table in (m.MAJOR_REPAIR, m.LONG_TERM_PLAN):
+        for adj, label in table.values():
+            assert label in age and word(adj) in age, label
+
+
+def test_the_mansion_age_article_matches_the_quake_line():
+    from src.mansion_scoring import NEW_QUAKE_STANDARD_YEAR
+    body = guides.by_slug("chuko-mansion-chikunensu").body
+    assert NEW_QUAKE_STANDARD_YEAR == 1982
+    assert "1981年築までを旧耐震として扱います" in body
+    assert "0.6倍" in body
+
+
+def test_the_settlement_article_matches_the_proration():
+    from src.finance import proration
+    body = guides.by_slug("koteishisanzei-seisan").body
+    jan = proration("2027-03-01", "0101", 110_000).total
+    apr = proration("2027-03-01", "0401", 110_000).total
+    assert f"{jan:,}円" in body and f"{apr:,}円" in body
+    assert "9.22万円" in _client().get("/sample/finance").get_data(as_text=True)
+
+
+def test_the_acquisition_tax_article_matches_the_calculation():
+    from src.finance import acquisition_tax
+    body = guides.by_slug("fudosan-shutokuzei-chuko").body
+    items = acquisition_tax(building_assessed=6_000_000, land_assessed=None,
+                            floor_area_m2=90, build_year=1983, build_month=6,
+                            build_day=1)
+    assert items[0].amount == 54_000
+    assert "5.4万円" in body
+    for word in ("第73条の14第3項", "第73条の24", "附則第11条の2",
+                 "附則第11条の5", "第37条の18", "第4項", "第5項"):
+        assert word in body, word
+
+
+def test_the_new_build_article_names_its_statutes():
+    body = guides.by_slug("tateuri-kau-mae").body
+    for word in ("第95条", "第2条第2項", "第6条", "第11条", "第15条",
+                 "第35条第1項第13号", "第7条第5項"):
+        assert word in body, word
+

@@ -8,11 +8,20 @@
  "chuko-jutaku-katte-wa-ikenai": {
   "title": "中古住宅で避けるべきなのは、あとから直せないものがある家です"
  },
+ "chuko-mansion-chikunensu": {
+  "title": "中古マンションは築何年まで買えるか。分かれ目は1981年と、修繕の記録です"
+ },
+ "chuko-mansion-katte-wa-ikenai": {
+  "title": "中古マンションで避けるべきなのは、自分ひとりでは直せないものがある物件です"
+ },
  "chuko-shohiyou-uchiwake": {
   "title": "中古戸建の諸費用は物件価格の何%か。3,180万円で内訳を全部出しました"
  },
  "dosha-saigai-keikai-kuiki": {
   "title": "土砂災害の警戒区域と特別警戒区域。違うのは規制の中身です"
+ },
+ "fudosan-shutokuzei-chuko": {
+  "title": "中古住宅の不動産取得税は、0円になることが多い。ならないのはどんな家か"
  },
  "hensai-futanritsu": {
   "title": "返済負担率の基準は30%と35%。年収400万円で線が変わります"
@@ -22,6 +31,9 @@
  },
  "jiban-ekijoka-morido": {
   "title": "液状化と大規模盛土造成地は、浸水の色とは別に見る"
+ },
+ "jishu-kanri-mansion": {
+  "title": "管理会社のいないマンション（自主管理）を買う前に、見ておくこと"
  },
  "jiyu-sekkei-mansion-kikaku": {
   "title": "自由設計型マンション企画は、まだ売り出しではありません"
@@ -58,6 +70,9 @@
  },
  "kodate-mansion-haiten": {
   "title": "戸建とマンションで、100点の配り方を変えています。価格は20点と30点です"
+ },
+ "koteishisanzei-seisan": {
+  "title": "固定資産税の精算金は、起算日が1月1日か4月1日かで大きく変わります"
  },
  "kouzui-shinsui-fukasa": {
   "title": "洪水ハザードの浸水深は6段階。0.5mと3mでは意味が違います"
@@ -106,6 +121,9 @@
  },
  "shuzen-tsumitatekin-meyasu": {
   "title": "修繕積立金の目安は㎡あたり月いくらか。国交省ガイドラインの読み方"
+ },
+ "tateuri-kau-mae": {
+  "title": "建売住宅を買う前に確かめること。新築にしかない10年の責任と、3つの書類"
  },
  "tetsukekin-kaijo": {
   "title": "手付金はいくら払うか。手付で解除できるのは、いつまでか"
