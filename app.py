@@ -615,6 +615,29 @@ FOOTER = ('<div style="text-align:center;margin-top:16px;font-size:12px;color:#5
 
 
 @app.after_request
+def _no_gaps_in_japanese(resp):
+    """画面のHTMLで、日本語の文の途中の改行を詰める。
+
+    テンプレートは読みやすさのために文の途中で改行している。ブラウザは改行を
+    空白1つとして描くので、「この物件では 24問」「期間の 最後まで」のように
+    文の中に隙間が出ていた。記事だけ直していたが、結果画面やプランの画面も
+    同じだった（2026-10-18）。詰めるのは改行の前後が日本語のときだけで、
+    英数字どうしの改行（語の区切り）は残す。
+    """
+    try:
+        if (resp.direct_passthrough or resp.mimetype != "text/html"
+                or resp.status_code != 200):
+            return resp
+        body = resp.get_data(as_text=True)
+        out = _join_ja_lines(body)
+        if out != body:
+            resp.set_data(out)
+    except Exception as e:        # pragma: no cover
+        print(f"[ja-lines] 詰められませんでした: {e}")
+    return resp
+
+
+@app.after_request
 def _show_pro_links(resp):
     """PRO会員のページにだけ、PROの道具へのリンクを出す。
 
@@ -1452,7 +1475,8 @@ BRAND_BAR
    </p>
    {% if plan_price %}
    <p class="muted" style="margin:10px 0 0"><b>PRO　{{plan_price}}</b>
-    ／ お申し込みにはメールアドレスでのログインが必要です。いつでも解約できます。</p>
+    ／ お申し込みにはメールアドレスでのログインが必要です。いつでも解約できます。
+    解約しても、お支払い済みの期間の最後まで使えます。</p>
    {% endif %}
    PLAN_LINKS_PLACEHOLDER
   </div>
@@ -1462,10 +1486,13 @@ BRAND_BAR
    <p style="margin:6px 0 10px">この物件は、<b>{{handover_unknowns}}</b>が
     未確認のままです。PROでは、<b>この物件について</b>ここまで出します。</p>
    <ul class="seen" style="margin:0">
-    <li><b>聞く</b><span><b>仲介業者に聞くことの一覧。</b>そのまま見せて
+    <li><b>聞く</b><span><b>仲介業者に聞くことの一覧。</b>{% if preview and preview.q_count %}この物件では
+     <b>{{preview.q_count}}問</b>です。1問目は「{{preview.q_first}}」。{% endif %}そのまま見せて
      答えてもらえる形で出します。内見や商談に持っていけます。</span></li>
-    <li><b>読む</b><span><b>重要事項説明書の、どこを見るか。</b>契約の直前に
-     30ページ近いものを渡され、その場で読み上げられます。この物件で効く欄を、
+    <li><b>読む</b><span><b>重要事項説明書の、どこを見るか。</b>{% if preview and preview.d_count %}この物件では
+     <b>{{preview.d_count}}か所</b>です。たとえば「{{preview.d_where}}」の欄は、
+     {{preview.d_why}}{% else %}契約の直前に
+     30ページ近いものを渡され、その場で読み上げられます。{% endif %}この物件で効く欄を、
      <b>根拠の条文つき</b>で先に絞っておけます。</span></li>
     <li><b>直す</b><span>答えが分かった項目は<b>点数に反映</b>されます
      （いまの情報充足度は {{d.suff}}%）。答えられなかった項目は消えず、
@@ -1475,8 +1502,8 @@ BRAND_BAR
     点数の付け方は無料もPROも同じで、PROで採点が甘くなることはありません。</p>
    {% if plan_price %}
    <p style="margin:12px 0 0"><b>{{plan_price}}</b>
-    <span class="muted">／ いつでも解約できます。お申し込みには
-    メールアドレスでのログインが必要です。</span></p>
+    <span class="muted">／ いつでも解約できます。解約しても、お支払い済みの
+    期間の最後まで使えます。お申し込みにはメールアドレスでのログインが必要です。</span></p>
    {% endif %}
    <form method="post" action="{{handover_action}}">
     {% for k, val in handover.items() %}
@@ -3141,8 +3168,24 @@ _JA_BREAK = re.compile(
     r"([^\x00-\x7f]|</a>|</b>)[ \t]*\r?\n[ \t]*(?=[^\x00-\x7f]|<a |<b>)")
 
 
+# 改行を詰めない要素。
+_KEEP_AS_IS = re.compile(
+    r"(<(textarea|pre|script|style)\b.*?</\2>)", re.S | re.I)
+
+
 def _join_ja_lines(text: str) -> str:
-    return _JA_BREAK.sub(r"\1", text)
+    """日本語どうしの間の改行を詰める。中身をそのまま見せる要素には触らない。
+
+    textarea は利用者が貼った物件説明が入って戻ってくることがあり、改行を
+    詰めると入力そのものを書き換えてしまう。pre・script・style も同じ理由。
+    """
+    out, pos = [], 0
+    for m in _KEEP_AS_IS.finditer(text):
+        out.append(_JA_BREAK.sub(r"\1", text[pos:m.start()]))
+        out.append(m.group(0))
+        pos = m.end()
+    out.append(_JA_BREAK.sub(r"\1", text[pos:]))
+    return "".join(out)
 
 
 def _with_toc(body: str):
@@ -4029,6 +4072,48 @@ def _dock(sample_href=None, pro=False, handover=None, finance_carry=None):
     return dict(share=True, cta=cta, cta_text=text)
 
 
+def _pro_preview(res, subject, land=False):
+    """無料の結果で、PROがこの物件で出すものを、件数と1件目だけ見せる。
+
+    比較表は機能名の一覧で、払うと自分の物件で何が分かるのかが見えなかった
+    （2026-10-18。プランの画面は67回開かれ、PROを開こうとしたのは3回）。
+    計算は無料の時点で済ませられるので、中身の入口だけを先に見せる。
+    落ちても結果画面は出す（見せられないだけで、診断は正しい）。
+    """
+    from src import pro_scoring, mansion_pro_scoring
+    from src.models import ProDetail, MansionProDetail
+    e = getattr(res, "enrichment", None)
+    urb = getattr(e, "urbanization", None) if e else None
+    out = {}
+    try:
+        if land:
+            pts = disclosure.sheet(subject, e, "", urbanization=urb, land=True)
+        else:
+            is_m = isinstance(subject, MansionSubject)
+            kind = "mansion" if is_m else (subject.property_type or "")
+            if is_m:
+                qs = mansion_pro_scoring.agent_questions(MansionProDetail(),
+                                                         subject)
+            else:
+                qs = pro_scoring.agent_questions(
+                    ProDetail(), subject, newbuild=(kind == "shinchiku_kodate"))
+            if qs:
+                out["q_count"] = len(qs)
+                # 引用の中は句点で終えない（「…ますか」。の形にする）
+                out["q_first"] = qs[0].split("。")[0]
+            pts = disclosure.sheet(subject, e, kind, urbanization=urb)
+        if pts:
+            # どの物件でも見る欄より、この物件だから足した欄を先に見せる
+            always = set(disclosure.catalogue()[0][1])
+            first = next((x for x in pts if x.where not in always), pts[0])
+            out.update(d_count=len(pts), d_where=first.where,
+                       d_why=first.why, d_law=first.law)
+    except Exception as ex:
+        print(f"[pro-preview] 作れませんでした: {ex}")
+        return None
+    return out or None
+
+
 def _render_result(res, subject, sctx, down_yen, loan_years,
                    free_diagnosis=None, carry=None, questions=None,
                    questions_note=None, redo=None, finance_carry=None,
@@ -4236,6 +4321,7 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
         pro=pro_delta, handover=handover,
         handover_action=handover_action, handover_label=handover_label,
         handover_unknowns=handover_unknowns, questions=questions,
+        preview=(_pro_preview(res, subject) if carry else None),
         disc=disclosure_points,
         questions_note=questions_note, finance_carry=finance_carry,
         plan_price=(price_now()[1] if billing_on() else None),
@@ -5467,7 +5553,8 @@ BRAND_BAR
    ありません。</p>
   {% if plan_price %}
   <p class="muted" style="margin:10px 0 0"><b>PRO　{{plan_price}}</b>
-   ／ お申し込みにはメールアドレスでのログインが必要です。いつでも解約できます。</p>
+   ／ お申し込みにはメールアドレスでのログインが必要です。いつでも解約できます。
+   解約しても、お支払い済みの期間の最後まで使えます。</p>
   {% endif %}
   PLAN_LINKS_PLACEHOLDER
  </div>
@@ -5481,10 +5568,15 @@ BRAND_BAR
   <p style="font-size:14px;margin:6px 0">PROでは、決済日と完成予定日から
    <b>つなぎ融資の利息</b>を計算し、<b>いつ・いくら手元から出ていくか</b>を
    時系列で出します。手付金のように、融資の前に現金で払うものも並べます。</p>
+  {% if land_preview and land_preview.d_count %}
+  <p style="font-size:14px;margin:6px 0">あわせて、重要事項説明書でこの土地について
+   見る欄（<b>{{land_preview.d_count}}か所</b>）を、根拠の条文つきで並べます。
+   たとえば「{{land_preview.d_where}}」の欄は、{{land_preview.d_why}}</p>
+  {% endif %}
   {% if plan_price %}
   <p style="margin:12px 0 0"><b>{{plan_price}}</b>
-   <span class="muted">／ いつでも解約できます。お申し込みには
-   メールアドレスでのログインが必要です。</span></p>
+   <span class="muted">／ いつでも解約できます。解約しても、お支払い済みの
+   期間の最後まで使えます。お申し込みにはメールアドレスでのログインが必要です。</span></p>
   {% endif %}
   <form method="post" action="/pro/land/start" style="margin-top:10px">
    {% for k, val in handover.items() %}
@@ -5959,6 +6051,7 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
         fin=fin, pro=pro, handover=handover, procedures=procedures,
         matched=matched, save=save, sample=bool(f.get("sample")),
         plan_price=(price_now()[1] if billing_on() else None),
+        land_preview=(None if pro else _pro_preview(res, subject, land=True)),
         disc=[dict(where=x.where, law=x.law, why=x.why)
               for x in (disclosure_points or [])],
         ring_circ=round(circ, 1),
@@ -7260,6 +7353,11 @@ def _run_mansion_pro(f):
 # （accounts_on() が False なら案内だけ返す）。診断そのものは今までどおり動く。
 
 _ACCOUNT_CSS = """
+/* プランの画面：PROで出てくるもの。左に動詞、右に中身。 */
+table.give{width:100%;border-collapse:collapse;font-size:14px;line-height:1.8}
+table.give th{width:4.6em;text-align:left;vertical-align:top;padding:10px 8px 10px 0;white-space:nowrap;border-bottom:1px solid #eef0f3}
+table.give td{padding:10px 0;border-bottom:1px solid #eef0f3}
+
  .lead{color:var(--sub);font-size:14px;line-height:1.9;margin:0 0 14px}
  .btn{display:inline-block;padding:13px 20px;background:#111;color:#fff;
    border:0;border-radius:999px;font-weight:700;font-size:15px;cursor:pointer;
@@ -8351,9 +8449,9 @@ PLAN_PAGE = """
   {% else %}
   <p style="margin:0 0 6px"><b>PRO　{{ price_label }}</b></p>
   {% endif %}
-  <p style="margin:0">解約されるまで毎月自動で更新されます。
-   金額は初回も2回目以降も同じです。<br>
-   <b>マイページからいつでも解約できます。</b>
+  <p style="margin:0"><b>いつでも解約できます。</b>解約しても、お支払い済みの期間の
+   最後まで使えます。手続きはマイページからです。<br>
+   解約されるまで毎月自動で更新されます。金額は初回も2回目以降も同じです。
    解約後も、保存した診断はそのままご覧いただけます。</p>
   {% if campaign %}
   <p class="sub" style="margin:6px 0 0">
@@ -8366,6 +8464,31 @@ PLAN_PAGE = """
   <a href="/tokushoho">特定商取引法に基づく表記</a>　・
   <a href="/terms">利用規約</a>　・
   <a href="/privacy">プライバシーポリシー</a></p>
+ <!-- 2026-10-18。プランの画面は67回開かれたが、PROを開こうとしたのは3回、
+      申し込みは0。値段のすぐ後に、誰のためのものか、何が出てくるかを見せる。 -->
+ <h2 style="margin:20px 0 6px">PROが役に立つのは、こういうとき</h2>
+ <ul style="margin:0;padding-left:1.2em;line-height:1.9">
+  <li>内見の予約をした。何を見て、何を聞けばいいかを決めておきたい</li>
+  <li>申込みや契約が近い。重要事項説明書を、渡される前に読んでおきたい</li>
+  <li>候補を2〜3件に絞った。諸費用まで含めて、お金の面で比べたい</li>
+ </ul>
+ <p class="sub" style="margin-top:8px">まだ探し始めたばかりなら、無料の診断で十分です。
+  物件が絞れてきたら、そのときに使ってください。</p>
+
+ <h2 style="margin:20px 0 6px">物件ごとに出てくるもの</h2>
+ <table class="give">
+  <tr><th>聞く</th><td>仲介業者に聞くことの一覧。その物件の築年と、まだ分かっていない
+   項目から組み立てます。たとえば「物件状況報告書（告知書）と設備表を見せて
+   いただけますか」。<a href="/guide/nakai-gyousha-ni-kiku-koto">どんな質問が並ぶか</a></td></tr>
+  <tr><th>読む</th><td>重要事項説明書で、その物件で効く欄。区域やハザードに当たった欄を
+   足し、根拠の条文をつけて並べます。<a href="#juyo">並ぶ欄の一覧</a></td></tr>
+  <tr><th>計算する</th><td>諸費用・金利が上がった場合・住宅ローン控除まで入れた資金計画（PDF）。
+   <a href="/sample/finance">3,180万円の中古戸建の見本</a></td></tr>
+  <tr><th>直す</th><td>内見や書類で分かったことを入れると、点数に反映されます。
+   採点の仕方は無料と同じで、甘くなることはありません。</td></tr>
+ </table>
+ <p style="margin-top:16px">
+  <a class="btn" href="/plan/confirm">PROに申し込む</a></p>
 {% endif %}
 
  <h2 style="margin:22px 0 0">無料とPROのちがい</h2>

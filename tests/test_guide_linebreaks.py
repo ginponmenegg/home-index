@@ -40,3 +40,23 @@ def test_no_rendered_article_has_a_break_inside_a_japanese_sentence():
         main = h[h.index("<h1>"):]
         for p in re.findall(r"<p[^>]*>(.*?)</p>", main, re.S):
             assert not pat.search(p), f"{g.slug}: {p[:60]}"
+
+
+def test_what_people_typed_is_left_alone():
+    """貼り付け欄に戻した物件説明の改行を詰めると、入力を書き換えてしまう。"""
+    f = webapp._join_ja_lines
+    t = "前\n後<textarea name='x'>一行目\n二行目</textarea>次\n行"
+    assert f(t) == "前後<textarea name='x'>一行目\n二行目</textarea>次行"
+    s = "<script>// 説明\n始め</script><pre>表\n組</pre>"
+    assert f(s) == s
+
+
+def test_every_html_page_is_joined_not_only_the_guides():
+    """記事だけ直していたが、結果画面やプランの画面にも隙間が出ていた。"""
+    pat = re.compile(f"[{JA}]\\r?\\n[{JA}]")
+    c = webapp.app.test_client()
+    for path in ("/", "/plan", "/about", "/buy"):
+        h = c.get(path).get_data(as_text=True)
+        body = re.sub(r"<(textarea|pre|script|style)\b.*?</\1>", "", h,
+                      flags=re.S | re.I)
+        assert not pat.search(body), path

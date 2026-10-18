@@ -286,3 +286,35 @@ def test_the_trial_notice_also_comes_first():
     notice = s.index("PROは試験公開中です")
     assert notice < s.index("購入診断（戸建・マンション・土地）")
     assert "月額" not in s[:notice + 50]
+
+
+# ---- この物件で何が出るかを、払う前に見せる（2026-10-18）-------------------
+# プランの画面は67回開かれたが、PROを開こうとしたのは3回、申し込みは0。
+# 機能名の一覧では、払うと自分の物件で何が分かるのかが見えなかった。
+
+def test_the_card_counts_what_pro_would_list_for_this_property():
+    from src import pro_scoring
+    from src.models import ProDetail
+    h = _client().post("/diagnose", data=FREE_INPUT).get_data(as_text=True)
+    i = h.index("契約の前に、つぶしておくこと")
+    j = h.index("この物件を詳しく診断する（PRO）")
+    card = h[i:j]
+    import re
+    m = re.search(r"この物件では\s*<b>(\d+)問</b>", card)
+    assert m, "聞くことの件数が出ていない"
+    assert "か所</b>" in card, "重要事項説明書の欄の件数が出ていない"
+    assert "1問目は「" in card
+    assert "。」。" not in card, "引用の終わりで句点が重なっている"
+
+
+def test_the_plan_page_says_who_it_is_for_and_what_comes_out(billing):
+    s = _visible(billing.app.test_client().get("/plan").get_data(as_text=True))
+    price = s.index("月額")
+    fit = s.index("PROが役に立つのは、こういうとき")
+    give = s.index("物件ごとに出てくるもの")
+    assert price < fit < give, "値段を先に、そのあとで誰向けか・何が出るか"
+    assert "まだ探し始めたばかりなら、無料の診断で十分です" in s
+    assert "いつでも解約できます" in s
+    assert "お支払い済みの期間の最後まで使えます" in s
+    assert "退会" not in s, "退会の手続きは無い。解約と書く"
+
