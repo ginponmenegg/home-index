@@ -78,6 +78,9 @@ EVENTS = {
     "ref_instagram": "Instagramから来た",
     "ref_tiktok":   "TikTokから来た",
     "ref_search":   "検索から来た",
+    # AIの回答に載ったリンクから来た。AEOが効いているかは、ここでしか分からない
+    # （Search Console には出ない）。2026-10-19 から数えている。
+    "ref_ai":       "AIの回答から来た",
     "ref_other":    "他のサイトから来た",
     "ref_none":     "リンク元なし（直接・アプリ内・巡回）",
 }
@@ -91,7 +94,13 @@ EVENTS = {
 #
 # これまで Instagram は Threads と同じ枠だった。**過去の ref_threads には
 # Instagram 由来が混ざっている**ので、分けた日より前の数字は比べられない。
+# **AIを検索より先に置く。** gemini.google.com は「google.」を含むので、
+# 後ろに置くと Gemini から来た人が「検索から来た」に混ざる（2026-10-19まで
+# そうなっていた）。
 REF_BUCKETS = (
+    ("ref_ai",        ("chatgpt.com", "chat.openai.com", "perplexity.ai",
+                       "gemini.google.com", "bard.google.com",
+                       "copilot.microsoft.com", "claude.ai")),
     ("ref_x",         ("x.com", "twitter.com", "t.co")),
     ("ref_threads",   ("threads.net", "threads.com")),
     ("ref_instagram", ("instagram.com",)),
@@ -100,12 +109,21 @@ REF_BUCKETS = (
 )
 
 
-def ref_bucket(referrer: str, own_host: str) -> str | None:
+# ChatGPT などは、リンクに utm_source を付けて送ってくることがある。リンク元を
+# 送らない設定の利用者でも、こちらで拾える。値は枠に丸めるだけで残さない。
+AI_UTM = ("chatgpt", "openai", "perplexity", "gemini", "copilot", "claude")
+
+
+def ref_bucket(referrer: str, own_host: str,
+               utm_source: str = "") -> str | None:
     """リンク元を枠の名前にする。同じサイト内の移動なら None。
 
     None を返すのは「来訪ではない」という意味。トップ→診断のような
     内部移動まで数えると、どこから来た人かが分からなくなる。
     """
+    utm = (utm_source or "").strip().lower()
+    if utm and any(a in utm for a in AI_UTM):
+        return "ref_ai"
     ref = (referrer or "").strip()
     if not ref:
         return "ref_none"

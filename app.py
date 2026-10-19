@@ -797,7 +797,8 @@ def _seen(name: str) -> None:
         return
     metrics.bump(name)
     bucket = metrics.ref_bucket(request.headers.get("Referer") or "",
-                               request.host or "")
+                               request.host or "",
+                               request.args.get("utm_source") or "")
     if bucket:
         metrics.bump(bucket)
 
@@ -3442,8 +3443,8 @@ _METRIC_GROUPS = (
                     "paste_used", "saved")),
     ("会員とPRO", ("signup", "plan_view", "pro_cta", "plan_confirm",
                    "checkout", "pro_start", "pro_cancel")),
-    ("どこから来たか", ("ref_x", "ref_threads", "ref_instagram", "ref_tiktok",
-                        "ref_search", "ref_other", "ref_none")),
+    ("どこから来たか", ("ref_search", "ref_ai", "ref_x", "ref_threads",
+                        "ref_instagram", "ref_tiktok", "ref_other", "ref_none")),
     ("不具合", ("mail_failed",)),
 )
 
@@ -3664,7 +3665,9 @@ table.mx-ev thead th{{font-size:12px;color:#64748b;font-weight:600}}
  <h2 style="margin:26px 0 6px">どこから来たか</h2>
  {ref_rows}
  <p class="sub" style="margin:6px 0 0">Instagram を Threads と分けて数え始めたのは
-  2026-09-18 です。それより前の Threads には Instagram が混ざっています。</p>
+  2026-09-18 です。それより前の Threads には Instagram が混ざっています。
+  AIの回答から来た人を分けて数え始めたのは 2026-10-19 です。それより前は、
+  Gemini は「検索」に、ChatGPT などは「他のサイト」に混ざっています。</p>
 
  <div class="note" style="margin:18px 0">
   <b>入力画面 → 診断</b>　{rate("diag_kodate", "view_buy")}（戸建）／

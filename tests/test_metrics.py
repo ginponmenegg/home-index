@@ -405,3 +405,28 @@ def test_other_people_are_still_counted(env, monkeypatch):
     _human(c2, "/buy")
     assert env.metrics.totals(1)["view_buy"] == 2
 
+
+# ---- AIの回答から来た人（2026-10-19）---------------------------------------
+
+def test_an_ai_answer_is_its_own_bucket(env):
+    b = env.metrics.ref_bucket
+    for ref in ("https://chatgpt.com/", "https://www.perplexity.ai/search/x",
+                "https://claude.ai/chat/1", "https://copilot.microsoft.com/"):
+        assert b(ref, "homeindex.jp") == "ref_ai", ref
+
+
+def test_gemini_is_not_counted_as_a_search(env):
+    """gemini.google.com は「google.」を含む。AIを先に見ないと検索に混ざる。"""
+    b = env.metrics.ref_bucket
+    assert b("https://gemini.google.com/app", "homeindex.jp") == "ref_ai"
+    assert b("https://www.google.com/", "homeindex.jp") == "ref_search"
+
+
+def test_an_ai_link_without_a_referrer_is_caught_by_its_tag(env):
+    b = env.metrics.ref_bucket
+    assert b("", "homeindex.jp", "chatgpt.com") == "ref_ai"
+    assert b("", "homeindex.jp", "newsletter") == "ref_none"
+    c = env.app.app.test_client()
+    c.get("/?utm_source=chatgpt.com", headers=_UA)
+    assert env.metrics.totals(1)["ref_ai"] == 1
+
