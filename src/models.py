@@ -112,6 +112,9 @@ class LandSubject:
     # 入っていない土地がある。入力があればそちらを優先する。
     coverage_ratio: Optional[int] = None        # 指定建ぺい率(%)
     floor_area_ratio: Optional[int] = None      # 指定容積率(%)
+    # 用途地域も、販売図面の値があればそちらを優先する。地図から引いた値は、
+    # 住所が番地まで当たらないと隣の区域の値になる（2026-10-19、平塚市）。
+    use_district: Optional[str] = None
     building_area_m2: Optional[float] = None    # 常に None。score_asset が読む
 
 

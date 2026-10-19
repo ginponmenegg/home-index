@@ -14,7 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
 import io
-import math
+import math
+import unicodedata
 import os
 import requests
 from concurrent.futures import ThreadPoolExecutor
@@ -254,11 +255,30 @@ def _reinfolib_tile(api, key, z, x, y):
 
 
 # ---------- 用途地域 ----------
+def _normalize_district_name(v: str) -> str:
+    """データの書き方を、USE_DISTRICT_TOKENS の書き方にそろえる。
+
+    不動産情報ライブラリの XKT002 は「第１種中高層住居専用地域」のように、
+    第一種・第二種を**全角数字**で書いている（2026-10-19、平塚市・船橋市の
+    実データで確認）。こちらは「第一種」で探していたので、第一種・第二種が
+    付く6つの用途地域は、その地点の面を見つけていても名前を読めなかった。
+    読めなかった名前は、同じタイルの別の面から借りていた（平塚市幸町で
+    第一種中高層住居専用地域が近隣商業地域と出た原因）。
+    """
+    s = unicodedata.normalize("NFKC", v)          # 全角数字→半角
+    return s.replace("第1種", "第一種").replace("第2種", "第二種")
+
+
 def _extract_use_district(props: dict) -> Optional[str]:
-    for v in props.values():
-        if isinstance(v, str):
+    # 名前の欄（use_area_ja）を先に見る。ほかの欄の文字列に、たまたま用途地域の
+    # 語が入っていても拾わないように。
+    vals = [props.get("use_area_ja")] + [
+        v for k, v in props.items() if k != "use_area_ja"]
+    for v in vals:
+        if isinstance(v, str) and v:
+            s = _normalize_district_name(v)
             for tok in USE_DISTRICT_TOKENS:
-                if tok in v:
+                if tok in s:
                     return tok
     return None
 
@@ -302,10 +322,11 @@ def fetch_zoning(lat, lon, key, zoom=15):
                 _ratio(p, "u_building_coverage_ratio_ja"),
                 _ratio(p, "u_floor_area_ratio_ja"))
 
-    # 地点を含む面を最優先で採る。**名前が空でも捨てない。**実データで
-    # 船橋市前原西6丁目を引くと、地点を含む面は use_area_ja が空のまま
-    # 建ぺい率60%・容積率200%だけ入っている。名前の有無で捨てていたため、
-    # 正しい建ぺい率・容積率を捨てて、隣の面の数字を返していた。
+    # 地点を含む面を最優先で採る。**名前が読めなくても捨てない。**
+    # 船橋市前原西6丁目を引くと、地点を含む面の名前が読めず、建ぺい率60%・
+    # 容積率200%だけ取れていた。当時は「名前が空」と書いたが、実際は
+    # 「第１種中高層住居専用地域」と全角数字で書かれていて読めていなかった
+    # （2026-10-19に分かった。_normalize_district_name を参照）。
     hit = None
     for f in feats:
         if point_in_geometry(lon, lat, f.get("geometry") or {}):
@@ -314,21 +335,56 @@ def fetch_zoning(lat, lon, key, zoom=15):
                 hit = got
                 break
 
-    # 用途地域の名前だけは、内包する面に無ければタイル代表値で補う。
-    # 名前は表示とスコアの目安に使うもので、面積の計算には効かない。
-    rep_name = None
-    for f in feats:
-        nm = pick(f)[0]
-        if nm:
-            rep_name = nm
-            break
-
+    # **名前も、隣の面から借りない**（2026-10-19）。以前は、地点を含む面が
+    # 無いときや名前が空のときに、同じタイルの別の面の名前を返していた。
+    # タイルは1km四方ほどあり、用途地域がいくつも入っている。借りた名前は
+    # ほとんど当てずっぽうで、平塚市の土地2件で用途地域を外した一因だった。
+    # 分からないものは分からないと返し、画面には未取得と出す。
     if hit:
-        ud, cov, far = hit
-        return (ud or rep_name), cov, far
-    # **建ぺい率・容積率はタイル代表値で埋めない。**別の面の数字を使うと、
-    # この土地に建てられる延床として、違う土地の数字を出すことになる。
-    return rep_name, None, None
+        return hit
+    return None, None, None
+
+
+# ---------- 丁目までしか分からないとき ----------
+# 物件ページは住所を「平塚市中原3」のように丁目までしか載せないのが普通で、
+# そこから入れると、座標は丁目の代表点になる。代表点ひとつで用途地域を
+# 決めると、幹線道路沿いの近隣商業地域や、区域の境目で外す。
+#
+# 代表点と、その周り（既定150m）の8方向、計9か所で引き、**すべて同じとき
+# だけ**その値を使う。1か所でも違えば、決められないとして返さない。
+# 地図のタイルは1km四方ほどあり、9か所はほとんど同じタイルに入るので、
+# 取得し直しはほとんど起きない（_reinfolib_tile がキャッシュしている）。
+AROUND_M = 150
+
+
+def _around(lat, lon, radius_m=AROUND_M):
+    pts = [(lat, lon)]
+    for deg in range(0, 360, 45):
+        rad = math.radians(deg)
+        dn, de = radius_m * math.cos(rad), radius_m * math.sin(rad)
+        pts.append((lat + dn / 111_320.0,
+                    lon + de / (111_320.0 * math.cos(math.radians(lat)))))
+    return pts
+
+
+def fetch_zoning_around(lat, lon, key, radius_m=AROUND_M):
+    """((用途地域, 建ぺい率, 容積率), 周りで見つかった用途地域の一覧)。
+
+    9か所すべてで同じ値が取れたときだけ値を返す。違えば (None, None, None)。
+    """
+    got = [fetch_zoning(a, b, key) for a, b in _around(lat, lon, radius_m)]
+    names = sorted({g[0] for g in got if g[0]})
+    if got and got[0][0] and all(g == got[0] for g in got):
+        return got[0], names
+    return (None, None, None), names
+
+
+def fetch_urbanization_around(lat, lon, key, radius_m=AROUND_M):
+    """区域区分も同じ。9か所すべて同じときだけ返す。"""
+    got = [fetch_urbanization(a, b, key) for a, b in _around(lat, lon, radius_m)]
+    if got and got[0] and all(g == got[0] for g in got):
+        return got[0]
+    return None
 
 
 # ---------- 区域区分（市街化区域／市街化調整区域） ----------
@@ -770,17 +826,29 @@ def enrich(lat: Optional[float], lon: Optional[float],
            estat_appid: Optional[str] = None,
            city_code: Optional[str] = None,
            estat_table: str = "0000020201",
-           pref_code: Optional[str] = None) -> Enrichment:
+           pref_code: Optional[str] = None,
+           precise: bool = True) -> Enrichment:
+    """precise は、住所が番地まで当たったか。当たっていなければ、町の
+    代表点の座標しか無いので、土地ごとに違う用途地域と区域区分は引かない
+    （隣の区域の値を、その土地の値として出すことになる）。"""
     e = Enrichment()
     if lat is None or lon is None:
-        e.notes.append("座標未取得のためエンリッチメントをスキップ")
+        # 位置が無い理由（住所が見つからない／別の町に当たった）は、呼び出し側が
+        # 利用者向けの言葉で出している。ここで内部の言葉を重ねて出さない。
         return e
 
     tasks = {}  # 用途地域・区域区分・ハザード・周辺施設・人口を並列実行
     with ThreadPoolExecutor(max_workers=5) as ex:
         if reinfolib_key:
-            tasks["ud"] = ex.submit(fetch_zoning, lat, lon, reinfolib_key)
-            tasks["ur"] = ex.submit(fetch_urbanization, lat, lon, reinfolib_key)
+            if precise:
+                tasks["ud"] = ex.submit(fetch_zoning, lat, lon, reinfolib_key)
+                tasks["ur"] = ex.submit(fetch_urbanization, lat, lon,
+                                        reinfolib_key)
+            else:
+                tasks["ud"] = ex.submit(fetch_zoning_around, lat, lon,
+                                        reinfolib_key)
+                tasks["ur"] = ex.submit(fetch_urbanization_around, lat, lon,
+                                        reinfolib_key)
             tasks["hz"] = ex.submit(fetch_hazard, lat, lon, reinfolib_key,
                                     city_code=city_code,
                                     pref_code=pref_code)
@@ -799,7 +867,21 @@ def enrich(lat: Optional[float], lon: Optional[float],
 
     if reinfolib_key:
         try:
-            e.use_district, e.coverage_ratio, e.floor_area_ratio =                 tasks["ud"].result()
+            if precise:
+                e.use_district, e.coverage_ratio, e.floor_area_ratio = \
+                    tasks["ud"].result()
+            else:
+                (e.use_district, e.coverage_ratio, e.floor_area_ratio), seen = \
+                    tasks["ud"].result()
+                if e.use_district:
+                    e.notes.append(
+                        f"住所が番地まで分からないため、代表点とその周り約{AROUND_M}m"
+                        f"で用途地域を確かめました。どこも{e.use_district}でした")
+                elif len(seen) > 1:
+                    e.notes.append(
+                        "この付近には" + "・".join(seen) + "があり、番地が"
+                        "分からないと用途地域を決められません。販売図面で"
+                        "確かめてください")
             # 地点を含む面に名前が無いとき、名前だけ隣の面から借りている。
             # 借りた名前がこの土地の建ぺい率と両立しないなら、それは別の
             # 土地の用途地域。用途地域は前面道路による容積率の係数（法52条

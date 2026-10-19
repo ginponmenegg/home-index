@@ -11,7 +11,7 @@ import datetime
 from concurrent.futures import ThreadPoolExecutor
 from .models import (SubjectProperty, MansionSubject, Transaction,
                      PriceAnalysis, now_iso)
-from .geocoding import make_geocoder, GsiGeocoder
+from .geocoding import make_geocoder, GsiGeocoder, MISMATCH
 from .reinfolib import ReinfolibClient
 from .comparable import (extract_comparables, DEFAULT_WEIGHTS, NEWBUILD_WEIGHTS,
                          NEIGHBOR_RADIUS_M, DETACHED_TYPES)
@@ -62,6 +62,8 @@ def _geocode_districts(subject: SubjectProperty, txns, reinfolib_key=None,
     def gc(name):
         try:
             g = geocoder.geocode(f"{prefix}{name}")
+            if g.level == MISMATCH:      # 似た名前の別の町の座標を使わない
+                return name, (None, None)
             return name, (g.latitude, g.longitude)
         except Exception:
             return name, (None, None)
@@ -122,6 +124,8 @@ def _geocode_mansion_districts(subject, txns, reinfolib_key=None,
     def gc(name):
         try:
             g = geocoder.geocode(f"{prefix}{name}")
+            if g.level == MISMATCH:      # 似た名前の別の町の座標を使わない
+                return name, (None, None)
             return name, (g.latitude, g.longitude)
         except Exception:
             return name, (None, None)
@@ -179,13 +183,14 @@ def run_mansion_pipeline(subject: MansionSubject,
         last_error = None
         for query, with_name in queries:
             try:
-                gc = geocoder.geocode(query)
+                gc = geocoder.geocode(query, expect=subject.address)
             except Exception as e:
                 last_error = e
                 continue
-            result.geocode = gc
-            subject.latitude, subject.longitude = gc.latitude, gc.longitude
-            if with_name:
+            if with_name and gc.level == MISMATCH:
+                continue                 # 名前で外れたなら住所だけで引き直す
+            _place(result, subject, gc)
+            if with_name and gc.level != MISMATCH:
                 result.warnings.append(
                     "マンション名を含めて座標を特定しました（近隣事例の距離がより正確になります）")
             break
@@ -252,7 +257,8 @@ def run_mansion_pipeline(subject: MansionSubject,
                                    reinfolib_key, estat_appid=estat_appid,
                                    city_code=subject.municipality_code,
                                    pref_code=detect_prefecture(subject.address),
-                                   estat_table=estat_table)
+                                   estat_table=estat_table,
+                                   precise=_precise(result))
         if result.enrichment:
             result.warnings.extend(result.enrichment.notes)
 
@@ -275,6 +281,41 @@ def run_mansion_pipeline(subject: MansionSubject,
         pop_change_pct=(e.mesh_pop_change_pct if e else None),
         current_year=current_year)
     return result
+
+
+# 住所が番地まで当たらなかったとき・別の町に当たったときの注記。
+# 画面にそのまま出るので、「失敗」の語を使わない（_public_warnings が
+# 「一部の公的データを取得できませんでした」の一行に丸めてしまうため）。
+_W_MISMATCH = (
+    "住所の位置を特定できませんでした。地図の住所検索では「{title}」にしか"
+    "当たらず、入力された住所とは別の場所です。位置を取り違えないよう、"
+    "地図を使う項目（用途地域・市街化区域かどうか・ハザード・周辺施設）は"
+    "調べていません。")
+_W_TOWN = (
+    "住所は「{title}」までしか特定できませんでした。用途地域と、市街化区域"
+    "かどうかは、その代表点の周り（約150m）がどこも同じときだけ出しています。"
+    "ハザードと周辺施設は、代表点での値です。")
+
+
+def _place(result, subject, gc) -> None:
+    """住所の当たり具合を見て、座標を使うかどうかを決める。
+
+    別の町に当たったら座標を使わない（2026-10-19、平塚市で「真土」が
+    「真田」に当たり、別の町の用途地域を出していた）。町までしか当たって
+    いなければ座標は使うが、用途地域のように土地ごとに違うものは引かない。
+    """
+    result.geocode = gc
+    if gc.level == MISMATCH:
+        result.warnings.append(_W_MISMATCH.format(title=gc.address_normalized))
+        return
+    subject.latitude, subject.longitude = gc.latitude, gc.longitude
+    if not gc.precise:
+        result.warnings.append(_W_TOWN.format(title=gc.address_normalized))
+
+
+def _precise(result) -> bool:
+    gc = getattr(result, "geocode", None)
+    return True if gc is None else bool(gc.precise)
 
 
 def run_land_pipeline(subject: LandSubject,
@@ -305,9 +346,8 @@ def run_land_pipeline(subject: LandSubject,
     # 1) 住所 → 座標
     if not mock:
         try:
-            gc = make_geocoder(google_key).geocode(subject.address)
-            result.geocode = gc
-            subject.latitude, subject.longitude = gc.latitude, gc.longitude
+            _place(result, subject,
+                   make_geocoder(google_key).geocode(subject.address))
         except Exception as e:
             result.warnings.append(f"ジオコーディング失敗: {e}")
 
@@ -343,18 +383,42 @@ def run_land_pipeline(subject: LandSubject,
                                    reinfolib_key, estat_appid=estat_appid,
                                    city_code=subject.municipality_code,
                                    pref_code=detect_prefecture(subject.address),
-                                   estat_table=estat_table)
+                                   estat_table=estat_table,
+                                   precise=_precise(result))
         if result.enrichment:
             result.warnings.extend(result.enrichment.notes)
     e = result.enrichment
 
-    # 5) 何が建てられるか。建ぺい率・容積率は入力があればそちらを優先する
-    #    （非線引き区域などタイルに入っていない土地があるため）。
+    # 5) 何が建てられるか。用途地域・建ぺい率・容積率は、入力（販売図面の
+    #    値）があればそちらを優先する。地図から引いた値は、住所の位置が
+    #    ずれていたり用途地域の境目に近かったりすると、隣の区域の値になる。
+    ud_map = e.use_district if e else None
+    ud = subject.use_district or ud_map
+    if subject.use_district and ud_map and ud_map != subject.use_district:
+        result.warnings.append(
+            f"用途地域は、入力された{subject.use_district}で計算しています。"
+            f"地図上の位置では{ud_map}でした。用途地域の境目に近いか、"
+            "住所の位置がずれている可能性があります。")
+    for label, mine, theirs in (
+            ("建ぺい率", subject.coverage_ratio, e.coverage_ratio if e else None),
+            ("容積率", subject.floor_area_ratio, e.floor_area_ratio if e else None)):
+        if mine and theirs and mine != theirs:
+            result.warnings.append(
+                f"{label}は、入力された{mine}%で計算しています。"
+                f"地図上の位置では{theirs}%でした。")
+    if e is not None:
+        e.use_district = ud
+    if not _precise(result) and not (subject.use_district
+                                     or subject.coverage_ratio
+                                     or subject.floor_area_ratio):
+        result.warnings.append(
+            "販売図面に書かれた用途地域・建ぺい率・容積率を入力すると、"
+            "その値で建てられる大きさを計算します。")
     coverage = subject.coverage_ratio or (e.coverage_ratio if e else None)
     far = subject.floor_area_ratio or (e.floor_area_ratio if e else None)
     result.capacity = build_capacity(
         subject.land_area_m2, coverage, far,
-        use_district=(e.use_district if e else None),
+        use_district=ud,
         road_width_m=subject.road_width_m, frontage_m=subject.frontage_m)
 
     # 6) ローン。土地だけでは家に住めないので、建物の予算を足した総額で見る。
@@ -366,7 +430,7 @@ def run_land_pipeline(subject: LandSubject,
     # 7) 採点
     result.diagnosis = build_land_diagnosis(
         subject, result.capacity, result.loan,
-        use_district=(e.use_district if e else None),
+        use_district=ud,
         urbanization=(e.urbanization if e else None),
         hazard=(e.hazard if e else None),
         facility=(e.facility if e else None),
@@ -401,9 +465,7 @@ def run_pipeline(subject: SubjectProperty,
     if not mock:
         try:
             geocoder = make_geocoder(google_key)
-            gc = geocoder.geocode(subject.address)
-            result.geocode = gc
-            subject.latitude, subject.longitude = gc.latitude, gc.longitude
+            _place(result, subject, geocoder.geocode(subject.address))
         except Exception as e:
             result.warnings.append(f"ジオコーディング失敗: {e}")
 
@@ -473,7 +535,8 @@ def run_pipeline(subject: SubjectProperty,
                                    reinfolib_key, estat_appid=estat_appid,
                                    city_code=subject.municipality_code,
                                    pref_code=detect_prefecture(subject.address),
-                                   estat_table=estat_table)
+                                   estat_table=estat_table,
+                                   precise=_precise(result))
         if result.enrichment:
             result.warnings.extend(result.enrichment.notes)
 

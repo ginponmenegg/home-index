@@ -49,22 +49,20 @@ def test_the_ratios_come_from_the_polygon_that_contains_the_point(monkeypatch):
     ])
     ud, cov, far = en.fetch_zoning(35.695, 140.005, "dummy")
     assert (cov, far) == (60, 200)         # 隣の 80/600 を拾わない
-    # 名前だけはタイル代表値で補ってよい（表示と目安にしか使わない）
-    assert ud == "商業地域"
+    # 名前も隣から借りない（2026-10-19）。分からなければ未取得のまま
+    assert ud is None
 
 
-def test_an_unlocatable_point_gets_a_name_but_never_borrowed_ratios(monkeypatch):
-    """内包判定ができないときに、別の面の建ぺい率・容積率を返さない。
+def test_an_unlocatable_point_borrows_nothing(monkeypatch):
+    """内包判定ができないときに、別の面の名前も数字も返さない。
 
-    返してしまうと、違う土地の数字を「この土地に建てられる延床」として
-    画面に出すことになる。名前は目安なので返してよいが、面積の計算に
-    直結する数字は返さない。
+    以前は名前だけ同じタイルの別の面から借りていた。タイルは1km四方ほどあり、
+    用途地域がいくつも入っているので、借りた名前はほとんど当てずっぽう
+    （平塚市の土地2件で用途地域を外した一因。2026-10-19）。
     """
     elsewhere = _square(140.50, 35.99)
     _with_tile(monkeypatch, [_feature(elsewhere, "第一種低層住居専用地域", 50, 100)])
-    ud, cov, far = en.fetch_zoning(35.695, 140.005, "dummy")
-    assert ud == "第一種低層住居専用地域"
-    assert cov is None and far is None
+    assert en.fetch_zoning(35.695, 140.005, "dummy") == (None, None, None)
 
 
 def test_the_containing_polygon_wins_over_the_tile_representative(monkeypatch):
@@ -86,3 +84,54 @@ def test_the_old_name_only_helper_still_works(monkeypatch):
     here = _square(140.00, 35.69)
     _with_tile(monkeypatch, [_feature(here, "準住居地域", 60, 200)])
     assert en.fetch_use_district(35.695, 140.005, "dummy") == "準住居地域"
+
+
+# ---- 全角の「第１種」と、丁目までしか分からないとき（2026-10-19）---------
+
+def test_the_full_width_class_number_is_read():
+    """データは「第１種中高層住居専用地域」と全角数字で書いている。
+
+    読めずに、同じタイルの別の面の名前を借りていた（平塚市幸町13-2で、
+    第一種中高層住居専用地域が近隣商業地域と出た）。
+    """
+    f = en._extract_use_district
+    assert f({"use_area_ja": "第１種中高層住居専用地域"}) == "第一種中高層住居専用地域"
+    assert f({"use_area_ja": "第２種低層住居専用地域"}) == "第二種低層住居専用地域"
+    assert f({"use_area_ja": "第１種住居地域"}) == "第一種住居地域"
+    assert f({"use_area_ja": "近隣商業地域"}) == "近隣商業地域"
+    assert f({"use_area_ja": "準工業地域"}) == "準工業地域"
+    assert f({"use_area_ja": "工業専用地域"}) == "工業専用地域"
+
+
+def test_the_polygon_with_a_full_width_name_is_named_by_itself(monkeypatch):
+    here = _square(140.00, 35.69)
+    _with_tile(monkeypatch, [
+        _feature(_square(140.50, 35.99), "近隣商業地域", 80, 200),
+        _feature(here, "第１種中高層住居専用地域", "60%", "200%"),
+    ])
+    assert en.fetch_zoning(35.695, 140.005, "dummy") ==         ("第一種中高層住居専用地域", 60, 200)
+
+
+def test_around_a_town_centre_the_zone_must_be_the_same_everywhere(monkeypatch):
+    """丁目までの住所では、代表点の周りがすべて同じときだけ値を使う。"""
+    big = _square(139.90, 35.60, size=0.2)
+    _with_tile(monkeypatch, [_feature(big, "第１種低層住居専用地域", "50%", "100%")])
+    got, seen = en.fetch_zoning_around(35.695, 140.005, "dummy")
+    assert got == ("第一種低層住居専用地域", 50, 100)
+    assert seen == ["第一種低層住居専用地域"]
+
+
+def test_a_mixed_neighbourhood_gives_no_zone(monkeypatch):
+    """周りに別の用途地域があれば決めない。代表点の値を出すと外すことがある。"""
+    west = {"type": "Polygon", "coordinates": [[
+        [139.90, 35.60], [140.005, 35.60], [140.005, 35.80],
+        [139.90, 35.80], [139.90, 35.60]]]}
+    east = {"type": "Polygon", "coordinates": [[
+        [140.005, 35.60], [140.10, 35.60], [140.10, 35.80],
+        [140.005, 35.80], [140.005, 35.60]]]}
+    _with_tile(monkeypatch, [_feature(west, "第１種中高層住居専用地域", "60%", "200%"),
+                             _feature(east, "近隣商業地域", "80%", "200%")])
+    got, seen = en.fetch_zoning_around(35.695, 140.0049, "dummy")
+    assert got == (None, None, None)
+    assert seen == ["第一種中高層住居専用地域", "近隣商業地域"]
+

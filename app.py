@@ -4943,12 +4943,27 @@ BRAND_BAR
    </div>
 
    <div class="row">
+    <div><label>用途地域</label>
+     <select name="use_district">
+      <option value="">住所から自動判定</option>
+      {% for u in ["第一種低層住居専用地域", "第二種低層住居専用地域", "田園住居地域",
+                   "第一種中高層住居専用地域", "第二種中高層住居専用地域",
+                   "第一種住居地域", "第二種住居地域", "準住居地域",
+                   "近隣商業地域", "商業地域", "準工業地域", "工業地域",
+                   "工業専用地域"] %}
+      <option value="{{u}}" {% if v.use_district == u %}selected{% endif %}>{{u}}</option>
+      {% endfor %}
+     </select>
+     <div class="hint">販売図面に書いてあれば選んでください。用途地域・建ぺい率・
+      容積率は、入力した値を優先して計算します</div></div>
+   </div>
+   <div class="row">
     <div><label>指定建ぺい率（%）</label>
      <input name="coverage" value="{{v.coverage}}" placeholder="住所から自動判定"></div>
     <div><label>指定容積率（%）</label>
      <input name="far" value="{{v.far}}" placeholder="住所から自動判定">
-     <div class="hint">通常は入力不要です。非線引き区域などで自動判定できない
-      ときだけ、販売図面の数字を入れてください</div></div>
+     <div class="hint">販売図面の数字があれば入れてください。住所が番地まで
+      特定できないと、地図から引いた値が隣の区域のものになることがあります</div></div>
    </div>
 
    <details class="more" style="margin-top:10px">
@@ -5678,7 +5693,7 @@ def _land_example_v():
     return dict(address="", price="", area="", area_unit="m2",
                 budget="", household="", condition="unknown",
                 road_width="", road_type="unknown", frontage="",
-                station="", bus="", coverage="", far="",
+                station="", bus="", coverage="", far="", use_district="",
                 city="", district="", income="", down="", loan_years="35")
 
 
@@ -5706,6 +5721,9 @@ SAMPLE_LAND = {
     "price": "2100", "area": "125", "budget": "2600", "household": "4",
     "road_width": "4", "road_type": "公道", "frontage": "9",
     "station": "12", "condition": "none",
+    # 住所が丁目までなので、用途地域は周り150mで混在して決められない。
+    # 見本は販売図面にあたる値を入れておく（代表点の公的データの値。2026-10-19確認）
+    "use_district": "第一種中高層住居専用地域", "coverage": "60", "far": "200",
     "loan_years": "35", "income": "700", "down": "500",
     "sample": "1",
 }
@@ -5762,6 +5780,13 @@ def land_diagnose():
         _SEM.release()
 
 
+def _valid_use_district(v):
+    """選ばれた用途地域が13種類のどれかなら返す。それ以外は入力なしとみなす。"""
+    from src.enrichment import USE_DISTRICT_TOKENS
+    v = (v or "").strip()
+    return v if v in USE_DISTRICT_TOKENS else None
+
+
 def _land_subject_from(f):
     """入力から LandSubject を組み立てる。無料とPROで共有する。
 
@@ -5814,7 +5839,8 @@ def _land_subject_from(f):
         municipality_code=city or None,
         district_name=district or None,
         coverage_ratio=to_int(f.get("coverage")),
-        floor_area_ratio=to_int(f.get("far"))), city, district, None
+        floor_area_ratio=to_int(f.get("far")),
+        use_district=_valid_use_district(f.get("use_district"))), city, district, None
 
 
 def _run_land_diagnose(f):
@@ -6302,6 +6328,21 @@ BRAND_BAR
      <input name="city" value="{{v.city}}" placeholder="住所から自動判定"></div>
     <div><label>町名</label>
      <input name="district" value="{{v.district}}" placeholder="住所から自動判定"></div>
+   </div>
+   <div class="row">
+    <div><label>用途地域</label>
+     <select name="use_district">
+      <option value="">住所から自動判定</option>
+      {% for u in ["第一種低層住居専用地域", "第二種低層住居専用地域", "田園住居地域",
+                   "第一種中高層住居専用地域", "第二種中高層住居専用地域",
+                   "第一種住居地域", "第二種住居地域", "準住居地域",
+                   "近隣商業地域", "商業地域", "準工業地域", "工業地域",
+                   "工業専用地域"] %}
+      <option value="{{u}}" {% if v.use_district == u %}selected{% endif %}>{{u}}</option>
+      {% endfor %}
+     </select>
+     <div class="hint">販売図面に書いてあれば選んでください。用途地域・建ぺい率・
+      容積率は、入力した値を優先して計算します</div></div>
    </div>
    <div class="row">
     <div><label>指定建ぺい率（％）</label>
