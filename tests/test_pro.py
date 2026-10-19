@@ -674,3 +674,25 @@ def test_meeting_the_energy_standard_is_not_worth_extra_points():
     assert raw("meets") == raw("unknown")
     assert raw("zeh") > raw("meets")
     assert raw("below") < raw("meets")
+
+
+def test_a_new_build_is_asked_what_only_a_new_build_has():
+    """新築に「確認済証と検査済証は残っていますか」は聞かない（無いことはまず無い）。
+
+    代わりに、新築にしか無い論点を聞く。完成日（品確法2条2項）、10年の責任の
+    備え（住宅瑕疵担保履行法11条）。保全措置は運営者の判断で外した。
+    """
+    from src.pro_scoring import agent_questions
+    from src.models import ProDetail
+    subj = _subject(build_year=2026)
+    new = agent_questions(ProDetail(), subj, newbuild=True)
+    old = agent_questions(ProDetail(), subj, newbuild=False)
+    joined = " ".join(new)
+    assert "検査済証は残っていますか" not in joined
+    assert "検査済証は残っていますか" in " ".join(old), "中古では聞き続ける"
+    for word in ("完成日", "保険と供託", "アフターサービス", "地盤調査",
+                 "価格に含まれるもの", "写しを売買契約書に添付"):
+        assert word in joined, word
+    assert not any("住宅性能評価書は残っていますか" in q for q in new)
+    assert "保全措置" not in joined
+
