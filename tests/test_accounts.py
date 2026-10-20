@@ -756,3 +756,57 @@ def test_a_missing_key_gives_the_same_neutral_message(monkeypatch):
     assert ok is False
     # 鍵の有無という内部の事情も、相手には見せない
     assert "RESEND_API_KEY" not in msg
+
+
+# ---- ログインのあと、申込みへ戻す（2026-10-20） ------------------------------
+# 申込の途中でログインした人がマイページに着き、プランを探し直さないと
+# 決済に進めなかった。戻り先をリンクに載せて、確認画面へ戻す。
+
+def test_next_only_points_inside_the_site(env):
+    ok = env.app._safe_next
+    assert ok("/plan/confirm") == "/plan/confirm"
+    assert ok("/pro/diagnose") == "/pro/diagnose"
+    assert ok("/mypage?x=1") == "/mypage"
+    for bad in ("//evil.example", "https://evil.example", "/" + chr(92) + "evil.example",
+                "/admin", "plan/confirm", "", None):
+        assert ok(bad) is None, bad
+
+
+def test_login_page_says_it_is_for_the_subscription(env):
+    c = env.app.app.test_client()
+    h = c.get("/login?next=/plan/confirm").get_data(as_text=True)
+    assert "PROのお申込みの続きです" in h
+    assert 'name="next" value="/plan/confirm"' in h
+    assert "PROのお申込みの続き" not in c.get("/login").get_data(as_text=True)
+
+
+def test_the_mailed_link_carries_the_way_back(env):
+    c = env.app.app.test_client()
+    h = c.post("/login", data={"email": "plan@example.com",
+                               "next": "/plan/confirm"}).get_data(as_text=True)
+    assert "?next=/plan/confirm" in h
+    assert "お申込みの確認画面" in h
+
+
+def test_opening_the_link_returns_to_the_subscription(env):
+    c = env.app.app.test_client()
+    t = env.accounts.issue_login_token("back@example.com")
+    r = c.get(f"/login/{t}?next=/plan/confirm")
+    assert r.headers["Location"].endswith("/plan/confirm")
+    c2 = env.app.app.test_client()
+    t = env.accounts.issue_login_token("back2@example.com")
+    r = c2.get(f"/login/{t}?next=//evil.example")
+    assert r.headers["Location"].endswith("/mypage")
+
+
+def test_pages_that_need_login_remember_where_they_were(env):
+    r = env.app.app.test_client().get("/mypage")
+    assert r.headers["Location"].endswith("/login?next=/mypage")
+
+
+def test_login_steps_are_counted_and_shown(env):
+    from src import metrics
+    for k in ("login_view", "login_plan", "login_sent", "login_open",
+              "login_plan_open"):
+        assert k in metrics.EVENTS
+        assert any(k in names for _t, names in env.app._METRIC_GROUPS), k

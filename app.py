@@ -3650,7 +3650,9 @@ _METRIC_GROUPS = (
                     "view_sample_finance")),
     ("診断と保存", ("diag_kodate", "diag_mansion", "diag_land", "pro_diag",
                     "paste_used", "saved")),
-    ("会員とPRO", ("signup", "plan_view", "pro_cta", "plan_confirm",
+    ("会員とPRO", ("signup", "plan_view", "pro_cta", "login_view",
+                   "login_plan", "login_sent", "login_open",
+                   "login_plan_open", "plan_confirm",
                    "checkout", "pro_start", "pro_cancel")),
     ("どこから来たか", ("ref_search", "ref_ai", "ref_x", "ref_threads",
                         "ref_instagram", "ref_tiktok", "ref_other", "ref_none")),
@@ -3735,6 +3737,8 @@ def metrics_page():
     # ---- 診断から決済まで -----------------------------------------------
     steps = [("診断が出た", diag), ("プランの画面を見た", tot["plan_view"]),
              ("PROの壁に当たった", tot["pro_cta"]),
+             ("申込のためにログイン画面へ", tot["login_plan"]),
+             ("申込のためのリンクを開いた", tot["login_plan_open"]),
              ("申込の最終確認へ", tot["plan_confirm"]),
              ("決済画面へ進んだ", tot["checkout"]),
              ("契約が始まった", tot["pro_start"])]
@@ -3887,7 +3891,8 @@ table.mx-ev thead th{{font-size:12px;color:#64748b;font-weight:600}}
 
  <h2 style="margin:26px 0 0">診断から決済まで</h2>
  <p class="sub" style="margin:0 0 4px">どこで切れているかを見る。
-  率は「ひとつ前の段から」です。</p>
+  率は「ひとつ前の段から」です。ログイン済みの人は、ログインの2段を
+  通らずに最終確認へ進みます。ログインの段を数え始めたのは2026-10-21です。</p>
  <table class="mx-ev">
   <thead><tr><th class="rowlbl">段</th><th>件数</th><th>前の段から</th></tr></thead>
   <tbody>{step_rows()}</tbody>
@@ -7794,7 +7799,7 @@ _PRO_GATE = """
   {% if logged_in %}
   <a class="btn" href="/plan">プランを見る</a>
   {% else %}
-  <a class="btn" href="/login" target="_blank" rel="noopener">ログインする（別のタブ）</a>
+  <a class="btn" href="/login?next=/plan/confirm" target="_blank" rel="noopener">ログインして申し込む（別のタブ）</a>
   {% endif %}
   <a class="btn ghost" href="/plan">料金を見る</a>
  </p>
@@ -7891,12 +7896,42 @@ _OFF_BODY = ('<div class="card"><h1>アカウント機能は準備中です</h1>
 
 
 def _require_login():
-    """ログインしていなければリダイレクト応答を返す。していれば None。"""
+    """ログインしていなければリダイレクト応答を返す。していれば None。
+
+    ログインのあとに戻る先を持たせる。以前は戻り先が無く、申込の途中で
+    ログインした人はマイページに着き、プランを探し直さないと決済に
+    進めなかった（2026-10-20）。POSTの画面（決済を開く）は、その手前の
+    最終確認へ戻す。
+    """
     if not accounts_on():
         return _account_page("準備中", _OFF_BODY)
     if not current_user():
-        return redirect("/login")
+        back = request.path if request.method == "GET" else (
+            "/plan/confirm" if request.path.startswith("/plan") else None)
+        back = _safe_next(back)
+        return redirect("/login" + (f"?next={urllib.parse.quote(back)}"
+                                    if back else ""))
     return None
+
+
+# ログインのあとに戻してよい先。外のサイトへ飛ばす踏み台にされないよう、
+# このサイトの決まった画面だけにする。
+_NEXT_OK = ("/plan", "/plan/confirm", "/mypage", "/pro")
+
+
+def _safe_next(p):
+    if not p or not isinstance(p, str):
+        return None
+    if not p.startswith("/") or p.startswith("//") or "\\" in p:
+        return None
+    path = p.split("?", 1)[0].split("#", 1)[0]
+    if path in _NEXT_OK or path.startswith("/pro/"):
+        return path
+    return None
+
+
+def _for_plan(nxt) -> bool:
+    return bool(nxt) and nxt.startswith("/plan")
 
 
 # ---- ログイン ------------------------------------------------------------
@@ -7908,11 +7943,18 @@ LOGIN_PAGE = """
   <p class="lead">{{ user.email }} でログイン中です。</p>
   <a class="btn" href="/mypage">マイページへ</a>
  {% else %}
+  {% if for_plan %}
+  <div class="note" style="margin:0 0 12px"><b>PROのお申込みの続きです。</b>
+   お申込みには、メールアドレスでのログインが必要です（解約やお支払いの確認を、
+   ご本人だけができるようにするためです）。メールのリンクを押すと、
+   <b>お申込みの確認画面に戻ります。</b></div>
+  {% endif %}
   <p class="lead">パスワードはありません。メールアドレスを入れると、
    ログイン用のリンクをお送りします。<br>
    保存した診断を、あとから別の端末でも見られるようにするためのものです。</p>
   {% if error %}<div class="note warn">{{ error }}</div><br>{% endif %}
   <form method="post" action="/login">
+   {% if nxt %}<input type="hidden" name="next" value="{{ nxt }}">{% endif %}
    <label for="email" style="font-size:13px;font-weight:700">メールアドレス</label>
    <div style="margin:6px 0 14px"><input id="email" type="email" name="email"
      required autocomplete="email" placeholder="you@example.com"
@@ -7931,7 +7973,8 @@ LOGIN_SENT = """
 <div class="card">
  <h1>リンクをお送りしました</h1>
  <div class="note ok">{{ email }} 宛にログイン用のリンクを送りました。
-  メールを開いて、{{ ttl }}分以内にリンクを押してください。</div>
+  メールを開いて、{{ ttl }}分以内にリンクを押してください。{% if for_plan %}
+  リンクを押すと、<b>お申込みの確認画面</b>に進みます。{% endif %}</div>
  <p class="lead" style="margin-top:14px">届かない場合は、迷惑メールに入っていないか
   ご確認ください。それでも見当たらなければ、
   <a href="/login">もう一度お試しください</a>。</p>
@@ -7949,9 +7992,18 @@ def login():
     if not accounts_on():
         return _account_page("準備中", _OFF_BODY)
     user = current_user()
+    nxt = _safe_next(request.values.get("next"))
+    for_plan = _for_plan(nxt)
+    if user and nxt:
+        return redirect(nxt)          # もうログインしているなら、そのまま先へ
     if request.method == "GET" or user:
+        if request.method == "GET" and not user:
+            _did("login_view")
+            if for_plan:
+                _did("login_plan")
         return _account_page("ログイン", render_template_string(
-            LOGIN_PAGE, user=user, error=None, email=None), chip="ログイン")
+            LOGIN_PAGE, user=user, error=None, email=None, nxt=nxt,
+            for_plan=for_plan), chip="ログイン")
 
     email = accounts.normalize_email(request.form.get("email"))
     err = None
@@ -7959,7 +8011,8 @@ def login():
         err = "メールアドレスの形式をご確認ください。"
     if err:
         return _account_page("ログイン", render_template_string(
-            LOGIN_PAGE, user=None, error=err, email=email), chip="ログイン")
+            LOGIN_PAGE, user=None, error=err, email=email, nxt=nxt,
+            for_plan=for_plan), chip="ログイン")
 
     try:
         token = accounts.issue_login_token(email)
@@ -7968,14 +8021,20 @@ def login():
                if str(e) == "email" else
                "本日の送信上限に達しました。お手数ですが翌日にお試しください。")
         return _account_page("ログイン", render_template_string(
-            LOGIN_PAGE, user=None, error=err, email=email), chip="ログイン")
+            LOGIN_PAGE, user=None, error=err, email=email, nxt=nxt,
+            for_plan=for_plan), chip="ログイン")
     except Exception:
         return _account_page("ログイン", render_template_string(
-            LOGIN_PAGE, user=None, email=email,
+            LOGIN_PAGE, user=None, email=email, nxt=nxt, for_plan=for_plan,
             error="ただいま混み合っています。時間をおいてお試しください。"),
             chip="ログイン")
 
+    # 戻り先はリンクに載せる。メールのリンクは、申込みをしていたのとは
+    # 別のブラウザ（メールアプリの中など）で開かれることが多く、
+    # セッションに持たせても届かないため。
     link = urllib.parse.urljoin(request.url_root, f"login/{token}")
+    if nxt:
+        link += "?next=" + urllib.parse.quote(nxt)
     ok, msg = mailer.send_login_link(email, link, accounts.TOKEN_TTL_MIN)
     # メールを出せない環境（鍵未設定のローカル）では、画面にリンクを出す。
     # 本番でこれを出すと誰でもログインできてしまうので、鍵が無いときに限る。
@@ -7986,10 +8045,13 @@ def login():
         metrics.bump("mail_failed")
         # msg は相手に見せてよい文面だけ（詳細は mailer 側でログに出る）。
         return _account_page("ログイン", render_template_string(
-            LOGIN_PAGE, user=None, email=email, error=msg), chip="ログイン")
+            LOGIN_PAGE, user=None, email=email, error=msg, nxt=nxt,
+            for_plan=for_plan), chip="ログイン")
+    if ok:
+        _did("login_sent")
     return _account_page("確認", render_template_string(
-        LOGIN_SENT, email=email, ttl=accounts.TOKEN_TTL_MIN, devlink=devlink),
-        chip="ログイン")
+        LOGIN_SENT, email=email, ttl=accounts.TOKEN_TTL_MIN, devlink=devlink,
+        for_plan=for_plan), chip="ログイン")
 
 
 @app.route("/login/<token>")
@@ -8012,7 +8074,11 @@ def login_verify(token):
     session.clear()
     session["uid"] = user["id"]
     session.permanent = True
-    resp = redirect("/mypage")
+    nxt = _safe_next(request.args.get("next"))
+    _did("login_open")
+    if _for_plan(nxt):
+        _did("login_plan_open")
+    resp = redirect(nxt or "/mypage")
     if accounts.is_comped(user):
         resp.set_cookie(_OP_COOKIE, _op_signer().dumps(user["email"]),
                         max_age=_OP_COOKIE_DAYS * 86400, httponly=True,
