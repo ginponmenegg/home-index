@@ -598,7 +598,7 @@ def test_the_burden_article_matches_the_finance_scoring():
     body = guides.by_slug("hensai-futanritsu").body
     w = CONFIG["category_weights"]["資金"]
     assert f"資金は{w}点満点" in body
-    for rb in (20, 25, 35, 40, 41):        # 年収600万＝上限35%の側
+    for rb in (20, 25, 30, 31, 40):
         assert f"{_pt(_fin_points(rb, 6_000_000))}点" in body, f"負担率{rb}%"
     # 年収も頭金も入れなければ、良いとも悪いとも判断しない
     from src.scoring import score_finance
@@ -606,12 +606,20 @@ def test_the_burden_article_matches_the_finance_scoring():
 
 
 def test_the_burden_article_matches_the_income_cutoff():
-    """年収400万円で上限が30%と35%に切り替わる（フラット35の要件）。"""
+    """年収400万円で切り替わる30%・35%は、借りられる上限（フラット35の要件）。
+
+    点数の段は年収にかかわらず同じ（2026-10-20に分けた）。
+    """
+    from src.scoring import borrowing_limit_pct
     body = guides.by_slug("hensai-futanritsu").body
     assert "400万円" in body and "30%" in body and "35%" in body
-    # 400万円ちょうどは35%側、1円足りなければ30%側
-    assert _fin_points(35, 4_000_000) > _fin_points(35, 3_999_999)
-    assert _fin_points(30, 3_999_999) == _fin_points(35, 4_000_000)
+    assert "借りられる上限" in body
+    # 上限：400万円ちょうどは35%、1円足りなければ30%
+    assert borrowing_limit_pct(4_000_000) == 35
+    assert borrowing_limit_pct(3_999_999) == 30
+    # 点数：同じ負担率なら年収で変わらない
+    for rb in (20, 25, 28, 33):
+        assert _fin_points(rb, 3_999_999) == _fin_points(rb, 4_000_000), rb
 
 
 def test_the_burden_article_matches_the_loan_defaults():

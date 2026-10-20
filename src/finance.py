@@ -860,9 +860,10 @@ def affordable_loan(annual_income: int, annual_rate: float, years: int,
                     down_payment: int = 0,
                     burden_limit: Optional[float] = None,
                     monthly_extra: int = 0) -> Affordability:
-    """年収から逆算した借入可能額。scoring.score_finance と同じ基準を使う。
+    """年収から逆算した借入可能額。上限は scoring.borrowing_limit_pct。
 
-    年収400万円以上は35%、未満は30%（既存の score_finance と揃える）。
+    年収400万円以上は35%、未満は30%（フラット35の総返済負担率の基準）。
+    点数の段（20%・25%・30%）とは別物で、こちらは「借りられる上限」。
 
     monthly_extra はマンションの管理費・修繕積立金のような毎月の固定費。
     住み続ける限り出ていく金額なので、負担率の枠から先に差し引く
@@ -870,7 +871,8 @@ def affordable_loan(annual_income: int, annual_rate: float, years: int,
     借入に回せる額はその分だけ減る。戸建は 0 のまま呼ばれる。
     """
     if burden_limit is None:
-        burden_limit = 35.0 if annual_income >= 4_000_000 else 30.0
+        from .scoring import borrowing_limit_pct
+        burden_limit = float(borrowing_limit_pct(annual_income))
     max_annual = annual_income * burden_limit / 100.0
     max_monthly = int(max_annual / 12)
     extra = max(0, monthly_extra or 0)

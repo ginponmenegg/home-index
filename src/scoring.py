@@ -503,27 +503,44 @@ def score_risk(use_district: Optional[str], urbanization: Optional[str],
                          reason, src, plus=plus, minus=minus)
 
 
+def borrowing_limit_pct(income: Optional[int]) -> int:
+    """借入の上限とされる返済負担率（フラット35の総返済負担率の基準）。
+
+    年収400万円未満は30%、以上は35%。**これは借りられる上限であって、
+    点数の段ではない**（2026-10-20に分けた）。上限いっぱいまで借りても
+    審査は通るが、それで暮らしに余裕があるとは言えない。
+    詳細な資金計画の借入可能額（finance.affordable_loan）もここを使う。
+    """
+    return 35 if (income is not None and income >= 4_000_000) else 30
+
+
+# 返済負担率の段と、資金の点に掛ける割合。年収にかかわらず同じ段で見る。
+# 以前は上限（30%か35%）を段の境目にしていたので、年収400万円を境に
+# 同じ負担率でも点が変わっていた。
+BURDEN_BANDS = ((20, 1.0, "最高"), (25, 0.8, "高"), (30, 0.6, "中"))
+BURDEN_LOW = 0.3          # 30%を超える
+
+
 def score_finance(loan: Optional[LoanResult]) -> CategoryScore:
     w = WEIGHTS["資金"]
     if not loan or loan.burden_ratio is None:
         return CategoryScore("資金", w, 0.5, w * 0.5, 0.0,
                              "年収・頭金の入力で返済負担を評価可能", [])
     rb = loan.burden_ratio
-    income = getattr(loan, "income", None)  # 年収（円）
-    limit = 35 if (income is not None and income >= 4_000_000) else 30  # 400万円で基準切替
-    if rb <= 20:
-        raw = 1.0
-    elif rb <= 25:
-        raw = 0.85
-    elif rb <= limit:
-        raw = 0.7
-    elif rb <= limit + 5:
-        raw = 0.5
-    else:
-        raw = 0.3
-    reason = f"返済負担率 {rb}%（基準{limit}%・月々{loan.monthly_payment:,}円）"
-    plus = [f"返済負担率 {rb}%（基準{limit}%に対して余裕がある）"] if rb <= 25 else []
-    minus = [f"返済負担率 {rb}%（基準{limit}%を超えています）"] if rb > limit else []
+    limit = borrowing_limit_pct(getattr(loan, "income", None))
+    raw = BURDEN_LOW
+    for upper, r, _label in BURDEN_BANDS:
+        if rb <= upper:
+            raw = r
+            break
+    reason = (f"返済負担率 {rb}%（月々{loan.monthly_payment:,}円）。"
+              f"借入の上限は{limit}%")
+    plus = [f"返済負担率 {rb}%（25%以下）"] if rb <= 25 else []
+    minus = []
+    if rb > limit:
+        minus.append(f"返済負担率 {rb}%（借入の上限{limit}%を超えています）")
+    elif rb > 30:
+        minus.append(f"返済負担率 {rb}%（30%を超えています）")
     return CategoryScore("資金", w, round(raw, 3), round(w * raw, 1), 0.9,
                          reason, ["計算"], plus=plus, minus=minus)
 
