@@ -884,6 +884,213 @@ def to_yen(man_str):
         return None
 
 
+# ---- 家計の手取りと教育費（PRO） ------------------------------------
+# 世帯年収だけでは、片働きと共働きの手取りの差も、子どもの学費も見えない。
+# PROのフォームでは年収を本人と配偶者に分けて受け、手取りで資金の点を出す。
+# 計算は src/household.py、税率・学費は finance_config.json の "household"。
+# **入力はどれも保存しない**（src/saved.py の NEVER_SAVE）。
+
+HH_FIELDS = """
+   <div class="row">
+    <div><label>本人の年収（万円）</label>
+     <input name="income_self" value="{{v.income_self}}" placeholder="例）600"></div>
+    <div><label>配偶者の年収（万円）</label>
+     <input name="income_spouse" value="{{v.income_spouse}}" placeholder="例）400">
+     <div class="hint">配偶者がいて収入が無いときは 0。いなければ空欄</div></div>
+   </div>
+   <div class="row">
+    <div><label>本人の年齢</label>
+     <select name="over40_self">
+      <option value="0" {{'selected' if v.over40_self!='1' else ''}}>40歳未満・65歳以上</option>
+      <option value="1" {{'selected' if v.over40_self=='1' else ''}}>40〜64歳</option>
+     </select></div>
+    <div><label>配偶者の年齢</label>
+     <select name="over40_spouse">
+      <option value="0" {{'selected' if v.over40_spouse!='1' else ''}}>40歳未満・65歳以上</option>
+      <option value="1" {{'selected' if v.over40_spouse=='1' else ''}}>40〜64歳</option>
+     </select></div>
+   </div>
+   <div class="hint" style="margin:-2px 0 10px">税込の年収（源泉徴収票の「支払金額」）です。
+    会社員・公務員として、それぞれの手取りを計算し、資金の点は<b>手取りに対する返済</b>で
+    つけます。年齢は介護保険料（40〜64歳）のために使います。</div>
+   <div class="row">
+    <div><label>お子さまの年齢</label>
+     <input name="children_ages" value="{{v.children_ages}}" placeholder="例）4, 7">
+     <div class="hint">いまの年齢を、区切って並べてください</div></div>
+    <div><label>小・中・高校</label>
+     <select name="school">
+      <option value="public" {{'selected' if v.school!='private_jhs' else ''}}>すべて公立</option>
+      <option value="private_jhs" {{'selected' if v.school=='private_jhs' else ''}}>中学から私立</option>
+     </select></div>
+    <div><label>大学</label>
+     <select name="univ">
+      <option value="private" {{'selected' if v.univ not in ('national','none') else ''}}>私立</option>
+      <option value="national" {{'selected' if v.univ=='national' else ''}}>国公立</option>
+      <option value="none" {{'selected' if v.univ=='none' else ''}}>大学は考えない</option>
+     </select></div>
+   </div>
+"""
+
+HH_DEFAULTS = {"income_self": "", "income_spouse": "", "over40_self": "0",
+               "over40_spouse": "0", "children_ages": "", "school": "public",
+               "univ": "private"}
+
+
+def _hh_values(v):
+    """無料診断から引き継いだ世帯年収は、本人の欄に入れておく。"""
+    if (not v.get("income_self") and not v.get("income_spouse")
+            and v.get("income")):
+        v["income_self"] = v["income"]
+    return v
+
+
+def _hh_income(f):
+    """世帯年収（円）。本人と配偶者に分けて入っていれば、その合計。"""
+    a, b = to_yen(f.get("income_self")), to_yen(f.get("income_spouse"))
+    if a is None and b is None:
+        return to_yen(f.get("income"))
+    return (a or 0) + (b or 0)
+
+
+def _hh_check(f, loan, children=None, household_size=None, employment=None):
+    """手取りで見た返済と教育費。年収が分かれていなければ None。
+
+    自営業は社会保険も税の計算も違うので、手取りを出さない。
+    """
+    from src import household as hh
+    if employment == "jieigyo" or loan is None:
+        return None
+    a, b = to_yen(f.get("income_self")), to_yen(f.get("income_spouse"))
+    if a is None and b is None:
+        return None
+    # 戸建PROには「年齢」の欄もある。入っていれば、そちらを優先する
+    age = to_int(f.get("age"))
+    over40 = (40 <= age <= 64) if age else (f.get("over40_self") == "1")
+    house = hh.household_take_home(a or 0, b,
+                                   self_over40=over40,
+                                   spouse_over40=(f.get("over40_spouse") == "1"))
+    annual = (loan.monthly_payment + (getattr(loan, "monthly_extra", 0) or 0)) * 12
+    ages = hh.parse_ages(f.get("children_ages"))
+    return hh.check(house, annual, children_ages=ages, children=children,
+                    household_size=household_size,
+                    school=f.get("school") or "public",
+                    univ=f.get("univ") or "private",
+                    gross_ratio=(round(annual / house.income * 100, 1)
+                                 if house.income else None))
+
+
+def _hh_ctx(hc):
+    """結果画面に出す値。金額は万円の小数1桁にそろえる。"""
+    if hc is None:
+        return None
+    from src import household as hh
+
+    def m(v):
+        return f"{v / 10000:,.1f}万円"
+
+    labels = ["本人", "配偶者"] if len(hc.household.earners) == 2 else ["本人"]
+    # 収入の無い配偶者は行に出さない（0円が並ぶだけになる）。配偶者控除を
+    # 使っていることは、下の一言で伝える。
+    def m0(v):                 # 表の中は幅が狭いので、万円単位の整数にする
+        return f"{v / 10000:,.0f}万"
+
+    rows = [dict(who=lbl, income=m0(e.income), social=m0(e.social),
+                 tax=m0(e.income_tax + e.resident_tax), net=m0(e.net))
+            for lbl, e in zip(labels, hc.household.earners) if e.income > 0]
+    spouse_ded = max((e.spouse_deduction for e in hc.household.earners),
+                     default=0)
+
+    def ages_of(xs):
+        return "・".join(f"{a}歳" for a in xs if a <= 21)
+    edu = None
+    plan = hc.education
+    if plan and plan.years:
+        pk = plan.peak
+        edu = dict(route=(hh.SCHOOL_ROUTES[plan.school] + "・大学は"
+                          + hh.UNIV_ROUTES[plan.univ]),
+                   total=m(plan.total), avg=m(plan.average),
+                   avg_month=m(plan.average / 12), span=len(plan.years),
+                   peak_in=pk.offset, peak=m(pk.net),
+                   peak_ages=ages_of(pk.ages),
+                   years=[dict(t=y.offset, ages=ages_of(y.ages),
+                               gross=m(y.gross), allow=m(y.allowance),
+                               net=m(y.net)) for y in plan.years])
+    short = None
+    if hc.short_years:
+        a, b = hc.short_years[0], hc.short_years[-1]
+        short = f"{a}年後" if a == b else f"{a}〜{b}年後"
+    return dict(rows=rows, net=m(hc.household.net),
+                net_month=m(hc.household.net / 12),
+                outflow=m(hc.annual_outflow), ratio=hc.net_ratio,
+                band=hc.band, gross=hc.gross_ratio, edu=edu,
+                ages_missing=hc.ages_missing,
+                size=hc.household_size,
+                living=(m(hc.living) if hc.living else None),
+                left_avg=m(hc.left_avg),
+                left_peak=(m(hc.left_peak) if hc.left_peak is not None else None),
+                short=short, lowered=hc.lowered,
+                spouse_ded=(m(spouse_ded) if spouse_ded else None),
+                two=len(hc.household.earners) == 2)
+
+
+HH_RESULT = """
+{% if hh %}
+<div class="hh">
+ <h3>手取りで見た返済{% if hh.edu %}と教育費{% endif %}（PRO）</h3>
+ <div class="tablewrap"><table class="hhtab">
+  <tr><th></th><th>年収</th><th>社会保険</th><th>税</th><th>手取り</th></tr>
+  {% for r in hh.rows %}<tr><th>{{r.who}}</th><td>{{r.income}}</td><td>{{r.social}}</td><td>{{r.tax}}</td><td><b>{{r.net}}</b></td></tr>{% endfor %}
+ </table></div>
+ <p>世帯の手取り <b>年{{hh.net}}</b>（月{{hh.net_month}}）。返済{% if hh.outflow %}（年{{hh.outflow}}）{% endif %}は
+  <b>手取りの{{hh.ratio}}%</b>で、段は「{{hh.band}}」です。{% if hh.gross %}税込の年収で割ると{{hh.gross}}%です。{% endif %}</p>
+ <p class="hhnote">表の金額は年額で、税は所得税と住民税の合計です。段は、手取りの25%以下・30%以下・35%以下で分けています。{% if hh.spouse_ded %}
+  所得税の配偶者控除・配偶者特別控除（{{hh.spouse_ded}}）を入れています。{% endif %}</p>
+ {% if hh.edu %}
+ <p>教育費（{{hh.edu.route}}）は、いちばん下のお子さまが大学を出るまでの{{hh.edu.span}}年で
+  <b>{{hh.edu.total}}</b>（児童手当を差し引いた額）。均すと<b>年{{hh.edu.avg}}</b>（月{{hh.edu.avg_month}}）です。
+  いちばん重いのは{{hh.edu.peak_in}}年後（{{hh.edu.peak_ages}}）で、その年は{{hh.edu.peak}}かかります。</p>
+ {% elif hh.ages_missing %}
+ <p>お子さまの年齢が入っていないため、教育費は見込んでいません。</p>
+ {% endif %}
+ <p>返済{% if hh.edu %}と教育費（均した額）{% endif %}を払ったあと、月に残るのは<b>約{{hh.left_avg}}</b>です。
+ {% if hh.living %}世帯主が60歳未満の勤労者世帯のうち{{hh.size}}人{% if hh.size >= 6 %}以上{% endif %}の世帯が、住居費と教育費のほかに使っている額は、平均で月約{{hh.living}}です。{% endif %}</p>
+ {% if hh.lowered %}<p class="hhwarn">残る額が平均的な生活費を下回るので、資金の点を1段下げています。</p>
+ {% elif hh.short %}<p class="hhwarn">教育費がいちばん重い時期（{{hh.short}}）は、残る額が平均的な生活費を下回ります。その時期に向けて、いまから積み立てておく額の目安が、上の「均した額」です。</p>{% endif %}
+ {% if hh.edu %}
+ <details class="hhyears"><summary>年ごとの教育費</summary>
+  <div class="tablewrap"><table class="hhtab">
+   <tr><th>何年後</th><th>年齢</th><th>学費</th><th>児童手当</th><th>差し引き</th></tr>
+   {% for y in hh.edu.years %}<tr><td>{{y.t}}</td><td>{{y.ages}}</td><td>{{y.gross}}</td><td>{{y.allow}}</td><td>{{y.net}}</td></tr>{% endfor %}
+  </table></div>
+ </details>
+ {% endif %}
+ <p class="hhnote"><b>前提</b>：会社員・公務員の給与として、令和8年分の所得税と令和9年度分の住民税で計算しています。
+  社会保険料は協会けんぽの全国平均の料率で、{% if hh.two %}年収130万円未満の方は扶養に入っているとして0にしています。{% endif %}
+  控除は基礎控除・配偶者控除・配偶者特別控除・社会保険料控除だけで、<b>住宅ローン控除は入れていません</b>（入れると手取りは増えます）。
+  {% if hh.edu %}教育費は文部科学省「子供の学習費調査」（令和5年度）の平均で、塾・習い事を含みます。
+  0〜2歳の保育料、大学の下宿代は入れていません。私立高校は、令和8年度からの就学支援金の拡充を反映していないため、多めに出ています。{% endif %}
+  {% if hh.living %}平均的な生活費は、総務省「家計調査」（2025年）の世帯人員別の表で、世帯主が60歳未満の勤労者世帯の消費支出から、住居と教育を除いたものです。{% endif %}</p>
+</div>
+{% endif %}
+"""
+
+HH_CSS = """
+ .hh{margin:14px 0 4px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:12px;background:#fafbfc;font-size:14px;line-height:1.85}
+ .hh h3{font-size:15px;margin:0 0 8px}
+ .hh p{margin:6px 0}
+ .hhtab{width:100%;border-collapse:collapse;font-size:13px}
+ .hhtab th,.hhtab td{padding:5px 4px;border-bottom:1px solid #eef0f3;text-align:right;white-space:nowrap}
+ @media (max-width:560px){ .hhtab{font-size:12px} }
+ .hhtab th:first-child,.hhtab td:first-child{text-align:left}
+ .hhnote{color:#6b7280;font-size:12.5px}
+ .hhwarn{color:#9a3412}
+ .hhyears summary{cursor:pointer;color:#374151;margin:6px 0}
+"""
+# どの結果画面にもそのまま差し込めるよう、表示のときだけ style を付ける
+HH_RESULT = HH_RESULT.replace("{% if hh %}", "{% if hh %}<style>" + HH_CSS
+                              + "</style>", 1)
+
+
 def to_int(s):
     s = (s or "").strip().replace(",", "")
     try:
@@ -1437,6 +1644,7 @@ BRAND_BAR
     実質の月額負担 約 {{loan.total_monthly}}
     {% if loan.burden %}<span class="muted" style="font-size:14px">／ 負担率 {{loan.burden}}%（管理費等込み）</span>{% endif %}</p>
   {% elif loan.burden %}<p class="muted" style="font-size:14px;margin:2px 0 6px">返済負担率 {{loan.burden}}%</p>{% endif %}
+HH_RESULT_PLACEHOLDER
     {% endif %}
    </div>
   </details>
@@ -1701,6 +1909,7 @@ FORM = (FORM.replace("CARD_CSS_PLACEHOLDER", CARD_CSS)
         .replace("BRAND_BAR", brand_bar())
         .replace("</div></body></html>", FOOTER + "</div></body></html>"))
 RESULT = (RESULT.replace("CARD_CSS_PLACEHOLDER", CARD_CSS)
+          .replace("HH_RESULT_PLACEHOLDER", HH_RESULT)
           .replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
           .replace("PLAN_LINKS_PLACEHOLDER", _PLAN_LINKS)
           .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
@@ -2823,7 +3032,7 @@ _OBS_STORE = ("""
 </ul>
 <p><b>利用者を結びつける情報は含めません。</b>アカウントのID・セッション・
 IPアドレスのいずれも記録しないため、この記録から特定の方をたどることは
-できません。<b>世帯年収・頭金・他の借入は残しません。</b></p>
+できません。<b>世帯年収・頭金・他の借入は残しません。</b>PROで入力された本人・配偶者それぞれの年収と、お子さまの年齢も同じです。</p>
 <p>この記録は<b>3年間</b>保存し、それを過ぎたものは自動的に削除します。</p>
 """ if db.enabled() else """
 <p>現在は、診断された物件の記録も残していません。</p>
@@ -2832,7 +3041,7 @@ IPアドレスのいずれも記録しないため、この記録から特定の
 _ACC_STORE = ("""<p>アカウントをご利用の場合に限り、利用者ご自身が「保存する」を
 押した診断結果を、比較のためにお預かりします。保存されるのは、そのときの
 点数・カテゴリ別の内訳・価格判定・返済額と、対象物件の所在地・価格などの
-入力内容です。<b>世帯年収は保存しません</b>（返済額の計算結果のみを持ちます）。
+入力内容です。<b>世帯年収は保存しません</b>。本人・配偶者それぞれの年収、頭金、お子さまの年齢も同じです（返済額の計算結果のみを持ちます）。
 保存した内容は、マイページからいつでも削除できます。</p>
 <p>ログインはパスワードを用いず、メールアドレス宛の使い捨てリンクで行います。
 <b>パスワードは保管しません。</b>リンクの文字列そのものも保存せず、
@@ -2848,10 +3057,10 @@ _ACC_MAIL = ("""<h2>5-2. メールの送信</h2>
 お送りしません。</p>""" if db.enabled() else "")
 
 _PRIVACY_BODY = ("""
-<p class="sub">最終改定日：2026年9月21日</p>
+<p class="sub">最終改定日：2026年10月20日</p>
 <h2>1. 取得する情報</h2>
 <p>本サービスは、診断のために利用者が入力・貼り付けした情報（物件の所在地・価格・面積・築年・
-駅距離・種別、任意入力の世帯年収・頭金等）を処理します。あわせて、アクセスに伴う技術情報
+駅距離・種別、任意入力の世帯年収・頭金等。PROでは本人と配偶者それぞれの年収、お子さまの年齢）を処理します。あわせて、アクセスに伴う技術情報
 （IPアドレス等）を、不正利用防止・レート制限の目的で一時的に参照する場合があります。"""
 + _ACC_COLLECT + """</p>
 <h2>2. 利用目的</h2>
@@ -2860,7 +3069,7 @@ _PRIVACY_BODY = ("""
 の目的にのみ利用します。診断のために不要な情報は取得しません。</p>
 <h2>3. 保存・安全管理</h2>
 <p><b>入力されたものをそのまま保存することはありません。</b>丁目・番地を含む住所、
-世帯年収・頭金・他の借入は、診断の計算に使うだけで、サーバー上に残しません
+年収（世帯・本人・配偶者）・頭金・他の借入・お子さまの年齢は、診断の計算に使うだけで、サーバー上に残しません
 （不正防止のためのアクセス記録を除く）。</p>
 """ + _OBS_STORE + """
 <p>取り扱いにあたっては適切な安全管理措置を講じます。
@@ -2872,7 +3081,7 @@ _PRIVACY_BODY = ("""
 <p>本サービスは、国土交通省 不動産情報ライブラリ・国土地理院のAPI、および
 OpenStreetMap の Overpass API を利用します。診断のために、<b>入力された住所</b>
 （座標を求めるため）と、そこから得た座標・市区町村コードを送信します。
-<b>世帯年収・頭金・他の借入などの家計に関する入力は、外部に送信していません。</b>
+<b>年収・頭金・他の借入・お子さまの年齢などの家計に関する入力は、外部に送信していません。</b>
 これらは当サービス内での計算にのみ用います。
 これらへの照会内容は各提供元の規約・プライバシーポリシーに従います。</p>
 """ + _ACC_MAIL + """
@@ -3891,7 +4100,8 @@ def diagnose():
         _SEM.release()
 
 
-def _finance_carry(subject, down_yen, loan_years, income_yen=None):
+def _finance_carry(subject, down_yen, loan_years, income_yen=None,
+                   hh_form=None):
     """診断の入力から、資金計画のフォームを埋める値を作る。
 
     資金計画の金額欄はすべて万円。面積は㎡。単位を間違えると桁が
@@ -3928,6 +4138,10 @@ def _finance_carry(subject, down_yen, loan_years, income_yen=None):
         v["land_area"] = str(land)
     if floor:
         v["floor_area"] = str(floor)
+    # PROの診断で分けて入れてもらった年収・子どもの年齢も持っていく
+    for k in HH_DEFAULTS:
+        if hh_form is not None and hh_form.get(k):
+            v[k] = hh_form.get(k)
     return v
 
 
@@ -4121,7 +4335,7 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
                    free_diagnosis=None, carry=None, questions=None,
                    questions_note=None, redo=None, finance_carry=None,
                    disclosure_points=None, sample=False,
-                   edit=None):
+                   edit=None, household=None):
     """診断結果ページを描画する。戸建とマンションで共通。
 
     res は run_pipeline / run_mansion_pipeline のどちらの戻り値でもよい。
@@ -4310,7 +4524,7 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
     return render_template_string(
         RESULT, s=sctx, price_man=man(subject.price), age=age, save=save,
         sample=bool(sample),
-        p=price_ctx, d=dctx, loan=loan,
+        p=price_ctx, d=dctx, loan=loan, hh=household,
         # どの行を畳めるか。**中に入れるものが無い行は畳まない。**空の箱を
         # 開かせると、押した人が損をする。「詳しく」の札が出ている行だけが
         # 開く形にすると、押せる場所が一目で分かる。
@@ -5402,6 +5616,7 @@ BRAND_BAR
    入っていません。</b>注文住宅ではこれらが数百万円単位でかかります。
    特に地盤改良は、地盤調査をするまで金額が分かりません。
    金利は年1.25%・元利均等で試算しています。</div>
+HH_RESULT_PLACEHOLDER
     {% endif %}
    </div>
   </details>
@@ -5681,6 +5896,7 @@ _RESULT_CSS = RESULT[RESULT.index("<style>") + len("<style>"):
 # タグの並びに頼らず、置き場所を自分で書いておく。
 assert "LAND_FOOTER_PLACEHOLDER" in LAND_RESULT
 LAND_RESULT = (LAND_RESULT
+               .replace("HH_RESULT_PLACEHOLDER", HH_RESULT)
                .replace("PLAN_LINKS_PLACEHOLDER", _PLAN_LINKS)
                .replace("LAND_RESULT_CSS_PLACEHOLDER", _RESULT_CSS)
                .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
@@ -5923,7 +6139,7 @@ def _matched_ctx(m):
 
 def _render_land_result(res, subject, f, down_yen, loan_years,
                         fin=None, pro=False, procedures=None, matched=None,
-                        disclosure_points=None):
+                        disclosure_points=None, hh_ctx=None):
     from src.land import tsubo, site_diagram
     from src.land_scoring import guided_area_m2, DEFAULT_HOUSEHOLD, score_cap
 
@@ -6077,6 +6293,7 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
                    pro=bool(pro), handover=handover),
         fig=fig,
         loan=loan, capped=capped, warnings=_public_warnings(res.warnings),
+        hh=hh_ctx,
         fin=fin, pro=pro, handover=handover, procedures=procedures,
         matched=matched, save=save, sample=bool(f.get("sample")),
         plan_price=(price_now()[1] if billing_on() else None),
@@ -6309,9 +6526,8 @@ BRAND_BAR
   </div>
 
   <h3 class="sec">住宅ローン本体</h3>
+HH_FIELDS_PLACEHOLDER
   <div class="row">
-   <div><label>世帯年収（万円）</label>
-    <input name="income" value="{{v.income}}" placeholder="例）800"></div>
    <div><label>頭金（万円）</label>
     <input name="down" value="{{v.down}}" placeholder="例）500"></div>
   </div>
@@ -6367,6 +6583,7 @@ BRAND_BAR
 from src import land_pro_scoring as lps  # noqa: E402
 
 LAND_PRO_FORM = (LAND_PRO_FORM
+                 .replace("HH_FIELDS_PLACEHOLDER", HH_FIELDS)
                  .replace("LAND_PRO_CSS_PLACEHOLDER", _FORM_CSS)
                  .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
                  .replace("BRAND_BAR", brand_bar("PRO 土地診断"))
@@ -6387,6 +6604,7 @@ def _land_pro_defaults():
     for key in lps.LEGAL_CHOICES:
         v[key] = lps.UNKNOWN
     v["setback_actual"] = ""
+    v.update(HH_DEFAULTS)
     return v
 
 
@@ -6395,7 +6613,7 @@ def _land_pro_form_values(f):
     for k in v:
         if f.get(k) is not None:
             v[k] = f.get(k)
-    return v
+    return _hh_values(v)
 
 
 def _land_pro_page(v, banner=None):
@@ -6466,7 +6684,7 @@ def _run_land_pro(f):
         subject, reinfolib_key=os.environ.get("REINFOLIB_KEY"),
         google_key=os.environ.get("GOOGLE_KEY"),
         mock=(os.environ.get("SHINDAN_MOCK") == "1"),
-        annual_income=to_yen(f.get("income")), down_payment=down_yen,
+        annual_income=_hh_income(f), down_payment=down_yen,
         loan_years=loan_years,
         estat_appid=os.environ.get("ESTAT_APPID"),
         estat_table=os.environ.get("ESTAT_TABLE", "0000020201"))
@@ -6541,8 +6759,12 @@ def _run_land_pro(f):
     # 配点は変えない。戸建PROと同じで、raw を差し替えて充足度を上げる。
     d = res.diagnosis
     extra_confirm = []
+    from src.household import finance_category
+    hc = _hh_check(f, res.loan, household_size=subject.household_size)
     for i, c in enumerate(d.categories):
-        if c.name == "リスク":
+        if c.name == "資金":
+            d.categories[i] = finance_category(c, hc)
+        elif c.name == "リスク":
             c, conf = lps.score_land_site(c, detail)
             extra_confirm += conf
             c, conf = lps.score_land_heritage(c, legal)
@@ -6597,7 +6819,8 @@ def _run_land_pro(f):
                                fin=_land_fin_ctx(bridge, total, events),
                                pro=True, procedures=procedures,
                                matched=_matched_ctx(matched),
-                               disclosure_points=disc)
+                               disclosure_points=disc,
+                               hh_ctx=_hh_ctx(hc))
 
 
 def _land_fin_ctx(bridge, total, events):
@@ -6834,8 +7057,8 @@ PRO_DETAIL_PLACEHOLDER
     <div><label>勤続年数</label><input name="tenure_years" value="{{v.tenure_years}}" placeholder="例）10"></div>
     <div><label>何年住む見込みか</label><input name="hold_years" value="{{v.hold_years}}" placeholder="例）20"></div>
    </div>
+HH_FIELDS_PLACEHOLDER
    <div class="row">
-    <div><label>世帯年収（万円）</label><input name="income" value="{{v.income}}" placeholder="例）600"></div>
     <div><label>頭金（万円）</label><input name="down" value="{{v.down}}" placeholder="例）300"></div>
     <div><label>手元に残す額（万円）</label><input name="reserve" value="{{v.reserve}}" placeholder="例）200"></div>
    </div>
@@ -6865,10 +7088,12 @@ def _pro_defaults_full():
             v[name] = "unknown"
     for name, _label in _PRO_RENO:
         v[name] = False
+    v.update(HH_DEFAULTS)
     return v
 
 
 PRO_DIAGNOSE_FORM = (PRO_DIAGNOSE_FORM
+                     .replace("HH_FIELDS_PLACEHOLDER", HH_FIELDS)
                      .replace("PRO_DETAIL_PLACEHOLDER", _pro_detail_html())
                      .replace("EMPLOYMENT_SELECT",
                               _pro_select("employment", "employment"))
@@ -6933,7 +7158,7 @@ def _pro_form_values(f):
             v[k] = (f.get(k) == "1")
         elif f.get(k) is not None:
             v[k] = f.get(k)
-    return v
+    return _hh_values(v)
 
 
 def _run_pro_diagnose(f):
@@ -6988,7 +7213,7 @@ def _run_pro_diagnose(f):
         subject, reinfolib_key=os.environ.get("REINFOLIB_KEY"),
         google_key=os.environ.get("GOOGLE_KEY"),
         mock=(os.environ.get("SHINDAN_MOCK") == "1"),
-        annual_income=to_yen(f.get("income")), down_payment=down_yen,
+        annual_income=_hh_income(f), down_payment=down_yen,
         loan_years=loan_years,
         estat_appid=os.environ.get("ESTAT_APPID"),
         estat_table=os.environ.get("ESTAT_TABLE", "0000020201"))
@@ -6997,11 +7222,16 @@ def _run_pro_diagnose(f):
     if buyer.other_debt_monthly:
         from src.loan import compute_loan
         res.loan = compute_loan(subject.price, down_yen, 0.0125, loan_years,
-                                to_yen(f.get("income")),
+                                _hh_income(f),
                                 monthly_extra=buyer.other_debt_monthly)
 
     free = res.diagnosis
-    res.diagnosis = apply_pro(free, detail, subject, buyer)
+    # 年収が本人と配偶者に分けて入っていれば、資金の点は手取りでつける
+    from src.household import with_finance
+    hc = _hh_check(f, res.loan, children=buyer.children,
+                   household_size=buyer.household_size,
+                   employment=buyer.employment)
+    res.diagnosis = apply_pro(with_finance(free, hc), detail, subject, buyer)
     questions = agent_questions(detail, subject,
                                 ptype == "shinchiku_kodate")
     questions_note = ("未回答だった項目です。建物の中の状態は売主が記入する"
@@ -7032,7 +7262,8 @@ def _run_pro_diagnose(f):
                                             if res.enrichment else None)),
                           finance_carry=_finance_carry(
                               subject, down_yen, loan_years,
-                              to_yen(f.get("income"))),
+                              _hh_income(f), hh_form=f),
+                          household=_hh_ctx(hc),
                           edit=_edit_carry("/pro/start", f,
                                            list(_pro_defaults_full()) + ["edit"]))
 
@@ -7208,8 +7439,8 @@ MPRO_DETAIL_PLACEHOLDER
 
   <div class="card">
    <h2 style="font-size:15px;margin:0 0 6px">お住まいになる方について</h2>
+HH_FIELDS_PLACEHOLDER
    <div class="row">
-    <div><label>世帯年収（万円）</label><input name="income" value="{{v.income}}"></div>
     <div><label>頭金（万円）</label><input name="down" value="{{v.down}}"></div>
     <div><label>借入年数（年）</label><input name="loan_years" value="{{v.loan_years}}"></div>
    </div>
@@ -7239,10 +7470,12 @@ def _mpro_defaults():
             v[name] = "unknown"
     for name, _label in _MPRO_RENO:
         v[name] = False
+    v.update(HH_DEFAULTS)
     return v
 
 
 MANSION_PRO_FORM = (MANSION_PRO_FORM
+                    .replace("HH_FIELDS_PLACEHOLDER", HH_FIELDS)
                     .replace("MPRO_DETAIL_PLACEHOLDER", _mpro_detail_html())
                     .replace("MANSION_CSS_PLACEHOLDER", _FORM_CSS)
                     .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
@@ -7259,7 +7492,7 @@ def _mpro_form_values(f):
             v[k] = (f.get(k) == "1")
         elif f.get(k) is not None:
             v[k] = f.get(k)
-    return v
+    return _hh_values(v)
 
 
 @app.route("/pro/mansion_start", methods=["POST"])
@@ -7348,7 +7581,7 @@ def _run_mansion_pro(f):
         subject, reinfolib_key=os.environ.get("REINFOLIB_KEY"),
         google_key=os.environ.get("GOOGLE_KEY"),
         mock=(os.environ.get("SHINDAN_MOCK") == "1"),
-        annual_income=to_yen(f.get("income")), down_payment=down_yen,
+        annual_income=_hh_income(f), down_payment=down_yen,
         loan_years=loan_years, estat_appid=os.environ.get("ESTAT_APPID"),
         estat_table=os.environ.get("ESTAT_TABLE", "0000020201"))
 
@@ -7358,10 +7591,13 @@ def _run_mansion_pro(f):
         extra = ((subject.management_fee or 0) + (subject.repair_fund or 0)
                  + buyer.other_debt_monthly)
         res.loan = compute_loan(subject.price, down_yen, 0.0125, loan_years,
-                                to_yen(f.get("income")), monthly_extra=extra)
+                                _hh_income(f), monthly_extra=extra)
 
     free = res.diagnosis
-    res.diagnosis = apply_pro_mansion(free, detail, subject, buyer)
+    from src.household import with_finance
+    hc = _hh_check(f, res.loan)
+    res.diagnosis = apply_pro_mansion(with_finance(free, hc), detail,
+                                      subject, buyer)
     questions = agent_questions(detail, subject)
     questions_note = ("未回答だった項目です。管理の中身は、契約前に売主か"
                       "仲介業者が用意する重要事項調査報告書と、"
@@ -7387,7 +7623,8 @@ def _run_mansion_pro(f):
                                             if res.enrichment else None)),
                           finance_carry=_finance_carry(
                               subject, down_yen, loan_years,
-                              to_yen(f.get("income"))),
+                              _hh_income(f), hh_form=f),
+                          household=_hh_ctx(hc),
                           edit=_edit_carry("/pro/mansion_start", f,
                                            list(_mpro_defaults()) + ["edit"]))
 
@@ -9377,8 +9614,9 @@ BRAND_BAR
    <h2>借入とご自身の条件</h2>
    <div class="row">
     <div><label>頭金（万円）</label><input name="down" value="{{v.down}}" placeholder="0"></div>
-    <div><label>世帯年収（万円）</label><input name="income" value="{{v.income}}" placeholder="例）800"></div>
+    <div></div>
    </div>
+HH_FIELDS_PLACEHOLDER
    <div class="row">
     <div><label>借入年数（年）</label><input name="loan_years" value="{{v.loan_years}}" placeholder="35"></div>
     <div><label>金利（％）</label><input name="rate" value="{{v.rate}}" placeholder="1.25"></div>
@@ -9667,6 +9905,13 @@ BRAND_BAR
  </div>
  {% endif %}
 
+ {% if hh %}
+ <div class="card">
+  <h2>手取りで見た返済{% if hh.edu %}と教育費{% endif %}</h2>
+HH_RESULT_PLACEHOLDER
+ </div>
+ {% endif %}
+
  {% if afford %}
  <div class="card">
   <h2>年収からみた借入の目安</h2>
@@ -9710,6 +9955,7 @@ BRAND_BAR
 """
 
 PRO_FINANCE_FORM = (PRO_FINANCE_FORM
+                    .replace("HH_FIELDS_PLACEHOLDER", HH_FIELDS)
                     .replace("TRIAL_NOTE_PLACEHOLDER", TRIAL_NOTE)
                     .replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
                     .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
@@ -9717,6 +9963,7 @@ PRO_FINANCE_FORM = (PRO_FINANCE_FORM
                     .replace("</div></body></html>",
                              FOOTER + "</div></body></html>"))
 PRO_FINANCE_RESULT = (PRO_FINANCE_RESULT
+                      .replace("HH_RESULT_PLACEHOLDER", HH_RESULT)
                       .replace("CARD_CSS_PLACEHOLDER", CARD_CSS)
                       .replace("SAMPLE_PLAN_LINK",
                                '　・　<a href="/plan">無料とPROのちがい</a>'
@@ -9737,7 +9984,7 @@ def _pro_defaults():
     """
     from src.finance import FCONFIG
     ratio = FCONFIG.get("price_split", {}).get("land_ratio")
-    return dict(price="", newbuild=False, land_price="", building_price="",
+    return dict(**HH_DEFAULTS, price="", newbuild=False, land_price="", building_price="",
                 land_assessed="", building_assessed="",
                 land_ratio=(f"{ratio * 100:.0f}" if ratio else ""),
                 land_area="", floor_area="", mfee="", rfund="",
@@ -9854,6 +10101,7 @@ def pro_finance_start():
         if f.get(k):
             v[k] = f.get(k)
     v["newbuild"] = (f.get("newbuild") == "1")
+    _hh_values(v)
     return render_template_string(
         PRO_FINANCE_FORM, v=v, **_finance_tmpl_kw(),
         banner=(_EDIT_BANNER if f.get("edit") else
@@ -9878,7 +10126,7 @@ def _pro_compute(f):
 
     price = to_yen(f.get("price")) or 0
     down = to_yen(f.get("down")) or 0
-    income = to_yen(f.get("income"))
+    income = _hh_income(f)
     years = max(1, min(50, to_int(f.get("loan_years")) or 35))
     rate = (to_float(f.get("rate")) or 1.25) / 100.0
     quake_map = {"yes": True, "no": False, "unknown": None}
@@ -9999,6 +10247,11 @@ def _pro_compute(f):
                                         if a.monthly_extra else None),
                     repayment=f"{a.max_repayment:,}円")
 
+    # 手取りで見た返済。管理費・修繕積立金も毎月出ていくので含める
+    from types import SimpleNamespace
+    hc = _hh_check(f, SimpleNamespace(monthly_payment=L.monthly_payment,
+                                      monthly_extra=monthly_extra))
+
     seen, sources = set(), []
     for c in costs.items:
         if c.source and c.source not in seen:
@@ -10011,7 +10264,7 @@ def _pro_compute(f):
         s=sctx, costs=cctx, reg_total=(man_yen(reg) if reg else None),
         unknown="・".join(costs.unknown_items) if costs.unknown_items else None,
         scenarios=scen, prepay=pctx, deduction=dctx, afford=actx,
-        proration=prctx, sources=sources,
+        proration=prctx, sources=sources, hh=_hh_ctx(hc),
         monthly_extra=(f"{monthly_extra:,}円" if monthly_extra else None),
         form={k: (f.get(k) or "") for k in _pro_defaults()})
 

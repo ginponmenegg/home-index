@@ -68,7 +68,7 @@ def _value(html, name):
     ("PROマンション", "/pro/mansion", dict(FLAT, plumbing="ok"),
      "/pro/mansion_start", {"area": "70", "rfund": "13000"}),
     ("資金計画", "/pro/finance", FINANCE, "/pro/finance_start",
-     {"price": "3500", "down": "500", "income": "800"}),
+     {"price": "3500", "down": "500", "income_self": "800"}),
 ])
 def test_every_result_can_go_back_to_its_input(label, result_url, data,
                                                edit_url, check):

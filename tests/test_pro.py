@@ -193,8 +193,10 @@ def test_carried_values_land_in_the_pro_form():
     html = c.post("/diagnose", data=FREE_INPUT).data.decode("utf-8")
     form = c.post("/pro/start", data=_hidden_fields(html)).data.decode("utf-8")
     assert "引き継ぎました" in form
-    for k in ("price", "byear", "land", "building", "station", "income"):
+    for k in ("price", "byear", "land", "building", "station"):
         assert f'name="{k}" value="{FREE_INPUT[k]}"' in form
+    # 世帯年収は、PROでは本人の年収の欄に入る（配偶者と分けて受けるため）
+    assert f'name="income_self" value="{FREE_INPUT["income"]}"' in form
 
 
 def test_income_is_not_put_in_the_url():

@@ -34,7 +34,10 @@ NOTE_MAX = 1000     # メモの上限（画面の但し書きと合わせる）
 # 再診断のために入力を残すが、家計に関わるものは保存しない。
 # プライバシーポリシーで「世帯年収は保存しません」と明言しているので、
 # ここを破ると記載と実装が食い違う。定数にして保存の直前で落とす。
-NEVER_SAVE = ("income", "down", "reserve", "other_debt")
+NEVER_SAVE = ("income", "down", "reserve", "other_debt",
+              # PROで分けて受ける年収と、家族の情報（2026-10-20）
+              "income_self", "income_spouse", "over40_self", "over40_spouse",
+              "children_ages", "school", "univ")
 
 
 class LimitReached(Exception):
