@@ -430,3 +430,34 @@ def test_an_ai_link_without_a_referrer_is_caught_by_its_tag(env):
     c.get("/?utm_source=chatgpt.com", headers=_UA)
     assert env.metrics.totals(1)["ref_ai"] == 1
 
+
+
+# ---- AIの回答から着いたページ（2026-10-22）---------------------------------
+# 件数だけでは、どの記事がAIに引用されているかが分からない。
+
+def test_the_page_an_ai_answer_led_to_is_counted(env):
+    c = env.app.app.test_client()
+    c.get("/guide/hensai-futanritsu",
+          headers=dict(_UA, Referer="https://chatgpt.com/"))
+    c.get("/guide/hensai-futanritsu?utm_source=chatgpt.com", headers=_UA)
+    c.get("/buy", headers=dict(_UA, Referer="https://www.perplexity.ai/"))
+    lands = dict(env.metrics.landings(1))
+    assert lands == {"/guide/hensai-futanritsu": 2, "/buy": 1}
+
+
+def test_other_visitors_leave_no_page_behind(env):
+    c = env.app.app.test_client()
+    c.get("/guide/hensai-futanritsu",
+          headers=dict(_UA, Referer="https://www.google.com/"))
+    c.get("/buy", headers=_UA)
+    assert env.metrics.landings(1) == []
+
+
+def test_landing_rows_do_not_leak_into_the_event_totals(env):
+    c = env.app.app.test_client()
+    c.get("/guide/hensai-futanritsu",
+          headers=dict(_UA, Referer="https://claude.ai/"))
+    assert not any(k.startswith("ai_land:") for k in env.metrics.totals(1))
+    ever, _ = env.metrics.all_time()
+    assert not any(k.startswith("ai_land:") for k in ever)
+    assert env.metrics.totals(1)["ref_ai"] == 1

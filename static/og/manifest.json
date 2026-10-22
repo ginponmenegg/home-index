@@ -26,6 +26,9 @@
  "hensai-futanritsu": {
   "title": "フラット35の返済負担率は30%と35%。年収400万円で線が変わります"
  },
+ "hensai-futanritsu-tedori": {
+  "title": "住宅ローンは手取りの何%までか。公的な基準は、税込年収で割る式しかありません"
+ },
  "home-inspection-hitsuyou": {
   "title": "ホームインスペクションとデータの診断は、見ているものが違います"
  },
@@ -43,6 +46,9 @@
  },
  "joho-jusokudo": {
   "title": "情報充足度。調べていないことを、悪い点にも良い点にもしない"
+ },
+ "jutaku-kounyu-shindan-muryou": {
+  "title": "住宅購入の診断を、無料で自分でする。公的データで分かること、分からないこと"
  },
  "jutaku-loan-koujo-1982": {
   "title": "中古の住宅ローン控除は、築年数ではなく1982年1月1日で分かれます"
@@ -77,8 +83,14 @@
  "kouzui-shinsui-fukasa": {
   "title": "洪水ハザードの浸水深は6段階。0.5mと3mでは意味が違います"
  },
+ "kyouikuhi-ichiban-omoi-toshi": {
+  "title": "子ども2人の教育費がいちばん重いのは、2人が同時に大学に通う年です"
+ },
  "kyu-taishin-mansion": {
   "title": "旧耐震のマンションは資産性を0.6倍にしています。戻せるのは管理組合だけ"
+ },
+ "loan-kyouikuhi-ato-seikatsuhi": {
+  "title": "住宅ローンと教育費を払ったあと、毎月いくら残れば暮らせるか"
  },
  "mansion-kanri-15ten": {
   "title": "マンションの100点中15点は管理です。ただし見ているのは積立金の水準だけです"
@@ -130,6 +142,9 @@
  },
  "tochi-sagashi-chumon-jutaku": {
   "title": "注文住宅の土地の探し方。広さと価格より先に見るものがあります"
+ },
+ "tomobataraki-katabataraki-tedori": {
+  "title": "世帯年収1,000万円でも、片働きと共働きで手取りは年59万円違います"
  },
  "torihiki-kakaku-tatemonomei": {
   "title": "取引価格情報にマンション名は入っていません。町名と築年までです"

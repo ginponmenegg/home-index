@@ -167,6 +167,43 @@ def bump(name: str, n: int = 1) -> None:
         print(f"[metrics] {name} を数えられませんでした: {e}")
 
 
+# AIの回答から来た人が、最初に着いたページ。2026-10-22 から。
+# 件数の名前を「ai_land:/guide/xxx」の形にして、同じ表（daily_counts）に
+# 入れる。EVENTS には載せない（ページの数だけ増えるので）。totals と
+# all_time は EVENTS の名前だけを拾うので、ここで足した行は混ざらない。
+# 残すのはページのパスだけ。誰が来たかは持たない。
+AI_LANDING = "ai_land:"
+AI_LANDING_SINCE = "2026-10-22"
+
+
+def bump_landing(path: str) -> None:
+    """AIの回答から着いたページを1件数える。パスはこのサイトのものだけ。"""
+    if not db.enabled() or not path or len(path) > 120:
+        return
+    bump_raw(AI_LANDING + path)
+
+
+def bump_raw(name: str, n: int = 1) -> None:
+    try:
+        db.run(
+            "INSERT INTO daily_counts (day, name, n) VALUES (?, ?, ?) "
+            "ON CONFLICT (day, name) DO UPDATE SET n = daily_counts.n + ?",
+            (today().isoformat(), name, n, n))
+    except Exception as e:
+        print(f"[metrics] {name} を数えられませんでした: {e}")
+
+
+def landings(days: int = 30) -> list[tuple]:
+    """(パス, 件数) を多い順に。AIの回答から着いたページ。"""
+    if not db.enabled():
+        return []
+    rows = db.run("SELECT name, SUM(n) AS n FROM daily_counts "
+                  "WHERE day >= ? AND name LIKE ? GROUP BY name",
+                  (since(days).isoformat(), AI_LANDING + "%"), "all") or []
+    out = [(r["name"][len(AI_LANDING):], int(r["n"] or 0)) for r in rows]
+    return sorted(out, key=lambda x: (-x[1], x[0]))
+
+
 def since(days: int) -> datetime.date:
     """「直近N日」の初日。今日を1日目に数えるので、N日前ではなくN-1日前。
 

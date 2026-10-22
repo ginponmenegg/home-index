@@ -958,3 +958,75 @@ def test_the_new_build_article_names_its_statutes():
                  "第35条第1項第13号", "第7条第5項"):
         assert word in body, word
 
+
+
+# ---- 手取り・教育費・生活費・無料診断（2026-10-22）---------------------------
+# 数字は src/household.py と finance_config.json から計算した。税率や学費を
+# 直したら、記事も焼き直さないとここで落ちる。
+
+def _m1(v):
+    return f"{v / 10000:,.1f}万円"
+
+
+def test_the_take_home_article_matches_the_calculation():
+    from src import household as hh
+    text = guides.by_slug("tomobataraki-katabataraki-tedori")
+    body = text.lead + text.body
+    one = hh.household_take_home(10_000_000, 0)
+    two = hh.household_take_home(6_000_000, 4_000_000)
+    for net in (one.net, two.net):
+        assert f"<td>{net / 10000:,.1f}</td></tr>" in body
+    assert _m1(two.net - one.net) in body
+    assert f"{(two.net - one.net) / 10000:.0f}万円" in text.title
+    for a, b in ((8_000_000, 0), (4_000_000, 4_000_000),
+                 (6_000_000, 0), (3_000_000, 3_000_000)):
+        net = hh.household_take_home(a, b).net
+        assert f"<td>{net / 10000:,.1f}</td></tr>" in body, (a, b)
+
+
+def test_the_net_burden_article_matches_the_bands():
+    from src import household as hh
+    body = guides.by_slug("hensai-futanritsu-tedori").body
+    w = CONFIG["category_weights"]["資金"]
+    for upper, raw, _label in hh.NET_BANDS:
+        assert f"{upper}%" in body
+        assert f"{w * raw:.0f}点" in body
+    assert f"{w * hh.NET_LOW:.0f}点" in body
+    for inc in (4_000_000, 10_000_000):
+        net = hh.household_take_home(inc, 0).net
+        assert f"{net / inc * 100:.1f}%" in body, inc
+
+
+def test_the_education_article_matches_the_plan():
+    from src import household as hh
+    g = guides.by_slug("kyouikuhi-ichiban-omoi-toshi")
+    body = g.lead + g.body
+    pn = hh.education_plan([4, 7], "public", "national")
+    pp = hh.education_plan([4, 7], "public", "private")
+    assert f"{pn.peak.offset}年後" in body
+    for v in (pn.peak.net, pp.peak.net, pn.total, pp.total,
+              pn.average, pp.average):
+        assert _m1(v) in body
+    sc = hh._cfg()["education"]["school"]
+    for stage in ("elementary", "junior_high", "high"):
+        assert f"{sc[stage]['public']:,}円" in body, stage
+
+
+def test_the_living_cost_article_matches_the_survey_table():
+    from src import household as hh
+    g = guides.by_slug("loan-kyouikuhi-ato-seikatsuhi")
+    body = g.lead + g.body
+    for n in (2, 3, 4, 5, 6):
+        assert f"<td>{hh.living_cost_monthly(n):,}</td></tr>" in body, n
+    assert "第3-1表" in body and "世帯主が60歳未満" in body
+
+
+def test_the_free_diagnosis_article_matches_the_weights():
+    from src.land_scoring import WEIGHTS as land
+    body = guides.by_slug("jutaku-kounyu-shindan-muryou").body
+    for weights in (CONFIG["category_weights"],
+                    CONFIG["mansion_category_weights"], land):
+        assert sum(weights.values()) == 100
+        for k, v in weights.items():
+            assert f"<td>{k}</td><td>{v}点</td>" in body, k
+    assert "不動産情報ライブラリ" in body

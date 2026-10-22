@@ -801,6 +801,11 @@ def _seen(name: str) -> None:
                                request.args.get("utm_source") or "")
     if bucket:
         metrics.bump(bucket)
+    # AIの回答から来た人は、どのページに着いたかも数える。どの記事が
+    # 引用されているかが分かれば、次に何を書くかを決められる。
+    # このサイトの画面からしか呼ばれないので、パスは決まった形になる。
+    if bucket == "ref_ai":
+        metrics.bump_landing(request.path)
 
 
 # 1×1の透明GIF。トップに置いて、JavaScriptで読ませる。
@@ -3734,6 +3739,34 @@ def metrics_page():
         f'<span class="n">{n:,}</span></div>'
         for label, n in refs)
 
+    # ---- AIの回答から着いたページ ---------------------------------------
+    def _page_name(path):
+        if path.startswith("/guide/"):
+            g = guides.by_slug(path[len("/guide/"):])
+            if g:
+                return g.title
+        return {"/": "トップ", "/buy": "戸建の入力画面",
+                "/mansion": "マンションの入力画面", "/land": "土地の入力画面",
+                "/guide": "記事の一覧", "/plan": "プラン"}.get(path, path)
+
+    lands = metrics.landings(days)
+    if lands:
+        ai_land = ("<h3 style=\"font-size:15px;margin:18px 0 4px\">"
+                   "AIの回答から着いたページ</h3><table class=\"mx-ev\"><tbody>"
+                   + "".join(
+                       f'<tr><th class="rowlbl">{html.escape(_page_name(p))}'
+                       f'<br><span class="sub">{html.escape(p)}</span></th>'
+                       f'<td data-name="件数">{n}</td></tr>'
+                       for p, n in lands)
+                   + "</tbody></table>"
+                   + f'<p class="sub" style="margin:4px 0 0">数え始めたのは'
+                     f'{metrics.AI_LANDING_SINCE}です。最初に開いたページだけを'
+                     f'数え、誰が来たかは持っていません。</p>')
+    else:
+        ai_land = (f'<p class="sub" style="margin:10px 0 0">AIの回答から着いた'
+                   f'ページは、{metrics.AI_LANDING_SINCE}から数えています。'
+                   f'この期間はまだありません。</p>')
+
     # ---- 診断から決済まで -----------------------------------------------
     steps = [("診断が出た", diag), ("プランの画面を見た", tot["plan_view"]),
              ("PROの壁に当たった", tot["pro_cta"]),
@@ -3881,6 +3914,8 @@ table.mx-ev thead th{{font-size:12px;color:#64748b;font-weight:600}}
   2026-09-18 です。それより前の Threads には Instagram が混ざっています。
   AIの回答から来た人を分けて数え始めたのは 2026-10-19 です。それより前は、
   Gemini は「検索」に、ChatGPT などは「他のサイト」に混ざっています。</p>
+
+ {ai_land}
 
  <div class="note" style="margin:18px 0">
   <b>入力画面 → 診断</b>　{rate("diag_kodate", "view_buy")}（戸建）／
