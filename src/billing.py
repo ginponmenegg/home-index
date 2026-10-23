@@ -61,13 +61,17 @@ def mode() -> str:
     return "live" if _live() else "test"
 
 
-def checkout_url(email: str, user_id, success_url: str,
+def checkout_url(email: Optional[str], user_id, success_url: str,
                  cancel_url: str, customer_id: Optional[str] = None,
                  price: Optional[str] = None) -> str:
     """申込のCheckoutを作ってURLを返す。
 
     client_reference_id に会員IDを入れる。Webhookが「どの会員の支払いか」を
-    知る唯一の手掛かりになるので、必ず入れること。
+    知る手掛かりになる。
+
+    ログインしていない人の申込み（2026-10-23から）は、会員IDもメールも
+    無いまま作る。メールアドレスは Checkout の画面で入力してもらい、
+    Webhook が customer_details.email から会員を作って結びつける。
     """
     s = _stripe()
     kw = dict(
@@ -75,12 +79,13 @@ def checkout_url(email: str, user_id, success_url: str,
         line_items=[{"price": price or _env(PRICE_ID), "quantity": 1}],
         success_url=success_url,
         cancel_url=cancel_url,
-        client_reference_id=str(user_id),
         locale="ja",
         # 特定商取引法の表示は自前の最終確認画面（/plan/confirm）で
         # 済ませている。Stripe側の同意欄は増やさない。
         allow_promotion_codes=True,
     )
+    if user_id:
+        kw["client_reference_id"] = str(user_id)
     if customer_id:
         kw["customer"] = customer_id
         try:
@@ -93,7 +98,8 @@ def checkout_url(email: str, user_id, success_url: str,
             # ここは顧客IDを外して進めてよい。
             print(f"[stripe] retrying without customer {customer_id}: {e}")
             kw.pop("customer")
-    kw["customer_email"] = email
+    if email:
+        kw["customer_email"] = email
     return s.checkout.Session.create(**kw).url
 
 

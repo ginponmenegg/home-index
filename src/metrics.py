@@ -74,6 +74,8 @@ EVENTS = {
     "login_sent":   "ログインのメールを送った",
     "login_open":   "ログインのリンクを開いた",
     "login_plan_open": "申込のためのリンクを開いた",
+    # 会員登録で1物件だけPROを試せる（2026-10-23）。お試しを使い始めた回数。
+    "trial_start":  "PROのお試しを使い始めた",
     "plan_confirm": "申込の最終確認画面に着いた",
     "checkout":     "決済画面へ進んだ",
     "pro_start":    "PROの契約が始まった",

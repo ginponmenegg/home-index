@@ -214,6 +214,10 @@ ADDED_COLUMNS = [
     ("users", "plan_cancel_at", "TEXT"),
     # 中古戸建と新築戸建では点数の出方が違う。まとめると読めない。
     ("observations", "ptype", "TEXT"),
+    # 会員登録で1物件だけPROを試せる（2026-10-23）。どの物件で使ったかは
+    # 住所そのものではなく、種別と住所から作った指紋（ハッシュ）で持つ。
+    ("users", "trial_key", "TEXT"),
+    ("users", "trial_at", "TEXT"),
 ]
 
 

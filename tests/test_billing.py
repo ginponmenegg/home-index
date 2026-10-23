@@ -596,7 +596,10 @@ def test_a_free_member_is_shown_the_plan_instead(billing):
     入口で止める。フォームを見せて結果だけ隠すと、入力し終えてから
     お金の話をすることになる。
     """
-    c, _uid = _login(billing, "freemember@example.com")
+    c, uid = _login(billing, "freemember@example.com")
+    # 会員登録で1物件だけ試せる（2026-10-23）。お試しを使い切った無料会員で見る
+    billing.db.run("UPDATE users SET trial_key = ? WHERE id = ?",
+                   ("used-on-another-property", uid))
     for p in _PRO_PAGES:
         h = c.get(p).get_data(as_text=True)
         assert "ここから先はPROです" in h, p
@@ -893,3 +896,153 @@ def test_nobody_is_comped_unless_listed(billing, monkeypatch):
     assert not billing.accounts.is_comped(u), "部分一致で当てない"
     assert not billing.accounts.is_comped(None)
 
+
+
+# ---- お試し1物件と、ログインなしの申込み（2026-10-23）-------------------------
+# PROの申込みが0件、会員登録も0人だった。登録すれば1物件だけPROを試せる
+# ようにし、申込みにはログインを要らなくした（メールは決済の画面で入れる）。
+
+_ADDR_A = "神奈川県平塚市田村5丁目12-3"
+_ADDR_B = "神奈川県平塚市紅谷町10-1"
+_KODATE = dict(price="4500", byear="2010", land="120", building="100",
+               station="10", loan_years="35")
+
+
+def test_a_new_member_can_try_one_property(billing):
+    os.environ["SHINDAN_MOCK"] = "1"
+    c, uid = _login(billing, "trial1@example.com")
+    h = c.get("/pro/diagnose").get_data(as_text=True)
+    assert "ここから先はPROです" not in h and "お試し中です" in h
+    h = c.post("/pro/diagnose", data=dict(_KODATE, address=_ADDR_A)
+               ).get_data(as_text=True)
+    assert "ここから先はPROです" not in h
+    key = billing.accounts.trial_key("kodate", _ADDR_A)
+    assert billing.accounts.get_user(uid)["trial_key"] == key
+    # 同じ物件は何度でも。表記ゆれ（全角・空白）も同じ物件
+    again = c.post("/pro/diagnose", data=dict(
+        _KODATE, address="神奈川県平塚市田村５丁目１２−３ ".replace("−", "-"))
+                   ).get_data(as_text=True)
+    assert "ここから先はPROです" not in again
+    # 別の物件は止める
+    other = c.post("/pro/diagnose", data=dict(_KODATE, address=_ADDR_B)
+                   ).get_data(as_text=True)
+    assert "すでに別の物件で使いました" in other
+    # 使い切ったら空のフォームは出さない
+    assert "ここから先はPROです" in c.get("/pro/diagnose").get_data(as_text=True)
+
+
+def test_the_trial_stores_no_address(billing):
+    c, uid = _login(billing, "trial2@example.com")
+    c.post("/pro/diagnose", data=dict(_KODATE, address=_ADDR_A))
+    u = billing.accounts.get_user(uid)
+    assert u["trial_key"] and "平塚" not in str(u["trial_key"])
+    assert len(u["trial_key"]) == 32
+
+
+def test_the_trial_reaches_the_check_pdf_only_for_its_own_property(billing):
+    c, uid = _login(billing, "trial3@example.com")
+    c.post("/pro/diagnose", data=dict(_KODATE, address=_ADDR_A))
+    sign = billing.app.sign_snapshot
+    mine = sign({"title": "戸建", "total": 70, "grade": "B", "suff": 60,
+                 "tk": billing.accounts.trial_key("kodate", _ADDR_A)})
+    theirs = sign({"title": "戸建", "total": 70, "grade": "B", "suff": 60,
+                   "tk": billing.accounts.trial_key("kodate", _ADDR_B)})
+    form = dict(price="4500", down="300", loan_years="35")
+    r = c.post("/pro/finance.pdf", data=dict(form, dx=mine))
+    assert r.mimetype == "application/pdf"
+    r = c.post("/pro/finance.pdf", data=dict(form, dx=theirs))
+    assert "ここから先はPROです" in r.get_data(as_text=True)
+
+
+def test_the_confirmation_needs_no_login(billing):
+    c = billing.app.app.test_client()
+    h = c.get("/plan/confirm").get_data(as_text=True)
+    assert "お申込み内容の確認" in h and "ログインは要りません" in h
+
+
+def test_a_visitor_goes_to_stripe_without_logging_in(billing, monkeypatch):
+    seen = {}
+
+    def fake(**kw):
+        seen.update(kw)
+        return "https://checkout.stripe.com/c/pay/guest"
+
+    monkeypatch.setattr(billing.app.billing, "checkout_url", fake)
+    r = billing.app.app.test_client().post("/plan/subscribe")
+    assert r.status_code == 303
+    assert seen["user_id"] is None and seen["email"] is None
+
+
+def _guest_session(email, sub="sub_guest", ref=None, paid=True):
+    import stripe
+    return stripe.checkout.Session.construct_from(
+        {"id": "cs_guest", "object": "checkout.session",
+         "payment_status": "paid" if paid else "unpaid",
+         "client_reference_id": ref, "customer": "cus_" + sub,
+         "subscription": sub, "customer_details": {"email": email}},
+        "sk_test_dummy")
+
+
+def _quiet_stripe(billing, monkeypatch, email, sub):
+    monkeypatch.setattr(billing.app.billing, "checkout_session",
+                        lambda sid: _guest_session(email, sub))
+    monkeypatch.setattr(billing.app.billing, "subscription", lambda i: {})
+    monkeypatch.setattr(billing.app.billing, "period_end",
+                        lambda s: "2099-01-01T00:00:00+00:00")
+
+
+def test_a_guest_checkout_creates_the_member_and_logs_in(billing, monkeypatch):
+    _quiet_stripe(billing, monkeypatch, "guest1@example.com", "sub_g1")
+    c = billing.app.app.test_client()
+    h = c.get("/plan/done?session_id=cs_guest").get_data(as_text=True)
+    assert "で会員を作りました" in h
+    u = billing.db.run("SELECT * FROM users WHERE email = ?",
+                       ("guest1@example.com",), "one")
+    assert billing.accounts.is_pro(u) and u["last_login_at"]
+    # この端末ではそのままPRO
+    assert "ここから先はPROです" not in c.get("/pro/diagnose").get_data(as_text=True)
+    # 同じURLを別の端末で開いても、ログインはさせない（1回かぎり）
+    other = billing.app.app.test_client()
+    h2 = other.get("/plan/done?session_id=cs_guest").get_data(as_text=True)
+    assert "で会員を作りました" not in h2
+    assert "ここから先はPROです" in other.get("/pro/diagnose").get_data(as_text=True)
+
+
+def test_paying_with_an_existing_members_address_does_not_log_in(billing,
+                                                                 monkeypatch):
+    """他人のメールアドレスで払って、その人のアカウントに入れてはいけない。"""
+    _login(billing, "owner2@example.com")          # 本人は前にログイン済み
+    _quiet_stripe(billing, monkeypatch, "owner2@example.com", "sub_g2")
+    c = billing.app.app.test_client()
+    h = c.get("/plan/done?session_id=cs_guest").get_data(as_text=True)
+    assert "すでに会員として登録されていました" in h
+    assert "ここから先はPROです" in c.get("/pro/diagnose").get_data(as_text=True)
+
+
+def test_the_webhook_makes_the_member_from_the_checkout_email(billing):
+    body, sig = _signed(_event("checkout.session.completed", {
+        "id": "cs_g3", "object": "checkout.session", "payment_status": "paid",
+        "customer": "cus_g3", "subscription": None,
+        "customer_details": {"email": "Guest3@Example.com"}}))
+    c = billing.app.app.test_client()
+    r = c.post("/stripe/webhook", data=body,
+               headers={"Stripe-Signature": sig,
+                        "Content-Type": "application/json"})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    u = billing.db.run("SELECT * FROM users WHERE email = ?",
+                       ("guest3@example.com",), "one")
+    assert u and billing.accounts.is_pro(u) and not u["last_login_at"]
+
+
+def test_the_check_button_on_a_free_result_starts_the_trial(billing):
+    c, uid = _login(billing, "trial4@example.com")
+    key = billing.accounts.trial_key("kodate", _ADDR_B)
+    dx = billing.app.sign_snapshot({"title": "戸建", "tk": key})
+    r = c.post("/pro/finance.pdf", data=dict(price="4500", loan_years="35",
+                                             dx=dx))
+    assert r.mimetype == "application/pdf"
+    assert billing.accounts.get_user(uid)["trial_key"] == key
+    # その物件の詳細診断にも、そのまま進める
+    h = c.post("/pro/diagnose", data=dict(_KODATE, address=_ADDR_B)
+               ).get_data(as_text=True)
+    assert "ここから先はPROです" not in h

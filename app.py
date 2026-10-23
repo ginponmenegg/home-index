@@ -1730,14 +1730,31 @@ HH_RESULT_PLACEHOLDER
 
   {% if finance_carry %}
   <div class="card" data-html2canvas-ignore id="finance" style="border-color:#111">
-   <h2 style="margin-top:0">諸費用まで含めて資金を見る（PRO）</h2>
+   {% if pro %}
+   <h2 style="margin-top:0">契約前チェック（PDF）</h2>
    <p class="muted" style="margin:6px 0 10px">
-    上のローン試算は月々の返済額までです。仲介手数料・印紙税・登録免許税・
-    不動産取得税・司法書士報酬・火災保険までを積み上げ、金利が上がった場合や
-    繰上返済をした場合、住宅ローン控除まで含めて試算します。<br>
-    <b>この物件の価格・面積・築年・借入条件は引き継がれます。</b><br>
-    <a href="/sample/finance">どんな内容になるか、見本で見る</a>
+    重要事項説明と契約の前に、手元に置いておく1冊です。この物件の点数と
+    注意すること、<b>仲介業者に聞くこと（回答を書き込む欄つき）</b>、重要事項
+    説明書で読む欄、諸費用まで含めた資金計画を、1つのPDFにまとめます。</p>
+   <form method="post" action="/pro/finance.pdf">
+    {% for k, val in finance_carry.items() %}
+    <input type="hidden" name="{{k}}" value="{{val}}">
+    {% endfor %}
+    <button type="submit">契約前チェックを作る（PDF）</button>
+   </form>
+   <p class="muted" style="margin:10px 0 0">頭金や金利、土地と建物の内訳を変えて
+    から作るときは、下の資金計画から作ってください。</p>
+   {% else %}
+   <h2 style="margin-top:0">契約前チェック（PRO）</h2>
+   <p class="muted" style="margin:6px 0 10px">
+    重要事項説明と契約の前に、手元に置いておく1冊（PDF）を、この物件について
+    作ります。仲介業者に聞くこと（回答を書き込む欄つき）、重要事項説明書で
+    読む欄、諸費用・金利が上がった場合・住宅ローン控除まで入れた資金計画を
+    まとめたものです。<b>この物件の価格・面積・築年・借入条件は引き継がれます。</b><br>
+    <a href="/sample/finance.pdf">見本（PDF）を開く</a>　・
+    <a href="/sample/finance">資金計画の見本を見る</a>
    </p>
+   {% endif %}
    {% if plan_price %}
    <p style="margin:12px 0 0"><b>{{plan_price}}</b>
     <span class="muted">／ 上の詳細診断と同じPROに含まれます。</span></p>
@@ -1746,7 +1763,7 @@ HH_RESULT_PLACEHOLDER
     {% for k, val in finance_carry.items() %}
     <input type="hidden" name="{{k}}" value="{{val}}">
     {% endfor %}
-    <button type="submit">資金計画に進む</button>
+    <button type="submit"{% if pro %} class="ghost"{% endif %}>{% if pro %}資金計画の条件を変えてから作る{% else %}契約前チェックを作る（PRO）{% endif %}</button>
    </form>
   </div>
   {% endif %}
@@ -3048,6 +3065,9 @@ _ACC_STORE = ("""<p>アカウントをご利用の場合に限り、利用者ご
 点数・カテゴリ別の内訳・価格判定・返済額と、対象物件の所在地・価格などの
 入力内容です。<b>世帯年収は保存しません</b>。本人・配偶者それぞれの年収、頭金、お子さまの年齢も同じです（返済額の計算結果のみを持ちます）。
 保存した内容は、マイページからいつでも削除できます。</p>
+<p>会員登録で1物件だけPROを試せる「お試し」を使った場合、どの物件で使ったかを
+見分けるために、物件の種別と住所から作った符号（ハッシュ値）だけをお預かりします。
+<b>住所そのものは保存しません。</b></p>
 <p>ログインはパスワードを用いず、メールアドレス宛の使い捨てリンクで行います。
 <b>パスワードは保管しません。</b>リンクの文字列そのものも保存せず、
 照合用のハッシュのみを持ち、30分・1回かぎりで無効になります。</p>"""
@@ -3062,7 +3082,7 @@ _ACC_MAIL = ("""<h2>5-2. メールの送信</h2>
 お送りしません。</p>""" if db.enabled() else "")
 
 _PRIVACY_BODY = ("""
-<p class="sub">最終改定日：2026年10月20日</p>
+<p class="sub">最終改定日：2026年10月23日</p>
 <h2>1. 取得する情報</h2>
 <p>本サービスは、診断のために利用者が入力・貼り付けした情報（物件の所在地・価格・面積・築年・
 駅距離・種別、任意入力の世帯年収・頭金等。PROでは本人と配偶者それぞれの年収、お子さまの年齢）を処理します。あわせて、アクセスに伴う技術情報
@@ -3655,7 +3675,8 @@ _METRIC_GROUPS = (
                     "view_sample_finance")),
     ("診断と保存", ("diag_kodate", "diag_mansion", "diag_land", "pro_diag",
                     "paste_used", "saved")),
-    ("会員とPRO", ("signup", "plan_view", "pro_cta", "login_view",
+    ("会員とPRO", ("signup", "trial_start", "plan_view", "pro_cta",
+                   "login_view",
                    "login_plan", "login_sent", "login_open",
                    "login_plan_open", "plan_confirm",
                    "checkout", "pro_start", "pro_cancel")),
@@ -4559,7 +4580,9 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
                       for r in d.critical_risks],
             "ask": list(questions or [])[:20],
             "disc": [[p.where, p.law, p.why]
-                     for p in (disclosure_points or [])][:30]})
+                     for p in (disclosure_points or [])][:30],
+            "tk": accounts.trial_key(_trial_kind(subject),
+                                     getattr(subject, "address", ""))})
 
     return render_template_string(
         RESULT, s=sctx, price_man=man(subject.price), age=age, save=save,
@@ -6455,6 +6478,7 @@ BRAND_BAR
   立て替えることになります。</p>
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
+ {% if trial_note %}<div class="banner">{{ trial_note|safe }}</div>{% endif %}
 
  <form class="card" method="post" action="/pro/land">
   <label>所在地 <span class="req">必須</span></label>
@@ -6742,7 +6766,7 @@ def _land_pro_page(v, banner=None):
 @app.route("/pro/land/start", methods=["POST"])
 def pro_land_start():
     """無料の土地診断から、入力を引き継いでPROのフォームを開く。"""
-    g = _require_pro()
+    g = _require_pro(trial=("start", "land"))
     if g is not None:
         return g
     return _land_pro_page(
@@ -6755,7 +6779,8 @@ def pro_land_start():
 @app.route("/pro/land", methods=["GET", "POST"])
 def pro_land():
     """土地のPRO診断。課金中はPRO会員だけ。"""
-    g = _require_pro()
+    g = _require_pro(trial=(("diag", "land")
+                            if request.method == "POST" else "form"))
     if g is not None:
         return g
     if request.method == "GET":
@@ -7073,6 +7098,9 @@ def _pro_detail_html():
     return "".join(out)
 
 
+# お試し（会員登録で1物件）の案内。中身は _inject_trial_note が決める。
+TRIAL_JINJA = ('{% if trial_note %}<div class="banner">{{ trial_note|safe }}</div>{% endif %}')
+
 PRO_DIAGNOSE_FORM = """
 <!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -7212,7 +7240,7 @@ PRO_DIAGNOSE_FORM = (PRO_DIAGNOSE_FORM
                               _pro_select("employment", "employment"))
                      .replace("MANSION_CSS_PLACEHOLDER", _FORM_CSS)
                      .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
-                     .replace("TRIAL_BANNER_PLACEHOLDER", TRIAL_BANNER)
+                     .replace("TRIAL_BANNER_PLACEHOLDER", TRIAL_BANNER + TRIAL_JINJA)
                      .replace("BRAND_BAR", brand_bar("購入診断(戸建)(PRO)"))
                      .replace("</div></body></html>",
                               FOOTER + "</div></body></html>"))
@@ -7225,7 +7253,7 @@ def pro_start():
     年収や検討中の住所を含むため、クエリ文字列ではなくPOSTで受ける
     （URLに残さない・アクセスログに出さない）。
     """
-    g = _require_pro()
+    g = _require_pro(trial=("start", "kodate"))
     if g is not None:
         return g
     v = _pro_form_values(request.form)
@@ -7244,7 +7272,8 @@ def pro_start():
 @app.route("/pro/diagnose", methods=["GET", "POST"])
 def pro_diagnose():
     """PROの購入診断（戸建）。課金中はPRO会員だけ。"""
-    g = _require_pro()
+    g = _require_pro(trial=(("diag", "kodate")
+                            if request.method == "POST" else "form"))
     if g is not None:
         return g
     if request.method == "GET":
@@ -7592,7 +7621,7 @@ MANSION_PRO_FORM = (MANSION_PRO_FORM
                     .replace("MPRO_DETAIL_PLACEHOLDER", _mpro_detail_html())
                     .replace("MANSION_CSS_PLACEHOLDER", _FORM_CSS)
                     .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
-                    .replace("TRIAL_BANNER_PLACEHOLDER", TRIAL_BANNER)
+                    .replace("TRIAL_BANNER_PLACEHOLDER", TRIAL_BANNER + TRIAL_JINJA)
                     .replace("BRAND_BAR", brand_bar("購入診断(マンション)(PRO)"))
                     .replace("</div></body></html>",
                              FOOTER + "</div></body></html>"))
@@ -7611,7 +7640,7 @@ def _mpro_form_values(f):
 @app.route("/pro/mansion_start", methods=["POST"])
 def pro_mansion_start():
     """無料のマンション診断から、入力を引き継いでPROのフォームを開く。"""
-    g = _require_pro()
+    g = _require_pro(trial=("start", "mansion"))
     if g is not None:
         return g
     return render_template_string(
@@ -7625,7 +7654,8 @@ def pro_mansion_start():
 @app.route("/pro/mansion", methods=["GET", "POST"])
 def pro_mansion():
     """マンションのPRO診断。課金中はPRO会員だけ。"""
-    g = _require_pro()
+    g = _require_pro(trial=(("diag", "mansion")
+                            if request.method == "POST" else "form"))
     if g is not None:
         return g
     if request.method == "GET":
@@ -7892,9 +7922,10 @@ _PRO_GATE = """
    診断し直す</li>
   <li>答えられなかった項目が<b>「仲介業者に聞くこと」</b>の一覧になる</li>
   <li><b>「重要事項説明書の、どこを見るか」</b>が、根拠の条文つきで出る</li>
-  <li>諸費用・金利・繰上返済・住宅ローン控除まで含めた資金計画（PDF）</li>
+  <li>重要事項説明の日に持っていく<b>「契約前チェック」（PDF）</b>。聞くことの
+   回答欄、重要事項説明書で読む欄、諸費用まで含めた資金計画を1冊に</li>
  </ul>
- <p><a href="/sample/finance">資金計画の見本</a>で、中身をそのまま見られます。
+ <p><a href="/sample/finance.pdf">契約前チェックの見本（PDF）</a>で、中身をそのまま見られます。
   <a href="/plan">無料とPROのちがい</a>も先にご覧いただけます。</p>
 
  {% if fields %}
@@ -7904,11 +7935,10 @@ _PRO_GATE = """
  {% endif %}
 
  <p style="margin-top:16px">
-  {% if logged_in %}
-  <a class="btn" href="/plan">プランを見る</a>
-  {% else %}
-  <a class="btn" href="/login?next=/plan/confirm" target="_blank" rel="noopener">ログインして申し込む（別のタブ）</a>
+  {% if not logged_in %}
+  <a class="btn" href="/login" target="_blank" rel="noopener">会員登録して1物件を無料で試す（別のタブ）</a>
   {% endif %}
+  <a class="btn{% if not logged_in %} ghost{% endif %}" href="/plan/confirm">PROに申し込む</a>
   <a class="btn ghost" href="/plan">料金を見る</a>
  </p>
 
@@ -7922,7 +7952,7 @@ _PRO_GATE = """
 """
 
 
-def _pro_gate():
+def _pro_gate(trial_used: bool = False):
     """PROの入口で止めるときの画面。押す前に入れた内容を捨てない。
 
     ここは長らく redirect("/login") だった。ところが結果画面からPROへ進む
@@ -7938,22 +7968,32 @@ def _pro_gate():
     """
     logged_in = bool(current_user())
     fields = [(k, v) for k, v in request.form.items()]         if request.method == "POST" else []
-    intro = ("この続きはPROプランでご覧いただけます。"
-             if logged_in else
-             "この続きはPROプランでご覧いただけます。お申し込みの前に、"
-             "メールアドレスでのログインが必要です。")
+    # 2026-10-23。会員登録で1物件だけ無料で試せるようにし、申込みには
+    # ログインを要らなくした（メールは決済の画面で入れてもらう）。
+    if not logged_in:
+        intro = ("この続きはPROプランでご覧いただけます。会員登録（メール"
+                 "アドレスだけ）をすると、1物件だけ無料で試せます。"
+                 "お申し込みには、ログインは要りません。")
+    elif trial_used:
+        intro = ("無料のお試しは、すでに別の物件で使いました。同じ物件"
+                 "（同じ住所）なら、何度でも診断し直せます。ほかの物件を"
+                 "PROで見るには、お申し込みが必要です。")
+    else:
+        intro = ("この続きはPROプランでご覧いただけます。無料のお試し"
+                 "（1物件）は、物件の詳細診断から始められます。")
     body = render_template_string(
         _PRO_GATE, price_label=price_now()[1], fields=fields,
         logged_in=logged_in, action=request.path,
         retry_label="ログインしたら、ここをもう一度押す",
-        login_note=("ログイン画面は別のタブで開きます。この画面はそのまま"
-                    "残るので、ログインしたあと戻って、下のボタンを"
-                    "もう一度押してください。"),
+        login_note=("" if logged_in else
+                    "会員登録とログインは別のタブで開きます。この画面は"
+                    "そのまま残るので、ログインしたあと戻って下のボタンを"
+                    "もう一度押すと、お試しとして続きが開きます。"),
         intro=intro)
     return _account_page("PROプラン", body, chip="PRO")
 
 
-def _require_pro():
+def _require_pro(trial=None):
     """PROの画面を開いてよいか。開いてよければ None。
 
     試験公開のあいだは誰でも使えた（料金をいただいていなかったため）。
@@ -7968,12 +8008,86 @@ def _require_pro():
         return None
     if not accounts_on():
         return _account_page("準備中", _OFF_BODY)
-    if accounts.is_pro(current_user()):
+    u = current_user()
+    if accounts.is_pro(u):
+        return None
+    # お試し（会員登録で1物件）。trial はその場面：
+    #   "form"        … 空の入力画面を開く。お試しが未使用のときだけ
+    #   ("start", 種別) … 無料の結果から入力を引き継いで開く。未使用か、
+    #                    お試しの物件（種別と住所が同じ）なら開ける
+    #   ("diag", 種別) … 診断する。未使用ならこの物件で使い、使用済みなら
+    #                    同じ物件（種別と住所が同じ）のときだけ通す
+    #   "dx"          … 契約前チェック・資金計画。診断から持ち回した物件が
+    #                    お試しの物件のときだけ通す
+    if trial and u and _trial_allows(u, trial):
         return None
     # ここに来た人は、PROを開こうとして壁に当たった人。診断からPROへ
     # 進もうとした回数そのものなので、導線が効いているかはこれで読める。
     _did("pro_cta")
-    return _pro_gate()
+    return _pro_gate(trial_used=bool(u) and not accounts.trial_unused(u))
+
+
+def _trial_allows(u, trial) -> bool:
+    # 使い切った人に空のフォームを見せない。入力し終えてから止めると、
+    # こちらの都合で相手の時間を使わせることになる（_require_pro の方針）。
+    if trial == "form":
+        return accounts.trial_unused(u)
+    if isinstance(trial, tuple) and trial and trial[0] == "start":
+        key = accounts.trial_key(trial[1], request.form.get("address"))
+        return accounts.trial_unused(u) or (bool(key)
+                                            and key == u.get("trial_key"))
+    if trial == "dx":
+        # 無料の結果から「契約前チェックを作る」を押したときも、お試しを
+        # その物件で始められる（物件は、結果画面が署名して持ち回した指紋で決まる）
+        snap = _unsign_snapshot(request.form.get("dx") or "") or {}
+        tk = snap.get("tk")
+        if not tk:
+            return False
+        if tk == u.get("trial_key"):
+            return True
+        if accounts.trial_unused(u) and accounts.use_trial(u["id"], tk):
+            _bump("trial_start")
+            return True
+        return False
+    if isinstance(trial, tuple) and trial and trial[0] == "diag":
+        key = accounts.trial_key(trial[1], request.form.get("address"))
+        if not key:
+            return False
+        if u.get("trial_key") == key:
+            return True
+        if accounts.trial_unused(u) and accounts.use_trial(u["id"], key):
+            _bump("trial_start")
+            return True
+    return False
+
+
+def _trial_kind(subject) -> str:
+    """お試しの物件の種別。戸建（中古・新築）とマンションと土地の3つ。"""
+    if getattr(subject, "exclusive_area_m2", None) is not None or \
+            "mansion" in (getattr(subject, "property_type", "") or ""):
+        return "mansion"
+    return "kodate"
+
+
+@app.context_processor
+def _inject_trial_note():
+    """PROの入力画面に出す、お試しの案内。"""
+    try:
+        if not billing_on() or not accounts_on():
+            return {}
+        u = current_user()
+        if not u or accounts.is_pro(u):
+            return {}
+        if accounts.trial_unused(u):
+            return {"trial_note": (
+                "<b>お試し中です。</b>1物件だけ、PROを無料でお使いいただけます。"
+                "最初に診断した物件が、お試しの物件になります。")}
+        return {"trial_note": (
+            "<b>お試しの物件があります。</b>同じ物件（同じ住所）なら、入力を"
+            "直して何度でも診断し直せます。ほかの物件はPROのお申し込みが"
+            "必要です。")}
+    except Exception:
+        return {}
 
 
 def _account_page(title, body, chip="マイページ", indexable=False, desc=None):
@@ -8477,7 +8591,7 @@ def saved_redo(sid):
                 v[k] = redo[k]
         # PROの項目まで戻す。PRO会員ならPROのフォーム、そうでなければ
         # 無料のフォームを開く（PROの欄を見せても入力できないため）。
-        if _require_pro() is None:
+        if _require_pro(trial="form") is None:
             return _land_pro_page(v, banner=banner)
         return render_template_string(
             LAND_FORM, v=_land_form_values(v), banner=banner,
@@ -8930,6 +9044,14 @@ PLAN_PAGE = """
  <p class="sub" style="margin-top:8px">まだ探し始めたばかりなら、無料の診断で十分です。
   物件が絞れてきたら、そのときに使ってください。</p>
 
+ <h2 style="margin:20px 0 6px">重要事項説明の日に持っていく1冊</h2>
+ <p style="margin:0;line-height:1.9">物件ごとに「契約前チェック」をPDFで作ります。
+  この物件の点数と注意すること、仲介業者に聞くこと（回答を書き込む欄つき）、
+  重要事項説明書で読む欄、諸費用まで含めた資金計画を、1冊にまとめたものです。
+  <a href="/sample/finance.pdf">見本（PDF）を開く</a></p>
+ <p class="sub" style="margin-top:8px">会員登録（メールアドレスだけ）をすると、
+  1物件だけ無料で試せます。お申し込みに、ログインは要りません。</p>
+
  <h2 style="margin:20px 0 6px">物件ごとに出てくるもの</h2>
  <table class="give">
   <tr><th>聞く</th><td>仲介業者に聞くことの一覧。その物件の築年と、まだ分かっていない
@@ -8937,7 +9059,8 @@ PLAN_PAGE = """
    いただけますか」。<a href="/guide/nakai-gyousha-ni-kiku-koto">どんな質問が並ぶか</a></td></tr>
   <tr><th>読む</th><td>重要事項説明書で、その物件で効く欄。区域やハザードに当たった欄を
    足し、根拠の条文をつけて並べます。<a href="#juyo">並ぶ欄の一覧</a></td></tr>
-  <tr><th>計算する</th><td>諸費用・金利が上がった場合・住宅ローン控除まで入れた資金計画（PDF）。
+  <tr><th>計算する</th><td>諸費用・金利が上がった場合・住宅ローン控除まで入れた資金計画。
+   契約前チェック（PDF）に入ります。
    <a href="/sample/finance">3,180万円の中古戸建の見本</a></td></tr>
   <tr><th>直す</th><td>内見や書類で分かったことを入れると、点数に反映されます。
    採点の仕方は無料と同じで、甘くなることはありません。</td></tr>
@@ -9056,7 +9179,7 @@ PLAN_CONFIRM = """
    <tr><th class="rowlbl">内容</th>
     <td>HOME INDEX PRO<br>
      <span class="sub">契約期間中、詳細診断・仲介業者に聞くことの一覧・
-      重要事項説明書で確認することの一覧・資金計画のPDFを
+      重要事項説明書で確認することの一覧・契約前チェック（資金計画を含むPDF）を
       ご利用いただけます。診断の回数に制限はありません。
       {% if pro_limit %}診断結果の保存は{{ pro_limit }}件までです。{% else %}診断結果の保存にも件数の制限はありません。{% endif %}</span></td></tr>
    <tr><th class="rowlbl">料金</th>
@@ -9096,6 +9219,12 @@ PLAN_CONFIRM = """
   <a href="/terms">利用規約</a>　・
   <a href="/privacy">プライバシーポリシー</a></p>
 
+ {% if guest %}
+ <p class="note" style="margin-top:14px">ログインは要りません。<b>メールアドレスは、
+  次の決済の画面で入力していただきます。</b>お支払いが済むと、そのアドレスで
+  会員を作り、この端末ではそのままPROをお使いいただけます。パスワードは
+  ありません。ほかの端末からは、そのアドレスに届くリンクでログインします。</p>
+ {% endif %}
  <form method="post" action="/plan/subscribe" style="margin-top:16px">
   <button class="btn" type="submit">上記に同意して申し込む</button>
  </form>
@@ -9193,9 +9322,10 @@ def plan_page():
 @app.route("/plan/confirm")
 def plan_confirm():
     """申込の最終確認画面（特定商取引法の表示義務を満たす画面）。"""
-    r = _require_login()
-    if r is not None:
-        return r
+    # 2026-10-23。ログインを先に求めない。メールアドレスは決済の画面で
+    # 入れてもらい、支払いのあとで会員を作る（plan_done / Webhook）。
+    if not accounts_on():
+        return _account_page("準備中", _OFF_BODY)
     if not billing_on():
         from flask import abort
         abort(404)
@@ -9206,30 +9336,30 @@ def plan_confirm():
         PLAN_CONFIRM, price_label=price_now()[1], price_yen=price_now()[0],
         campaign=campaign.active(), campaign_until=campaign.until_ja(),
         normal_yen=PRICE_YEN,
-        free_limit=saved.FREE_LIMIT, pro_limit=saved.PRO_LIMIT)
+        free_limit=saved.FREE_LIMIT, pro_limit=saved.PRO_LIMIT,
+        guest=not current_user())
     return _account_page("お申込みの確認", body, chip="プラン")
 
 
 @app.route("/plan/subscribe", methods=["POST"])
 def plan_subscribe():
     """Stripe Checkout を開く。カード番号はこのサーバーを通らない。"""
-    r = _require_login()
-    if r is not None:
-        return r
+    if not accounts_on():
+        return _account_page("準備中", _OFF_BODY)
     if not billing_on():
         from flask import abort
         abort(404)
-    u = current_user()
+    u = current_user()       # ログインしていなくてよい（2026-10-23）
     if accounts.is_pro(u):
         return redirect("/plan")
     base = request.url_root.rstrip("/")
     _did("checkout")
     try:
         url = billing.checkout_url(
-            email=u.get("email"), user_id=u["id"],
+            email=(u or {}).get("email"), user_id=(u or {}).get("id"),
             success_url=f"{base}/plan/done?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base}/plan/confirm",
-            customer_id=u.get("stripe_customer_id") or None,
+            customer_id=(u or {}).get("stripe_customer_id") or None,
             price=campaign_price_id())
     except Exception as e:
         # 決済側の不調をそのまま500にしない。押した人には何が起きたかを
@@ -9244,6 +9374,74 @@ def plan_subscribe():
     return redirect(url, code=303)
 
 
+def _checkout_email(sess) -> str:
+    details = _sv(sess, "customer_details") or {}
+    return accounts.normalize_email(
+        _sv(details, "email") or _sv(sess, "customer_email") or "")
+
+
+def _plan_done_guest(session_id):
+    """ログインせずに申し込んだ人が、決済から戻ってきた画面。
+
+    URLのセッションIDは信用しない。支払いが済んだかと、メールアドレスは
+    Stripeに聞く。**この端末でそのままログインさせるのは、会員がこの
+    決済で初めて作られ、まだ一度もログインしていないときだけ。**
+    すでにある会員のメールアドレスで払われた場合は、他人のアドレスで
+    払って乗っ取ることができてしまうので、ログイン用のリンクをメールで
+    送り、本人に開いてもらう。
+    """
+    def page(lead):
+        body = ('<div class="card"><h1>お申込みありがとうございます</h1>'
+                f'<p class="lead">{lead}</p>'
+                '<a class="btn" href="/pro">PROを使う</a>　'
+                '<a class="btn ghost" href="/plan">プランを見る</a></div>')
+        return _account_page("お申込み完了", body, chip="プラン")
+
+    wait = ("決済の確認をしています。反映まで少し時間がかかることがあります。"
+            "お申し込みのメールアドレスで、ログインしてください。")
+    if not session_id or not billing.enabled():
+        return page(wait)
+    try:
+        sess = billing.checkout_session(session_id)
+    except Exception as e:
+        print(f"[stripe] checkout lookup failed: {e}")
+        return page(wait)
+    if _sv(sess, "payment_status") != "paid":
+        return page(wait)
+    email = _checkout_email(sess)
+    if not accounts.valid_email(email):
+        return page(wait)
+    u = accounts.ensure_user(email)
+    if not accounts.is_pro(u):
+        try:
+            _apply_stripe_event("checkout.session.completed", sess)
+        except Exception as e:
+            print(f"[stripe] catch-up failed: {e}")
+    u = accounts.get_user(u["id"])
+    sub_id = _sv(sess, "subscription")
+    fresh = (not u.get("last_login_at") and sub_id
+             and u.get("stripe_subscription_id") == sub_id
+             and not _sv(sess, "client_reference_id"))
+    if fresh:
+        session.clear()
+        session["uid"] = u["id"]
+        session.permanent = True
+        accounts.mark_logged_in(u["id"])
+        return page(f"PROをご利用いただけます。{html.escape(email)} で会員を"
+                    "作りました。ほかの端末からは、このアドレスでログイン"
+                    "してください（届くリンクを開くだけです）。")
+    try:
+        token = accounts.issue_login_token(email)
+        link = urllib.parse.urljoin(request.url_root,
+                                    f"login/{token}?next=/pro")
+        mailer.send_login_link(email, link, accounts.TOKEN_TTL_MIN)
+    except Exception as e:
+        print(f"[login] mail after checkout failed: {e}")
+    return page(f"{html.escape(email)} は、すでに会員として登録されていました。"
+                "ログイン用のリンクをそのアドレスにお送りしたので、メールの"
+                "リンクを開いてください。PROはそのアカウントで使えます。")
+
+
 @app.route("/plan/done")
 def plan_done():
     """Checkout から戻ってきた画面。
@@ -9251,10 +9449,11 @@ def plan_done():
     ここではプランを上げない。上げるのは署名を確かめた Webhook だけ。
     戻る前にブラウザを閉じる人がいるし、このURLは誰でも開ける。
     """
-    r = _require_login()
-    if r is not None:
-        return r
+    if not accounts_on():
+        return _account_page("準備中", _OFF_BODY)
     u = current_user()
+    if not u:
+        return _plan_done_guest(request.args.get("session_id"))
     if not accounts.is_pro(u):
         _catch_up_from_checkout(u, request.args.get("session_id"))
         u = accounts.get_user(u["id"])
@@ -9370,8 +9569,16 @@ def _apply_stripe_event(kind, obj):
         cust = _sv(obj, "customer")
         sub_id = _sv(obj, "subscription")
         if not uid:
-            print("[stripe] checkout without client_reference_id")
-            return
+            # ログインせずに申し込んだ人（2026-10-23から）。決済の画面で
+            # 入れたメールアドレスで会員を引く。居なければ作る。
+            email = _checkout_email(obj)
+            if not accounts.valid_email(email):
+                print("[stripe] checkout without client_reference_id or email")
+                return
+            u = accounts.ensure_user(email)
+            if u.get("_is_new"):
+                _bump("signup")
+            uid = u["id"]
         accounts.set_stripe_ids(uid, cust, sub_id)
         expires = None
         if sub_id:
@@ -10254,7 +10461,7 @@ def _finance_tmpl_kw():
 
 @app.route("/pro/finance", methods=["GET", "POST"])
 def pro_finance():
-    g = _require_pro()
+    g = _require_pro(trial="dx")
     if g is not None:
         return g
     if request.method == "GET":
@@ -10270,7 +10477,7 @@ def pro_finance_start():
     年収と住所を含むので、クエリ文字列ではなくPOSTで受ける
     （URLに残さない・アクセスログに出さない）。/pro/start と同じ理由。
     """
-    g = _require_pro()
+    g = _require_pro(trial="dx")
     if g is not None:
         return g
     f = request.form
@@ -10452,7 +10659,7 @@ def _pro_compute(f):
 @app.route("/pro/finance.pdf", methods=["POST"])
 def pro_finance_pdf():
     """試算結果をPDFレポートとして返す。計算はHTML版と同じ経路を使う。"""
-    g = _require_pro()
+    g = _require_pro(trial="dx")
     if g is not None:
         return g
     from flask import Response
@@ -10462,9 +10669,14 @@ def pro_finance_pdf():
     # 資金計画のPDFとしては成立する。
     ctx["diag"] = _unsign_snapshot(request.form.get("dx") or "")
     pdf = build_finance_pdf(ctx)
-    quoted = urllib.parse.quote("HOME INDEX_資金計画.pdf")
+    # 診断から来たときは「契約前チェック」の1冊になる（src/report.py）
+    if ctx["diag"]:
+        name, ascii_name = "HOME INDEX_契約前チェック.pdf", "pre-contract-check.pdf"
+    else:
+        name, ascii_name = "HOME INDEX_資金計画.pdf", "finance-plan.pdf"
+    quoted = urllib.parse.quote(name)
     return Response(pdf, mimetype="application/pdf", headers={
-        "Content-Disposition": ("attachment; filename=\"finance-plan.pdf\"; "
+        "Content-Disposition": (f"attachment; filename=\"{ascii_name}\"; "
                                 f"filename*=UTF-8''{quoted}")})
 
 
@@ -10554,6 +10766,25 @@ def sample_finance():
     return render_template_string(PRO_FINANCE_RESULT, **_sample_finance_ctx())
 
 
+def _sample_check_diag():
+    """見本の契約前チェックの前半。失敗したら None（資金計画だけ出す）。"""
+    try:
+        from src.models import ProDetail
+        from src.pro_scoring import agent_questions
+        subj = SubjectProperty(
+            property_type="chuko_kodate", price=31_800_000,
+            address=SAMPLE_FINANCE_NOTE, land_area_m2=110,
+            building_area_m2=95, build_year=1998)
+        return {
+            "title": f"中古戸建（見本）　{SAMPLE_FINANCE_NOTE}",
+            "ask": agent_questions(ProDetail(), subj)[:20],
+            "disc": [[p.where, p.law, p.why] for p in
+                     disclosure.sheet(subj, None, "chuko_kodate")][:30]}
+    except Exception as e:
+        print(f"[sample] check diag failed: {e}")
+        return None
+
+
 @app.route("/sample/finance.pdf")
 def sample_finance_pdf():
     """見本のPDF。ダウンロードではなく、その場で開く。
@@ -10564,8 +10795,11 @@ def sample_finance_pdf():
     from flask import Response
     from src.report import build_finance_pdf
     ctx = _sample_finance_ctx()
-    ctx["diag"] = None      # 見本に診断の節は付けない
-    quoted = urllib.parse.quote("HOME INDEX_資金計画の見本.pdf")
+    # 見本も「契約前チェック」の形で見せる。聞くことと重説で読む欄は、
+    # 見本の物件（実在しない）について、本番と同じコードで組み立てる。
+    # 点数は見本では出さない（実在しない物件に点を付けても意味がない）。
+    ctx["diag"] = _sample_check_diag()
+    quoted = urllib.parse.quote("HOME INDEX_契約前チェックの見本.pdf")
     return Response(build_finance_pdf(ctx), mimetype="application/pdf",
                     headers={"Content-Disposition":
                              ("inline; filename=\"finance-plan-sample.pdf\"; "

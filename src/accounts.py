@@ -234,6 +234,72 @@ def set_cancel_at(user_id, when: str | None) -> None:
            (when, _uid(user_id)))
 
 
+# ---- PROのお試し（1物件）-----------------------------------------------
+# 会員登録すると、1物件だけPROを無料で使える。登録する理由が保存（画像で
+# 足りる）しか無く、会員登録が30日で0人だった（2026-10-23）。
+#
+# 「1物件」は、種別（戸建・マンション・土地）と住所の組で決める。同じ
+# 物件なら、入力を直して何度でも診断し直せる。住所はDBに残さず、指紋
+# （SHA-256 の先頭）だけを持つ。
+
+def trial_key(kind: str, address: str) -> str | None:
+    """お試しの物件の指紋。住所が無ければ None。"""
+    import unicodedata
+    a = unicodedata.normalize("NFKC", address or "")
+    a = re.sub(r"\s+", "", a).lower()
+    if not a:
+        return None
+    k = (kind or "").strip().lower()
+    return hashlib.sha256(f"{k}|{a}".encode("utf-8")).hexdigest()[:32]
+
+
+def trial_unused(user: dict | None) -> bool:
+    return bool(user) and not user.get("trial_key")
+
+
+def use_trial(user_id, key: str) -> bool:
+    """まだ使っていなければ、この物件で使ったことにする。使えたら True。
+
+    同時に2つ押されても1物件にしかならないよう、未使用のときだけ書く。
+    """
+    db.run("UPDATE users SET trial_key = ?, trial_at = ? "
+           "WHERE id = ? AND trial_key IS NULL",
+           (key, db.now(), _uid(user_id)))
+    u = get_user(user_id)
+    return bool(u) and u.get("trial_key") == key
+
+
+def ensure_user(email: str) -> dict:
+    """メールアドレスの会員を返す。居なければ作る。ログイン時刻は触らない。
+
+    ログインせずに申し込んだ人の会員を、決済のあとで作るのに使う
+    （2026-10-23）。last_login_at が空のままなら「まだ一度も本人が
+    ログインしていない会員」と分かる。
+    """
+    email = normalize_email(email)
+    now = db.now()
+
+    def _go(exec_):
+        row = exec_("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        if row:
+            u = dict(row)
+            u["_is_new"] = False
+            return u
+        exec_("INSERT INTO users (email, plan, created_at) VALUES (?, ?, ?)",
+              (email, PLAN_FREE, now))
+        u = dict(exec_("SELECT * FROM users WHERE email = ?",
+                       (email,)).fetchone())
+        u["_is_new"] = True
+        return u
+
+    return db.run_many(_go)
+
+
+def mark_logged_in(user_id) -> None:
+    db.run("UPDATE users SET last_login_at = ? WHERE id = ?",
+           (db.now(), _uid(user_id)))
+
+
 def user_by_customer(customer_id: str) -> dict | None:
     """決済側の顧客IDから会員を引く。
 

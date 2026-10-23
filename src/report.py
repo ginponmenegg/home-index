@@ -86,25 +86,44 @@ def _header_style(t, ncols):
     return t
 
 
+# 契約前チェックの題。診断から持ち回したときだけ、この名前の1冊になる。
+CHECK_TITLE = "契約前チェック"
+
+
 def _diagnosis_pages(story, d, st, W):
-    """診断の結果をPDFの先頭に置く。引き継ぎが無ければ何もしない。
+    """契約前チェックの前半（物件の要点・聞くこと・重説で読む欄）を置く。
 
     d は結果画面が署名して持ち回した辞書（app.py の _render_result）。
+    引き継ぎが無ければ何もしない（資金計画だけのPDFになる）。
     点数をここで計算し直さないのは、外部APIを二度叩かないためと、
     画面に出したものと1点でもずれさせないため。
+
+    2026-10-23、PROの目玉を「重要事項説明の日に持っていく1冊」にした。
+    聞くことには回答を書き込む欄を付け、重説で読む欄を資金計画の前に置く
+    （当日に開く順番に並べる）。
     """
     if not d:
         return
-    story.append(Paragraph("HOME INDEX　診断の結果", st["title"]))
+    story.append(Paragraph(f"HOME INDEX　{CHECK_TITLE}", st["title"]))
     today = datetime.date.today().strftime("%Y年%m月%d日")
     story.append(Paragraph(
         f"作成日 {today}　／　{d.get('title', '')}", st["sub"]))
     story.append(Paragraph(
-        f"総合 {d.get('total')}点（{d.get('grade')}）　"
-        f"情報充足度 {d.get('suff')}％", st["h2"]))
-    story.append(Paragraph(
-        "未確認の項目は評価に入れていません。点数はルール計算であり、"
-        "物件の価値や安全性を保証するものではありません。", st["note"]))
+        "重要事項説明と契約の前に、手元に置いておくための1冊です。"
+        "1. この物件の要点　2. 仲介業者に聞くこと（回答を書き込む欄つき）　"
+        "3. 重要事項説明書で読む欄　4. 諸費用まで含めた資金計画、の順に"
+        "並べています。", st["note"]))
+    if d.get("total") is None:
+        story.append(Paragraph(
+            "これは見本です。実在の物件ではないため、点数と注意することの節は"
+            "省いています。", st["note"]))
+    else:
+        story.append(Paragraph(
+            f"総合 {d.get('total')}点（{d.get('grade')}）　"
+            f"情報充足度 {d.get('suff')}％", st["h2"]))
+        story.append(Paragraph(
+            "未確認の項目は評価に入れていません。点数はルール計算であり、"
+            "物件の価値や安全性を保証するものではありません。", st["note"]))
 
     cats = d.get("cats") or []
     if cats:
@@ -124,8 +143,36 @@ def _diagnosis_pages(story, d, st, W):
     ask = d.get("ask") or []
     if ask:
         story.append(Paragraph("仲介業者に聞くこと", st["h2"]))
+        story.append(Paragraph(
+            "まだ分かっていない項目から組み立てています。答えを聞いたら、"
+            "右の欄に書き込んでください。書類で確かめたものには印を。",
+            st["note"]))
+        data = [[Paragraph("", st["cellsub"]), Paragraph("聞くこと", st["cell"]),
+                 Paragraph("回答・メモ", st["cell"])]]
         for i, q in enumerate(ask, 1):
-            story.append(Paragraph(f"{i}. {q}", st["note"]))
+            data.append([Paragraph(f"□{i}", st["cell"]),
+                         Paragraph(q, st["cell"]), Paragraph("", st["cell"])])
+        t = Table(data, colWidths=[W * 0.08, W * 0.52, W * 0.40],
+                  repeatRows=1)
+        t = _header_style(t, 3)
+        # 手で書き込めるよう、行に余白を取る（スマホで見るより、印刷して
+        # 重要事項説明の場に持っていく使い方を想定している）
+        t.setStyle(TableStyle([("LINEAFTER", (1, 0), (1, -1), 0.3, LINE),
+                               ("TOPPADDING", (0, 1), (-1, -1), 8),
+                               ("BOTTOMPADDING", (0, 1), (-1, -1), 10)]))
+        story.append(t)
+
+    disc = d.get("disc") or []
+    if disc:
+        story.append(Paragraph("重要事項説明書で読む欄", st["h2"]))
+        story.append(Paragraph(
+            "契約の直前に読み上げられます。先に読む場所を絞るためのものです。"
+            "どこに何が書かれるかまでで、良し悪しは書いていません。",
+            st["note"]))
+        for where, law, why in disc:
+            story.append(Paragraph(f"□ {where}（{law}）", st["body"]))
+            story.append(Paragraph(why, st["note"]))
+            story.append(Spacer(1, 3))
 
     story.append(PageBreak())
 
@@ -139,7 +186,8 @@ def build_finance_pdf(ctx: dict) -> bytes:
         buf, pagesize=A4,
         leftMargin=18 * mm, rightMargin=18 * mm,
         topMargin=16 * mm, bottomMargin=16 * mm,
-        title="詳細な資金計画｜HOME INDEX PRO", author="HOME INDEX")
+        title=(f"{CHECK_TITLE}｜HOME INDEX PRO" if ctx.get("diag")
+               else "詳細な資金計画｜HOME INDEX PRO"), author="HOME INDEX")
     W = doc.width
     s = ctx["s"]
     story = []
@@ -287,18 +335,8 @@ def build_finance_pdf(ctx: dict) -> bytes:
                          ("頭金を加えた購入可能額", a["price"])], st, W),
             Paragraph(a["note"], st["note"])]))
 
-    # ---- 重要事項説明書の、どこを見るか ----
-    disc = (ctx.get("diag") or {}).get("disc") or []
-    if disc:
-        story.append(Paragraph("重要事項説明書の、どこを見るか", st["h2"]))
-        story.append(Paragraph(
-            "契約の直前に読み上げられます。先に読む場所を絞るためのものです。"
-            "どこに何が書かれるかまでで、良し悪しは書いていません。",
-            st["note"]))
-        for where, law, why in disc:
-            story.append(Paragraph(f"□ {where}（{law}）", st["body"]))
-            story.append(Paragraph(why, st["note"]))
-            story.append(Spacer(1, 3))
+    # 重要事項説明書で読む欄は、契約前チェックの前半（_diagnosis_pages）に
+    # 移した。当日に開く順番に並べるため。
 
     # ---- 見本の前提 ----
     given = ctx.get("sample_given") or []
@@ -326,8 +364,9 @@ def build_finance_pdf(ctx: dict) -> bytes:
         canv.saveState()
         canv.setFont(FONT, 7)
         canv.setFillColor(SUB)
+        name = CHECK_TITLE if ctx.get("diag") else "詳細な資金計画"
         canv.drawString(18 * mm, 10 * mm,
-                        "HOME INDEX　詳細な資金計画（PRO）　参考情報であり、"
+                        f"HOME INDEX　{name}（PRO）　参考情報であり、"
                         "最終判断は専門家の確認を前提としてください。")
         canv.drawRightString(A4[0] - 18 * mm, 10 * mm, f"- {canv.getPageNumber()} -")
         canv.restoreState()

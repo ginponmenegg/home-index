@@ -151,7 +151,8 @@ def test_the_pdf_carries_the_diagnosis_when_it_came_from_one():
     r = _client().post("/pro/finance.pdf", data=dict(FINANCE, dx=_dx()))
     assert r.mimetype == "application/pdf"
     t = _pdf_text(r.data)
-    assert "診断の結果" in t
+    assert "契約前チェック" in t, "診断から来たら契約前チェックの1冊になる"
+    assert "回答・メモ" in t, "聞くことに書き込む欄がある"
     assert "総合 81点（A）" in t and "情報充足度 68％" in t
     assert "築16年・木造" in t, "カテゴリの理由まで載せる"
     assert "ハザード未確認" in t
