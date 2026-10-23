@@ -3715,6 +3715,12 @@ _METRIC_GROUPS = (
 )
 
 
+# 数字の画面で、日ごとの行を出し始める日。これより前は記録が無い
+# （診断の累計は 2026-09-05 から）。期間の選び方に関わらず出さない。
+import datetime as _datetime  # noqa: E402
+METRICS_SHOW_FROM = _datetime.date(2026, 9, 5)
+
+
 @app.route("/metrics")
 def metrics_page():
     """数字を見る画面。合鍵を知っている人だけ。
@@ -3883,7 +3889,10 @@ def metrics_page():
     # 記録の無い日も行として出す。抜けている日が見えないと、休んだ日と
     # 数えられなかった日の区別がつかない。
     day_list = [since_ + datetime.timedelta(days=i) for i in range(days)]
-    day_list = [d for d in day_list if d <= today_][::-1]
+    # 記録を始める前の日は出さない（2026-10-23）。90日・180日を選ぶと、
+    # 何も無い日が0件の行として並び、本当に0件だった日と見分けがつかない。
+    day_list = [d for d in day_list
+                if METRICS_SHOW_FROM <= d <= today_][::-1]
     diag_max = max([diag_of(rows.get(d.isoformat(), {})) for d in day_list] + [1])
     wd = "月火水木金土日"
     day_rows = []

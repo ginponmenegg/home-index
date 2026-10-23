@@ -461,3 +461,14 @@ def test_landing_rows_do_not_leak_into_the_event_totals(env):
     ever, _ = env.metrics.all_time()
     assert not any(k.startswith("ai_land:") for k in ever)
     assert env.metrics.totals(1)["ref_ai"] == 1
+
+
+def test_days_before_counting_began_are_not_listed(env):
+    """2026-09-04 以前の日は、期間を180日にしても日ごとの表に出さない。"""
+    import re
+    c = env.app.app.test_client()
+    h = c.get("/metrics?key=ひみつ&days=180").get_data(as_text=True)
+    days = re.findall(r'<details class="mx-day"><summary>\s*<span[^>]*>(\d+)/(\d+)', h)
+    shown = {f"{int(m):02d}-{int(d):02d}" for m, d in days}
+    assert "09-04" not in shown and "09-01" not in shown and "08-15" not in shown
+    assert env.app.METRICS_SHOW_FROM.isoformat() == "2026-09-05"
