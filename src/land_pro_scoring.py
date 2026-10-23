@@ -235,7 +235,9 @@ def cost_needs(detail: LandProDetail) -> Dict[str, Optional[bool]]:
 
 
 def score_land_site(base: CategoryScore,
-                    detail: LandProDetail) -> Tuple[CategoryScore, List[str]]:
+                    detail: LandProDetail,
+                    skip_adjust: Tuple[str, ...] = ()
+                    ) -> Tuple[CategoryScore, List[str]]:
     """リスクのカテゴリを、現地と書類の答えで上書きする。
 
     base は無料診断が出した「リスク」の CategoryScore。
@@ -248,7 +250,10 @@ def score_land_site(base: CategoryScore,
 
     for key in CHOICES:
         v = getattr(detail, key)
-        delta += ADJUST.get((key, v), 0.0)
+        # 無料の入力（土地の高さ・傾き）で同じ事実をすでに引いているときは、
+        # 点は動かさず、答えの文だけ残す（2026-10-23）。
+        if key not in skip_adjust:
+            delta += ADJUST.get((key, v), 0.0)
         if (key, v) in PLUS_TEXT:
             plus.append(PLUS_TEXT[(key, v)])
         if (key, v) in MINUS_TEXT:

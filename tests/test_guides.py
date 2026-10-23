@@ -1030,3 +1030,19 @@ def test_the_free_diagnosis_article_matches_the_weights():
         for k, v in weights.items():
             assert f"<td>{k}</td><td>{v}点</td>" in body, k
     assert "不動産情報ライブラリ" in body
+
+
+def test_the_shape_article_matches_the_land_scoring():
+    """旗竿地・不整形地・高低差の点数は src/land_scoring.py と同じ（2026-10-23）。"""
+    from src import land_scoring as ls
+    g = guides.by_slug("hatazaochi-fuseikei-kouteisa")
+    body = g.lead + g.body
+    f = ls.FLAG_FULL_FRONTAGE_M
+    assert f"竿の幅が{f:.0f}m以上" in body and f"{f:.0f}m未満" in g.title + body
+    for key in ("flag", "irregular"):
+        assert f"<td>{ls.SHAPE_DEDUCT[key]:.0f}点</td>" in body, key
+    for key in ("step", "slope", "cliff"):
+        assert f"<td>{ls.LEVEL_DEDUCT[key]:.0f}点</td>" in body, key
+    half = ls.ROAD_PARTS["接道長さ"] / 2
+    assert f"合わせて{ls.SHAPE_DEDUCT['flag'] + half:.0f}点" in body
+    assert "施行令3条" in body and "付表6" in body

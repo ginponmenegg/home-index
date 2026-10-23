@@ -115,6 +115,11 @@ class LandSubject:
     # 用途地域も、販売図面の値があればそちらを優先する。地図から引いた値は、
     # 住所が番地まで当たらないと隣の区域の値になる（2026-10-19、平塚市）。
     use_district: Optional[str] = None
+    # 土地の形と、道路との高さ・傾き（2026-10-23）。どちらも既定は未確認で、
+    # 未確認なら減点しない（land_scoring.apply_shape / apply_level）。
+    land_shape: str = "unknown"                 # regular / flag / irregular / unknown
+    land_level: str = "unknown"                 # flat / step / slope / cliff / unknown
+    pole_length_m: Optional[float] = None       # 旗竿地の竿（路地状部分）の長さ(m)
     building_area_m2: Optional[float] = None    # 常に None。score_asset が読む
 
 

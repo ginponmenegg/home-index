@@ -339,23 +339,38 @@ class SiteDiagram:
     depth_m: Optional[float] = None
     road_width_m: Optional[float] = None
     setback_depth_m: Optional[float] = None
+    # 旗竿地のときだけ。竿（路地状部分）の四角と、その長さ。
+    pole: Optional[Tuple[float, float, float, float]] = None
+    pole_length_m: Optional[float] = None
+    # 間口の寸法線を引く位置（x, y, 幅）。長方形なら敷地の下辺、旗竿地なら竿の下辺。
+    front: Optional[Tuple[float, float, float]] = None
+    # 旗竿地の外形（SVGの path）。四角を2つ重ねると、境目に線が出る。
+    outline: Optional[str] = None
 
 
 def site_diagram(site_area_m2: Optional[float],
                  frontage_m: Optional[float],
                  road_width_m: Optional[float] = None,
                  footprint_m2: Optional[float] = None,
-                 setback_m2: Optional[float] = None
+                 setback_m2: Optional[float] = None,
+                 shape: Optional[str] = None,
+                 pole_length_m: Optional[float] = None
                  ) -> Optional[SiteDiagram]:
     """敷地・前面道路・建築面積を、同じ縮尺で置いた座標を返す。
 
     面積か間口が無ければ描かない。無いものを線で埋めると、
     「分からない」が「こういう形」に化ける。
+
+    旗竿地で竿の長さが分かっていれば、竿つきで描く（_flag_diagram）。
     """
     if not site_area_m2 or not frontage_m or frontage_m <= 0:
         return None
     if site_area_m2 <= 0:
         return None
+    if (shape == "flag" and pole_length_m and pole_length_m > 0
+            and frontage_m * pole_length_m < site_area_m2 * 0.8):
+        return _flag_diagram(site_area_m2, frontage_m, pole_length_m,
+                             road_width_m, footprint_m2, setback_m2)
     depth_m = site_area_m2 / frontage_m
 
     # 間口と奥行きの両方が枠に収まる縮尺。道路もこの縮尺で描く。
@@ -367,7 +382,8 @@ def site_diagram(site_area_m2: Optional[float],
     d = SiteDiagram(scale=round(scale, 3), width=DIAGRAM_W, height=0, lot=lot,
                     frontage_m=round(frontage_m, 1),
                     depth_m=round(depth_m, 1),
-                    road_width_m=road_width_m)
+                    road_width_m=road_width_m,
+                    front=(lot[0], lot[1] + lot[3], lot[2]))
 
     # ---- セットバックで使えなくなる帯（敷地の道路側）----
     if setback_m2 and setback_m2 > 0:
@@ -387,6 +403,56 @@ def site_diagram(site_area_m2: Optional[float],
 
     # ---- 前面道路 ----
     bottom = LOT_TOP + lot_h + FRONT_GAP
+    if road_width_m and road_width_m > 0:
+        road_h = road_width_m * scale
+        d.road = (40.0, round(bottom, 1), float(DIAGRAM_W - 80),
+                  round(road_h, 1))
+        d.road_label_inside = road_h >= ROAD_LABEL_MIN_H
+        bottom += road_h
+    d.height = int(round(bottom + 14))
+    return d
+
+
+def _flag_diagram(site_area_m2: float, frontage_m: float, pole_length_m: float,
+                  road_width_m: Optional[float], footprint_m2: Optional[float],
+                  setback_m2: Optional[float]) -> SiteDiagram:
+    """旗竿地。竿の幅（＝間口）と長さは入力どおりに描く。
+
+    奥の敷地（旗）の形は分からないので、残りの面積をほぼ正方形にして置く。
+    竿より幅が狭くはならないようにする。縮尺は道路も含めて一つ。
+    """
+    body_area = site_area_m2 - frontage_m * pole_length_m
+    side = body_area ** 0.5
+    body_w = max(side, frontage_m)
+    body_h = body_area / body_w
+    scale = min(LOT_MAX_W / body_w, LOT_MAX_H / (body_h + pole_length_m))
+    bw, bh = body_w * scale, body_h * scale
+    pw, ph = frontage_m * scale, pole_length_m * scale
+    x = (DIAGRAM_W - bw) / 2.0
+    body = (round(x, 1), float(LOT_TOP), round(bw, 1), round(bh, 1))
+    pole = (round(x, 1), round(LOT_TOP + bh, 1), round(pw, 1), round(ph, 1))
+    d = SiteDiagram(scale=round(scale, 3), width=DIAGRAM_W, height=0, lot=body,
+                    frontage_m=round(frontage_m, 1), depth_m=round(body_h, 1),
+                    road_width_m=road_width_m, pole=pole,
+                    pole_length_m=round(pole_length_m, 1),
+                    front=(pole[0], pole[1] + pole[3], pole[2]))
+    x0, y0 = body[0], body[1]
+    d.outline = (f"M{x0} {y0} H{round(x0 + bw, 1)} V{round(y0 + bh, 1)} "
+                 f"H{round(x0 + pw, 1)} V{round(y0 + bh + ph, 1)} H{x0} Z")
+    if setback_m2 and setback_m2 > 0:
+        d.setback_depth_m = round(setback_m2 / frontage_m, 2)
+        band_h = max(BAND_MIN_H, d.setback_depth_m * scale)
+        d.setback = (pole[0], round(pole[1] + ph - band_h, 1), pole[2],
+                     round(band_h, 1))
+    # 建築面積は、奥の敷地の中に広さの目安として置く（竿には建てない）
+    if footprint_m2 and footprint_m2 > 0:
+        k = min(1.0, (footprint_m2 / body_area) ** 0.5)
+        fw, fh = bw * k, bh * k
+        d.footprint = (round(x + (bw - fw) / 2.0, 1),
+                       round(LOT_TOP + (bh - fh) / 2.0, 1),
+                       round(fw, 1), round(fh, 1))
+        d.footprint_number_inside = fw >= FOOT_NUM_MIN_W
+    bottom = LOT_TOP + bh + ph + FRONT_GAP
     if road_width_m and road_width_m > 0:
         road_h = road_width_m * scale
         d.road = (40.0, round(bottom, 1), float(DIAGRAM_W - 80),

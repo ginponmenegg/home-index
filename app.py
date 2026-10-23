@@ -5184,6 +5184,7 @@ BRAND_BAR
     <div class="hint">重要事項説明書か、市区町村の道路課で分かります</div></div>
    <div></div>
   </div>
+LAND_SHAPE_FIELDS
 
   <details class="more">
    <summary>もっと詳しく入れる（任意）</summary>
@@ -5308,7 +5309,45 @@ LAND_ROAD_TYPES = [
     ("none", "道路に接していない／通路のみ"),
 ]
 
+# 土地の形・高さの欄。無料とPROの両方のフォームに置く。選択肢は
+# src/land_scoring.py の LAND_SHAPES / LAND_LEVELS と同じものを使う。
+from src.land_scoring import LAND_SHAPES as _LAND_SHAPES, \
+    LAND_LEVELS as _LAND_LEVELS
+LAND_SHAPE_FIELDS = ("""
+  <h3 class="sec">土地の形と高さ</h3>
+  <div class="row">
+   <div><label>土地の形</label>
+    <select name="land_shape">
+     {% for k, lbl in land_shapes %}
+     <option value="{{k}}" {{'selected' if v.land_shape==k else ''}}>{{lbl}}</option>
+     {% endfor %}
+    </select>
+    <div class="hint">販売図面か公図で分かります。旗竿地は、竿の部分の幅を
+     上の「間口」に入れてください。<b>竿の幅が4m以上なら、整形地と同じ扱い</b>です
+     （<a href="/guide/hatazaochi-fuseikei-kouteisa">点数の付け方</a>）</div></div>
+   <div><label>竿の部分の長さ（m・旗竿地のとき）</label>
+    <input name="pole_length" value="{{v.pole_length}}" placeholder="例）15">
+    <div class="hint">道路から奥の敷地までの通路の長さ。都道府県の条例で、
+     長いほど広い幅を求められることがあります</div></div>
+  </div>
+  <div class="row">
+   <div><label>道路との高さ・傾き</label>
+    <select name="land_level">
+     {% for k, lbl in land_levels %}
+     <option value="{{k}}" {{'selected' if v.land_level==k else ''}}>{{lbl}}</option>
+     {% endfor %}
+    </select>
+    <div class="hint">現地か、販売図面の断面図で分かります。高さ2mを超える
+     がけは、宅地造成の規制や都道府県のがけ条例の対象になります</div></div>
+   <div></div>
+  </div>
+""")
+LAND_SHAPE_FIELDS = (LAND_SHAPE_FIELDS
+                     .replace("land_shapes", repr(list(_LAND_SHAPES)))
+                     .replace("land_levels", repr(list(_LAND_LEVELS))))
+
 LAND_FORM = (LAND_FORM
+             .replace("LAND_SHAPE_FIELDS", LAND_SHAPE_FIELDS)
              .replace("LAND_CSS_PLACEHOLDER",
                       _FORM_CSS + "\n .sec{font-size:15px;margin:22px 0 2px;"
                       "padding-top:14px;border-top:1px solid #e5e5e5}"
@@ -5487,30 +5526,41 @@ BRAND_BAR
   <h2>この土地に建てられる家</h2>
   {% if fig %}
   <svg class="fig" viewBox="0 0 {{fig.width}} {{fig.height}}" role="img"
-    aria-label="間口{{fig.frontage_m}}m・奥行き{{fig.depth_m}}mの長方形として描いた敷地の模式図。{% if fig.footprint %}建築面積の上限{{cap.footprint_m2}}平方メートルを重ねている。{% endif %}{% if fig.road_width_m %}前面道路の幅は{{fig.road_width_m}}m。{% endif %}{% if fig.setback %}道路が4m未満のため、およそ{{cap.setback_m2}}平方メートルが敷地として使えない。{% endif %}縮尺は合わせてあるが、土地の形は分かっていない。">
+    aria-label="{% if fig.pole %}竿の幅{{fig.frontage_m}}m・長さ{{fig.pole_length_m}}mの旗竿地として描いた敷地の模式図。{% else %}間口{{fig.frontage_m}}m・奥行き{{fig.depth_m}}mの長方形として描いた敷地の模式図。{% endif %}{% if fig.footprint %}建築面積の上限{{cap.footprint_m2}}平方メートルを重ねている。{% endif %}{% if fig.road_width_m %}前面道路の幅は{{fig.road_width_m}}m。{% endif %}{% if fig.setback %}道路が4m未満のため、およそ{{cap.setback_m2}}平方メートルが敷地として使えない。{% endif %}縮尺は合わせてあるが、土地の形は分かっていない。">
    <text class="fg-n" x="12" y="20">上が奥、下が道路側</text>
    {% if fig.road %}<rect class="fg-road" x="{{fig.road[0]}}" y="{{fig.road[1]}}" width="{{fig.road[2]}}" height="{{fig.road[3]}}"/>
    <line class="fg-center" x1="{{fig.road[0]}}" y1="{{fig.road[1] + fig.road[3] / 2}}" x2="{{fig.road[0] + fig.road[2]}}" y2="{{fig.road[1] + fig.road[3] / 2}}"/>
    {% if fig.road_label_inside %}<text class="fg-t" x="{{fig.width / 2}}" y="{{fig.road[1] + 17}}" text-anchor="middle">前面道路</text>
    <text class="fg-n" x="{{fig.width / 2}}" y="{{fig.road[1] + fig.road[3] - 7}}" text-anchor="middle">{{fig.road_width_m}} m</text>
    {% else %}<text class="fg-t" x="{{fig.road[0] + fig.road[2] + 6}}" y="{{fig.road[1] + fig.road[3] / 2 + 4}}">前面道路 {{fig.road_width_m}}m</text>{% endif %}{% endif %}
-   <rect class="fg-lot" x="{{fig.lot[0]}}" y="{{fig.lot[1]}}" width="{{fig.lot[2]}}" height="{{fig.lot[3]}}"/>
+   {% if fig.outline %}<path class="fg-lot" d="{{fig.outline}}"/>
+   {% else %}<rect class="fg-lot" x="{{fig.lot[0]}}" y="{{fig.lot[1]}}" width="{{fig.lot[2]}}" height="{{fig.lot[3]}}"/>{% endif %}
    {% if fig.setback %}<rect class="fg-lost" x="{{fig.setback[0]}}" y="{{fig.setback[1]}}" width="{{fig.setback[2]}}" height="{{fig.setback[3]}}"/>
    <line class="fg-2m" x1="{{fig.setback[0] - 24}}" y1="{{fig.setback[1]}}" x2="{{fig.width - 16}}" y2="{{fig.setback[1]}}"/>
    <text class="fg-warn" x="{{fig.width - 16}}" y="{{fig.setback[1] - 8}}" text-anchor="end">道の中心から 2m</text>{% endif %}
    {% if fig.footprint %}<rect class="fg-build" x="{{fig.footprint[0]}}" y="{{fig.footprint[1]}}" width="{{fig.footprint[2]}}" height="{{fig.footprint[3]}}"/>
    {% if fig.footprint_number_inside %}<text class="fg-bn" x="{{fig.width / 2}}" y="{{fig.footprint[1] + fig.footprint[3] / 2 + 5}}" text-anchor="middle">{{cap.footprint_m2}} ㎡</text>{% endif %}
    <text class="fg-b" x="{{fig.width - 16}}" y="20" text-anchor="end">■ 建築面積の上限{% if not fig.footprint_number_inside %} {{cap.footprint_m2}}㎡{% endif %}</text>{% endif %}
-   <line class="fg-dim" x1="{{fig.lot[0]}}" y1="{{fig.lot[1] + fig.lot[3] + 14}}" x2="{{fig.lot[0] + fig.lot[2]}}" y2="{{fig.lot[1] + fig.lot[3] + 14}}"/>
-   <text class="fg-t" x="{{fig.lot[0] + fig.lot[2] + 10}}" y="{{fig.lot[1] + fig.lot[3] + 18}}">間口 {{fig.frontage_m}}m</text>
-   <line class="fg-dim" x1="{{fig.lot[0] - 14}}" y1="{{fig.lot[1]}}" x2="{{fig.lot[0] - 14}}" y2="{{fig.lot[1] + fig.lot[3]}}"/>
+   <line class="fg-dim" x1="{{fig.front[0]}}" y1="{{fig.front[1] + 14}}" x2="{{fig.front[0] + fig.front[2]}}" y2="{{fig.front[1] + 14}}"/>
+   <text class="fg-t" x="{{fig.front[0] + fig.front[2] + 10}}" y="{{fig.front[1] + 18}}">間口 {{fig.frontage_m}}m</text>
+   {% if fig.pole %}<line class="fg-dim" x1="{{fig.pole[0] - 14}}" y1="{{fig.pole[1]}}" x2="{{fig.pole[0] - 14}}" y2="{{fig.pole[1] + fig.pole[3]}}"/>
+   <text class="fg-t" x="{{fig.pole[0] - 20}}" y="{{fig.pole[1] + fig.pole[3] / 2 - 4}}" text-anchor="end">竿の長さ</text>
+   <text class="fg-n" x="{{fig.pole[0] - 20}}" y="{{fig.pole[1] + fig.pole[3] / 2 + 13}}" text-anchor="end">{{fig.pole_length_m}} m</text>
+   {% else %}<line class="fg-dim" x1="{{fig.lot[0] - 14}}" y1="{{fig.lot[1]}}" x2="{{fig.lot[0] - 14}}" y2="{{fig.lot[1] + fig.lot[3]}}"/>
    <text class="fg-t" x="{{fig.lot[0] - 20}}" y="{{fig.lot[1] + fig.lot[3] / 2 - 4}}" text-anchor="end">奥行き</text>
-   <text class="fg-n" x="{{fig.lot[0] - 20}}" y="{{fig.lot[1] + fig.lot[3] / 2 + 13}}" text-anchor="end">{{fig.depth_m}} m</text>
+   <text class="fg-n" x="{{fig.lot[0] - 20}}" y="{{fig.lot[1] + fig.lot[3] / 2 + 13}}" text-anchor="end">{{fig.depth_m}} m</text>{% endif %}
   </svg>
+  {% if fig.pole %}
+  <div class="foot"><b>竿の幅と長さだけが入力どおりです。</b>奥の敷地は、
+   残りの面積をほぼ正方形にして置いています。縮尺は道路も含めて合わせて
+   ありますが、<b>実際の形・竿の位置・建物の置き場所は違います。</b>
+   建築面積の四角は広さの目安で、どこに建てるかではありません。</div>
+  {% else %}
   <div class="foot"><b>土地の形は分かっていません。</b>敷地面積と間口から
    奥行きを割り戻した長方形として描いています。縮尺は道路も含めて
    合わせてありますが、<b>実際の形・向き・建物の置き場所は違います。</b>
    建築面積の四角は広さの目安で、どこに建てるかではありません。</div>
+  {% endif %}
   {% endif %}
   {% if cap.max_total_floor_m2 %}
    <p class="big">延床の上限 {{cap.floor_m2}}㎡<span class="muted"
@@ -5950,7 +6000,8 @@ def _land_example_v():
                 budget="", household="", condition="unknown",
                 road_width="", road_type="unknown", frontage="",
                 station="", bus="", coverage="", far="", use_district="",
-                city="", district="", income="", down="", loan_years="35")
+                city="", district="", income="", down="", loan_years="35",
+                land_shape="unknown", land_level="unknown", pole_length="")
 
 
 def _land_form_values(f):
@@ -5980,6 +6031,8 @@ SAMPLE_LAND = {
     # 住所が丁目までなので、用途地域は周り150mで混在して決められない。
     # 見本は販売図面にあたる値を入れておく（代表点の公的データの値。2026-10-19確認）
     "use_district": "第一種中高層住居専用地域", "coverage": "60", "far": "200",
+    # 見本は整形地・平坦。形と高さを未確認にすると、見本の要確認が増えるだけ
+    "land_shape": "regular", "land_level": "flat",
     "loan_years": "35", "income": "700", "down": "500",
     "sample": "1",
 }
@@ -6079,6 +6132,15 @@ def _land_subject_from(f):
     condition = (f.get("condition") or "unknown").strip()
     if condition not in dict(LAND_CONDITIONS):
         condition = "unknown"
+    shape = (f.get("land_shape") or "unknown").strip()
+    if shape not in dict(_LAND_SHAPES):
+        shape = "unknown"
+    level = (f.get("land_level") or "unknown").strip()
+    if level not in dict(_LAND_LEVELS):
+        level = "unknown"
+    pole = to_float(f.get("pole_length"))
+    if pole is not None and not (0 < pole < 200):
+        pole = None
 
     return LandSubject(
         address=address,
@@ -6096,7 +6158,9 @@ def _land_subject_from(f):
         district_name=district or None,
         coverage_ratio=to_int(f.get("coverage")),
         floor_area_ratio=to_int(f.get("far")),
-        use_district=_valid_use_district(f.get("use_district"))), city, district, None
+        use_district=_valid_use_district(f.get("use_district")),
+        land_shape=shape, land_level=level,
+        pole_length_m=(pole if shape == "flag" else None)), city, district, None
 
 
 def _run_land_diagnose(f):
@@ -6243,7 +6307,9 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
     fig = site_diagram(subject.land_area_m2, subject.frontage_m,
                        road_width_m=subject.road_width_m,
                        footprint_m2=c.max_footprint_m2,
-                       setback_m2=c.setback_m2)
+                       setback_m2=c.setback_m2,
+                       shape=subject.land_shape,
+                       pole_length_m=subject.pole_length_m)
 
     mk = dict(count=mkt.count if mkt else 0)
     if mkt and mkt.unit_mid:
@@ -6442,6 +6508,7 @@ BRAND_BAR
    <div></div>
   </div>
 
+LAND_SHAPE_FIELDS
   <h3 class="sec">支払いの予定（つなぎ融資の計算に使います）</h3>
   <div class="hint" style="margin-bottom:8px">日付は<b>予定で構いません</b>。
    入っている分だけ計算します。分からない日は空のままにしてください
@@ -6623,6 +6690,7 @@ HH_FIELDS_PLACEHOLDER
 from src import land_pro_scoring as lps  # noqa: E402
 
 LAND_PRO_FORM = (LAND_PRO_FORM
+                 .replace("LAND_SHAPE_FIELDS", LAND_SHAPE_FIELDS)
                  .replace("HH_FIELDS_PLACEHOLDER", HH_FIELDS)
                  .replace("LAND_PRO_CSS_PLACEHOLDER", _FORM_CSS)
                  .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
@@ -6711,7 +6779,7 @@ def pro_land():
 def _run_land_pro(f):
     from src.land_finance import bridge_loan, cash_timeline, land_total
     from src.land import build_capacity
-    from src.land_scoring import score_buildable, score_cap
+    from src.land_scoring import score_buildable, score_cap, level_refund
     from src.scoring import grade_of, highlights
 
     subject, city, district, err = _land_subject_from(f)
@@ -6805,7 +6873,12 @@ def _run_land_pro(f):
         if c.name == "資金":
             d.categories[i] = finance_category(c, hc)
         elif c.name == "リスク":
-            c, conf = lps.score_land_site(c, detail)
+            # 高さ・傾きを無料の欄で答えていれば、PROの「道路との高低差」で
+            # 同じ事実をもう一度引かない。擁壁に検査済証があれば半分戻す。
+            known_level = subject.land_level not in ("unknown", None)
+            c, conf = lps.score_land_site(
+                c, detail, skip_adjust=(("level",) if known_level else ()))
+            c = level_refund(c, subject, detail.retaining)
             extra_confirm += conf
             c, conf = lps.score_land_heritage(c, legal)
             extra_confirm += conf

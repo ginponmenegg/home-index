@@ -385,6 +385,173 @@ def score_cap(road_width_m: Optional[float] = None,
     return None
 
 
+# ---- 土地の形と高さ（2026-10-23）-------------------------------------------
+# 形は資産性から、高さ・傾きはリスクから引く。どちらも「未確認」なら引かず、
+# 情報充足度だけ下げる。調べていない人を悪い土地として採点しない。
+#
+# 形を資産性で見るのは、建てられる家の大きさが法律上は変わらないため
+# （建ぺい率・容積率は竿の部分も含めた敷地全体にかかる）。差が出るのは、
+# 使いにくさと、売るときの評価。国税庁の財産評価基本通達も、不整形地を
+# 20項（付表5 不整形地補正率、最小0.60）、間口の狭い宅地を20-4項
+# （付表6 間口狭小補正率。普通住宅地区で間口4m未満は0.90）で低く評価する。
+#
+# **旗竿地でも、竿の幅（＝間口）が4m以上なら整形地と同じ扱い**にする。
+# 付表6も4mで線を引いている。竿の幅が4m未満の旗竿地は、接道の「間口」で
+# すでに2点引かれている（工事車両・駐車・法43条の余裕）。ここで引く3点は
+# 使いにくさと売るときの評価の分で、理由が違うので二重には数えない。
+#
+# 高さの2mは、宅地造成及び特定盛土等規制法施行令3条（e-Gov
+# 337CO0000000016）。切土で高さ2mを超える崖を生ずるものなどが規制の
+# 対象になる。崖は同令1条で、勾配が30度を超える土地。擁壁や造成の費用は
+# 一次情報が無いので、金額は出さない。
+
+LAND_SHAPES = (
+    ("unknown", "未確認"),
+    ("regular", "整形地（ほぼ長方形）"),
+    ("flag", "旗竿地（細い通路の奥に敷地がある）"),
+    ("irregular", "不整形地（三角・台形・L字など）"),
+)
+LAND_LEVELS = (
+    ("unknown", "未確認"),
+    ("flat", "ほぼ平ら（道路とほぼ同じ高さ）"),
+    ("step", "道路と高低差がある（2m以下）"),
+    ("slope", "敷地の中が傾斜している"),
+    ("cliff", "道路と2mを超える高低差・がけがある"),
+)
+SHAPE_DEDUCT = {"flag": 3.0, "irregular": 2.0}         # 資産性から引く点
+LEVEL_DEDUCT = {"step": 2.0, "slope": 2.0, "cliff": 5.0}  # リスクから引く点
+FLAG_FULL_FRONTAGE_M = 4.0     # 竿の幅がこれ以上なら整形地と同じ
+LONG_POLE_M = 20.0             # 東京都の安全条例で、竿の幅の基準が変わる長さ
+CLIFF_M = 2.0
+# 形・高さが未確認のときに、充足度に掛ける割合
+UNKNOWN_SUFF = 0.85
+
+
+def effective_shape(shape: str, frontage_m: Optional[float]) -> str:
+    """採点に使う形。竿の幅が4m以上の旗竿地は、整形地と同じに扱う。"""
+    if shape == "flag" and frontage_m is not None \
+            and frontage_m >= FLAG_FULL_FRONTAGE_M:
+        return "regular"
+    return shape if shape in dict(LAND_SHAPES) else "unknown"
+
+
+def _minus_points(cat: CategoryScore, pts: float) -> CategoryScore:
+    raw = max(0.0, cat.raw - pts / cat.weight) if cat.weight else cat.raw
+    return replace(cat, raw=round(raw, 3), points=round(cat.weight * raw, 1))
+
+
+def apply_shape(cat: CategoryScore, subj) -> CategoryScore:
+    """資産性に、土地の形を反映する。"""
+    shape = getattr(subj, "land_shape", "unknown") or "unknown"
+    frontage = getattr(subj, "frontage_m", None)
+    eff = effective_shape(shape, frontage)
+    minus, plus = list(cat.minus), list(cat.plus)
+    reason = cat.reason
+    if eff == "unknown":
+        return replace(cat, sufficiency=round(cat.sufficiency * UNKNOWN_SUFF, 2),
+                       reason=reason + "・土地の形は未確認")
+    if shape == "flag" and eff == "regular":
+        reason += f"・旗竿地（竿の幅{frontage}m。4m以上なので整形地と同じ扱い）"
+        return replace(cat, reason=reason)
+    if eff == "regular":
+        return replace(cat, reason=reason + "・整形地")
+    pts = SHAPE_DEDUCT[eff]
+    if eff == "flag":
+        width = f"竿の幅{frontage}m" if frontage is not None else "竿の幅が未入力"
+        minus.append(f"旗竿地（{width}）。奥の敷地は日当たりと駐車の配置が"
+                     "限られ、売るときの評価も整形地より低くなりやすい土地です")
+        reason += "・旗竿地"
+    else:
+        minus.append("不整形地。建物を置けない部分が出やすく、売るときの評価も"
+                     "整形地より低くなりやすい土地です")
+        reason += "・不整形地"
+    return replace(_minus_points(cat, pts), reason=reason, minus=minus,
+                   plus=plus)
+
+
+def apply_level(cat: CategoryScore, subj,
+                retaining: Optional[str] = None) -> CategoryScore:
+    """リスクに、道路との高さ・敷地の傾きを反映する。
+
+    retaining はPROの擁壁の答え。擁壁に検査済証があるなら、減点を半分に
+    する（擁壁が確認を受けている分、崩れる心配と作り直しの心配が減る）。
+    """
+    level = getattr(subj, "land_level", "unknown") or "unknown"
+    if level not in dict(LAND_LEVELS):
+        level = "unknown"
+    reason = cat.reason
+    if level == "unknown":
+        return replace(cat, sufficiency=round(cat.sufficiency * UNKNOWN_SUFF, 2),
+                       reason=reason + "・道路との高さは未確認")
+    if level == "flat":
+        return replace(cat, reason=reason + "・道路とほぼ同じ高さ")
+    pts = LEVEL_DEDUCT[level]
+    certified = (retaining == "certified" and level in ("step", "cliff"))
+    if certified:
+        pts = pts / 2
+    minus = list(cat.minus)
+    if level == "cliff":
+        minus.append("道路と2mを超える高低差か、がけがあります。擁壁の検査済証と、"
+                     "都道府県のがけ条例に当たるかを確かめてください")
+        reason += "・2mを超える高低差・がけ"
+    elif level == "step":
+        minus.append("道路と高低差があります。土留めや階段、駐車場の造成の工事が"
+                     "出ることがあります")
+        reason += "・道路と高低差あり"
+    else:
+        minus.append("敷地の中が傾斜しています。平らにする造成や、基礎を深くする"
+                     "工事が出ることがあります")
+        reason += "・敷地が傾斜"
+    if certified:
+        reason += "（擁壁の検査済証ありのため減点は半分）"
+    return replace(_minus_points(cat, pts), reason=reason, minus=minus)
+
+
+def level_refund(cat: CategoryScore, subj, retaining: Optional[str]
+                 ) -> CategoryScore:
+    """PROで擁壁に検査済証があると分かったら、高低差の減点を半分戻す。
+
+    無料の診断は擁壁を聞いていないので、apply_level は全額引いている。
+    PROの答えが来たところで、半分を戻す（apply_level(retaining=...) と
+    同じ結果になる）。
+    """
+    level = getattr(subj, "land_level", "unknown") or "unknown"
+    if retaining != "certified" or level not in ("step", "cliff"):
+        return cat
+    back = LEVEL_DEDUCT[level] / 2
+    raw = min(1.0, cat.raw + back / cat.weight) if cat.weight else cat.raw
+    return replace(cat, raw=round(raw, 3), points=round(cat.weight * raw, 1),
+                   reason=cat.reason + "（擁壁の検査済証ありのため、高低差の"
+                   "減点は半分）")
+
+
+def shape_level_notes(subj) -> Tuple[List[str], List[CriticalRisk]]:
+    """要確認の文と、重大リスク。点数には入れない注意をここで出す。"""
+    confirm: List[str] = []
+    risks: List[CriticalRisk] = []
+    shape = getattr(subj, "land_shape", "unknown") or "unknown"
+    level = getattr(subj, "land_level", "unknown") or "unknown"
+    pole = getattr(subj, "pole_length_m", None)
+    if shape == "unknown":
+        confirm.append("土地の形: 整形地か、旗竿地・不整形地かを、販売図面か"
+                       "公図で確認してください")
+    if level == "unknown":
+        confirm.append("高さ: 道路との高低差と、敷地の傾きを現地で確認してください")
+    if shape == "flag" and pole and pole > LONG_POLE_M:
+        confirm.append(
+            f"路地状部分: 竿の部分が{pole}mあります。都道府県の条例で、竿の長さ"
+            "に応じて必要な幅が決められていることがあります（東京都の建築安全"
+            "条例では、20mを超えると幅3m以上。江戸川区の手引きによる）。"
+            "市区町村の建築指導課で確認してください")
+    if level == "cliff":
+        risks.append(CriticalRisk(
+            "高低差・がけ", "medium", "unknown",
+            "道路と2mを超える高低差か、がけがあります。擁壁の検査済証、"
+            "都道府県のがけ条例、宅地造成の規制区域かどうかを確かめてください。"
+            "擁壁や造成の費用は、いまの診断では出せません"))
+    return confirm, risks
+
+
 def _reweight(cat: CategoryScore, weight: int) -> CategoryScore:
     """戸建の配点で作られたスコアを、土地の配点に載せ替える。"""
     return replace(cat, weight=weight, points=round(weight * cat.raw, 1))
@@ -407,12 +574,13 @@ def build_land_diagnosis(subj: LandSubject,
     cats = [
         score_buildable(capacity, use_district, subj.household_size),
         score_road(subj.road_width_m, subj.frontage_m, subj.road_type),
-        _reweight(score_risk(use_district, urbanization, hazard),
-                  WEIGHTS["リスク"]),
+        apply_level(_reweight(score_risk(use_district, urbanization, hazard),
+                              WEIGHTS["リスク"]), subj),
         _reweight(score_location(subj, use_district, facility, shops),
                   WEIGHTS["立地"]),
-        _reweight(score_asset(subj, use_district, population_trend,
-                              pop_change_pct), WEIGHTS["資産性"]),
+        apply_shape(_reweight(score_asset(subj, use_district,
+                                          population_trend, pop_change_pct),
+                              WEIGHTS["資産性"]), subj),
         _reweight(score_finance(loan), WEIGHTS["資金"]),
     ]
     total = max(0, min(100, int(round(sum(c.points for c in cats)))))
@@ -457,6 +625,9 @@ def build_land_diagnosis(subj: LandSubject,
                 "市街化調整区域でも建てられる例外があります。"
                 "市区町村の都市計画課で確認してください"))
     risks.extend(hazard_risks(hazard))
+    sl_confirm, sl_risks = shape_level_notes(subj)
+    to_confirm.extend(sl_confirm)
+    risks.extend(sl_risks)
 
     comment = f"総合 {total}点 / {grade}。情報充足度 {suff}%。"
     if capped:
