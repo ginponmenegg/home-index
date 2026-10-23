@@ -1372,6 +1372,8 @@ CARD_CSS_PLACEHOLDER
  table.pc thead th:first-child{width:54%}
  table.pc td{text-align:center;font-size:14px;white-space:normal}
  table.pc td.free{color:var(--sub)}
+ table.pc .pcs{display:block;font-size:12px;font-weight:400;color:var(--sub);
+   line-height:1.6;margin-top:2px}
  ul.seen{list-style:none;padding:0;margin:6px 0 0}
  ul.seen li{display:flex;gap:10px;font-size:14px;line-height:1.75;margin:0;
   padding:8px 0;border-top:1px solid var(--line)}
@@ -1666,26 +1668,33 @@ HH_RESULT_PLACEHOLDER
     <table class="pc">
      <thead><tr><th></th><th>無料</th><th>PRO</th></tr></thead>
      <tbody>
-      <tr><th>100点の採点・推定価格レンジ</th>
+      {# 2026-10-23。PROで実際に出るものを並べる。行は短く、例は小さく添える。 #}
+      <tr><th>採点・推定価格レンジ<span class="pcs">計算は無料もPROも同じ</span></th>
        <td class="free">○</td><td>○</td></tr>
+      <tr><th>内見・書類の答えを点数に反映<span class="pcs">{% if pc_kind == 'mansion' %}修繕の履歴・管理・滞納・専有部の状態など{% else %}雨漏り・シロアリ・設備・境界・越境など{% endif %}</span></th>
+       <td class="free">—</td><td>○</td></tr>
       <tr><th>情報充足度</th>
        <td class="free">{{d.suff}}%</td><td>上がる</td></tr>
-      <tr><th>仲介業者に聞くこと</th><td class="free">—</td><td>○</td></tr>
-      <tr><th>重要事項説明書の、どこを見るか</th>
+      <tr><th>回答からの重大リスク判定<span class="pcs">再建築・境界・越境など</span></th>
        <td class="free">—</td><td>○</td></tr>
-      <tr><th>諸費用まで含めた資金計画（PDF）</th>
+      <tr><th>手取り・教育費で見た返済<span class="pcs">無料は税込年収で計算</span></th>
        <td class="free">—</td><td>○</td></tr>
+      <tr><th>仲介業者に聞くこと・重説で読む欄</th>
+       <td class="free">—</td><td>○</td></tr>
+      <tr><th>契約前チェック（PDF）<span class="pcs">上の2つと資金計画を1冊に</span></th>
+       <td class="free">—</td><td>○</td></tr>
+      {% if pc_kind == 'new' %}<tr><th>新築の確認<span class="pcs">検査済証の日付・10年の責任・アフターサービス</span></th>
+       <td class="free">—</td><td>○</td></tr>{% endif %}
+      <tr><th>結果の保存</th>
+       <td class="free">{{pc_save}}件</td><td>無制限</td></tr>
      </tbody>
     </table>
    </div>
    <p class="muted" style="margin:10px 0 0">
-    「無料」の列は、いまのこの診断で実際に出ている数字です。<b>情報充足度</b>は、
-    上で「未確認」として点数に入れていない項目に答えた分だけ上がります。<br>
-    <b>資金計画</b>は、仲介手数料・印紙税・登録免許税・不動産取得税・司法書士報酬・
-    火災保険を積み上げ、金利が上がった場合の返済額、繰上返済の効果、住宅ローン控除、
-    引渡日に売主へ払う精算金まで出します。<br>
-    <b>重要事項説明書</b>は、この物件で効く欄を根拠の条文つきで並べます。<br>
-    推定価格レンジの計算は無料もPROも同じで、PROで価格が動くことはありません。
+    「無料」の列は、この診断の実際の数字です。価格の計算と採点の仕方は無料も
+    PROも同じで、PROで甘くなることはありません。<br>
+    資金計画は、諸費用の内訳・金利が上がった場合・繰上返済・住宅ローン控除・
+    引渡日の精算金まで出します。
    </p>
    {% if plan_price %}
    <p class="muted" style="margin:10px 0 0"><b>PRO　{{plan_price}}</b>
@@ -4608,6 +4617,11 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
         RESULT, s=sctx, price_man=man(subject.price), age=age, save=save,
         sample=bool(sample),
         p=price_ctx, d=dctx, loan=loan, hh=household,
+        # 比較表の出し分け（マンション／新築戸建／中古戸建）と、無料の保存件数
+        pc_kind=("mansion" if _trial_kind(subject) == "mansion" else
+                 "new" if getattr(subject, "property_type", "")
+                 == "shinchiku_kodate" else "kodate"),
+        pc_save=saved.FREE_LIMIT,
         # どの行を畳めるか。**中に入れるものが無い行は畳まない。**空の箱を
         # 開かせると、押した人が損をする。「詳しく」の札が出ている行だけが
         # 開く形にすると、押せる場所が一目で分かる。

@@ -318,3 +318,33 @@ def test_the_plan_page_says_who_it_is_for_and_what_comes_out(billing):
     assert "お支払い済みの期間の最後まで使えます" in s
     assert "退会" not in s, "退会の手続きは無い。解約と書く"
 
+
+
+def test_the_comparison_lists_what_pro_actually_adds():
+    """2026-10-23。表が5行で、PROで出せるものの半分しか載っていなかった。"""
+    import re
+    h = _client().post("/diagnose", data=FREE_INPUT).data.decode("utf-8")
+    i = h.find("無料でここまで／PROでここまで")
+    card = re.sub(r"<[^>]+>", " ", h[i:h.find("</table>", i)])
+    for word in ("内見・書類の答えを点数に反映", "回答からの重大リスク判定",
+                 "手取り・教育費で見た返済", "契約前チェック（PDF）", "結果の保存",
+                 "雨漏り・シロアリ"):
+        assert word in card, word
+    assert "新築の確認" not in card, "中古には出さない"
+    assert "計算は無料もPROも同じ" in card, "価格はPROでも同じと書く"
+
+
+def test_the_comparison_fits_the_property_type():
+    import re
+    c = _client()
+    h = c.post("/diagnose", data=dict(FREE_INPUT, ptype="shinchiku_kodate")
+               ).data.decode("utf-8")
+    i = h.find("無料でここまで／PROでここまで")
+    assert "新築の確認" in h[i:h.find("</table>", i)]
+    h = c.post("/mansion_diagnose", data=dict(
+        address="神奈川県平塚市紅谷町10-1", price="3500", area="70",
+        byear="2005", station="8")).data.decode("utf-8")
+    i = h.find("無料でここまで／PROでここまで")
+    assert i > 0
+    card = re.sub(r"<[^>]+>", " ", h[i:h.find("</table>", i)])
+    assert "修繕の履歴" in card and "雨漏り" not in card
