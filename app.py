@@ -1563,7 +1563,7 @@ BRAND_BAR
    <span class="why">保存すると、他の物件と項目ごとに並べて比べられます。
     <a href="/mypage">保存した物件を見る</a></span>
   {% else %}
-   <a class="b" href="/login" target="_blank" rel="noopener">ログインして保存する</a>
+   <a class="b" href="/login" target="_blank" rel="noopener">{% if trial_state == 'guest' %}会員登録して保存する（1物件はPROも無料）{% else %}ログインして保存する{% endif %}</a>
    <span class="why">保存すると、他の物件と項目ごとに並べて比べられます。<br>
     ログイン画面は<b>別のタブで開きます</b>。この結果は開いたまま残るので、
     ログインしたあとこの画面に戻って保存してください。</span>
@@ -1689,7 +1689,8 @@ HH_RESULT_PLACEHOLDER
    </p>
    {% if plan_price %}
    <p class="muted" style="margin:10px 0 0"><b>PRO　{{plan_price}}</b>
-    ／ お申し込みにはメールアドレスでのログインが必要です。いつでも解約できます。
+    ／ お申し込みにログインは要りません。会員登録（メールアドレスだけ）を
+    すると、1物件だけ無料で試せます。いつでも解約できます。
     解約しても、お支払い済みの期間の最後まで使えます。</p>
    {% endif %}
    PLAN_LINKS_PLACEHOLDER
@@ -1717,7 +1718,8 @@ HH_RESULT_PLACEHOLDER
    {% if plan_price %}
    <p style="margin:12px 0 0"><b>{{plan_price}}</b>
     <span class="muted">／ いつでも解約できます。解約しても、お支払い済みの
-    期間の最後まで使えます。お申し込みにはメールアドレスでのログインが必要です。</span></p>
+    期間の最後まで使えます。お申し込みにログインは要りません。会員登録
+    （メールアドレスだけ）をすると、1物件だけ無料で試せます。</span></p>
    {% endif %}
    <form method="post" action="{{handover_action}}">
     {% for k, val in handover.items() %}
@@ -1754,6 +1756,19 @@ HH_RESULT_PLACEHOLDER
     <a href="/sample/finance.pdf">見本（PDF）を開く</a>　・
     <a href="/sample/finance">資金計画の見本を見る</a>
    </p>
+   {% if trial_state == 'guest' %}
+   <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px;margin:0 0 12px;font-size:14px;line-height:1.85">
+    <b>会員登録（メールアドレスだけ）で、この物件の契約前チェックを無料で作れます。</b>
+    1物件だけのお試しです。会員登録は別のタブで開くので、登録が済んだら
+    この画面に戻り、下のボタンを押してください。<br>
+    <a href="/login" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;font-weight:700">会員登録して、この物件で試す（別のタブ） →</a>
+   </div>
+   {% elif trial_state == 'unused' %}
+   <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px;margin:0 0 12px;font-size:14px;line-height:1.85">
+    <b>この物件で、契約前チェックを無料で作れます</b>（1物件だけのお試し）。
+    下のボタンを押すと、この物件がお試しの物件になります。
+   </div>
+   {% endif %}
    {% endif %}
    {% if plan_price %}
    <p style="margin:12px 0 0"><b>{{plan_price}}</b>
@@ -1973,7 +1988,8 @@ LP = """<!doctype html><html lang="ja"><head>
  "description":"中古戸建の価格・立地・災害リスク・住宅ローン返済を公的データから100点で採点する無料の診断ツール。",
  "publisher":{"@id":"CANONICAL_URL#org"}},
 {"@type":"FAQPage","mainEntity":[
-{"@type":"Question","name":"本当に無料ですか。あとから請求されませんか。","acceptedAnswer":{"@type":"Answer","text":"無料です。会員登録も不要で、料金が発生する画面はありません。物件の仲介やローンの紹介も行わないため、診断後に営業の連絡が来ることもありません。"}},
+{"@type":"Question","name":"本当に無料ですか。あとから請求されませんか。","acceptedAnswer":{"@type":"Answer","text":"購入診断（戸建・マンション・土地）は無料で、会員登録も要りません。診断のあとに請求が来ることはありません。有料なのは、申し込んだ方だけが使うPRO（月額）で、申し込まない限り料金は発生しません。物件の仲介やローンの紹介も行わないため、診断後に営業の連絡が来ることもありません。"}},
+{"@type":"Question","name":"PROは何が違いますか。試せますか。","acceptedAnswer":{"@type":"Answer","text":"PROでは、内見や書類で分かったことを入れて診断し直し、重要事項説明の日に持っていく「契約前チェック」（PDF）を物件ごとに作れます。仲介業者に聞くこと、重要事項説明書で読む欄、諸費用まで含めた資金計画を1冊にまとめたものです。会員登録（メールアドレスだけ）をすると、1物件だけ無料で試せます。料金はプランの画面に書いています。"}},
 {"@type":"Question","name":"入力した年収や住所は保存されますか。","acceptedAnswer":{"@type":"Answer","text":"診断の計算に使うだけで、営業目的では利用しません。詳細はプライバシーポリシーに記載しています。気になる場合は、年収や頭金を概算で入力しても価格・リスクの診断は機能します。"}},
 {"@type":"Question","name":"物件のURLを貼れば診断できますか。","acceptedAnswer":{"@type":"Answer","text":"URLではなく、物件ページに書かれている説明文（価格・所在地・面積・築年・駅徒歩など）をコピーして貼り付けてください。ご自身がコピーした情報を解析する形をとっています。販売図面のPDFも、開いて文字をコピーすれば同じように読み取れます。"}},
 {"@type":"Question","name":"新築でも診断できますか。","acceptedAnswer":{"@type":"Answer","text":"できます。新築は近隣の新築成約事例を優先し、土地相当分と建物相当分を分けて価格を推定します。中古とは類似度の重み付けを変えています。"}},
@@ -2700,7 +2716,11 @@ LP_MENU_PLACEHOLDER
     <h2>使う前に、よくいただく質問。</h2>
     <details>
       <summary>本当に無料ですか。あとから請求されませんか。</summary>
-      <p>無料です。会員登録も不要で、料金が発生する画面はありません。物件の仲介やローンの紹介も行わないため、診断後に営業の連絡が来ることもありません。</p>
+      <p>購入診断（戸建・マンション・土地）は無料で、会員登録も要りません。診断のあとに請求が来ることはありません。有料なのは、申し込んだ方だけが使うPRO（月額）で、申し込まない限り料金は発生しません。物件の仲介やローンの紹介も行わないため、診断後に営業の連絡が来ることもありません。</p>
+    </details>
+    <details>
+      <summary>PROは何が違いますか。試せますか。</summary>
+      <p>PROでは、内見や書類で分かったことを入れて診断し直し、重要事項説明の日に持っていく「契約前チェック」（PDF）を物件ごとに作れます。仲介業者に聞くこと、重要事項説明書で読む欄、諸費用まで含めた資金計画を1冊にまとめたものです。会員登録（メールアドレスだけ）をすると、1物件だけ無料で試せます。料金はプランの画面に書いています。</p>
     </details>
     <details>
       <summary>入力した年収や住所は保存されますか。</summary>
@@ -5500,7 +5520,7 @@ BRAND_BAR
    <span class="why">保存すると、他の土地と項目ごとに並べて比べられます。
     <a href="/mypage">保存した物件を見る</a></span>
   {% else %}
-   <a class="b" href="/login" target="_blank" rel="noopener">ログインして保存する</a>
+   <a class="b" href="/login" target="_blank" rel="noopener">{% if trial_state == 'guest' %}会員登録して保存する（1物件はPROも無料）{% else %}ログインして保存する{% endif %}</a>
    <span class="why">保存すると、他の土地と項目ごとに並べて比べられます。<br>
     ログイン画面は<b>別のタブで開きます</b>。この結果は開いたまま残るので、
     ログインしたあとこの画面に戻って保存してください。</span>
@@ -5899,7 +5919,8 @@ HH_RESULT_PLACEHOLDER
    ありません。</p>
   {% if plan_price %}
   <p class="muted" style="margin:10px 0 0"><b>PRO　{{plan_price}}</b>
-   ／ お申し込みにはメールアドレスでのログインが必要です。いつでも解約できます。
+   ／ お申し込みにログインは要りません。会員登録（メールアドレスだけ）を
+    すると、1物件だけ無料で試せます。いつでも解約できます。
    解約しても、お支払い済みの期間の最後まで使えます。</p>
   {% endif %}
   PLAN_LINKS_PLACEHOLDER
@@ -5922,7 +5943,8 @@ HH_RESULT_PLACEHOLDER
   {% if plan_price %}
   <p style="margin:12px 0 0"><b>{{plan_price}}</b>
    <span class="muted">／ いつでも解約できます。解約しても、お支払い済みの
-   期間の最後まで使えます。お申し込みにはメールアドレスでのログインが必要です。</span></p>
+   期間の最後まで使えます。お申し込みにログインは要りません。会員登録
+    （メールアドレスだけ）をすると、1物件だけ無料で試せます。</span></p>
   {% endif %}
   <form method="post" action="/pro/land/start" style="margin-top:10px">
    {% for k, val in handover.items() %}
@@ -8076,13 +8098,17 @@ def _inject_trial_note():
         if not billing_on() or not accounts_on():
             return {}
         u = current_user()
-        if not u or accounts.is_pro(u):
-            return {}
+        # trial_state は、ログイン前の人への案内（結果画面・保存ボタン・
+        # ログイン画面）にも使う。guest / unused / used / pro
+        if not u:
+            return {"trial_state": "guest"}
+        if accounts.is_pro(u):
+            return {"trial_state": "pro"}
         if accounts.trial_unused(u):
-            return {"trial_note": (
+            return {"trial_state": "unused", "trial_note": (
                 "<b>お試し中です。</b>1物件だけ、PROを無料でお使いいただけます。"
                 "最初に診断した物件が、お試しの物件になります。")}
-        return {"trial_note": (
+        return {"trial_state": "used", "trial_note": (
             "<b>お試しの物件があります。</b>同じ物件（同じ住所）なら、入力を"
             "直して何度でも診断し直せます。ほかの物件はPROのお申し込みが"
             "必要です。")}
@@ -8167,13 +8193,15 @@ LOGIN_PAGE = """
  {% else %}
   {% if for_plan %}
   <div class="note" style="margin:0 0 12px"><b>PROのお申込みの続きです。</b>
-   お申込みには、メールアドレスでのログインが必要です（解約やお支払いの確認を、
-   ご本人だけができるようにするためです）。メールのリンクを押すと、
-   <b>お申込みの確認画面に戻ります。</b></div>
+   ログインすると、お申込みがこのアカウントに結びつきます。メールのリンクを
+   押すと、<b>お申込みの確認画面に戻ります。</b>ログインせずに申し込むことも
+   できます（メールアドレスは決済の画面で入れます）。</div>
   {% endif %}
   <p class="lead">パスワードはありません。メールアドレスを入れると、
    ログイン用のリンクをお送りします。<br>
-   保存した診断を、あとから別の端末でも見られるようにするためのものです。</p>
+   保存した診断を、あとから別の端末でも見られるようにするためのものです。
+   {% if trial_state == 'guest' %}<br>会員登録すると、<b>1物件だけPROを無料で試せます</b>
+   （その物件の契約前チェックのPDFも作れます）。{% endif %}</p>
   {% if error %}<div class="note warn">{{ error }}</div><br>{% endif %}
   <form method="post" action="/login">
    {% if nxt %}<input type="hidden" name="next" value="{{ nxt }}">{% endif %}

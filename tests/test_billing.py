@@ -1046,3 +1046,51 @@ def test_the_check_button_on_a_free_result_starts_the_trial(billing):
     h = c.post("/pro/diagnose", data=dict(_KODATE, address=_ADDR_B)
                ).get_data(as_text=True)
     assert "ここから先はPROです" not in h
+
+
+# ---- ログイン前の人への案内（2026-10-23）---------------------------------
+
+def test_a_visitor_is_told_about_the_trial_where_they_are(billing):
+    os.environ["SHINDAN_MOCK"] = "1"
+    c = billing.app.app.test_client()
+    h = c.post("/diagnose", data=dict(_KODATE, address=_ADDR_A,
+                                      ptype="chuko_kodate")).get_data(as_text=True)
+    assert "この物件の契約前チェックを無料で作れます" in h
+    assert "会員登録して保存する（1物件はPROも無料）" in h
+    h = c.get("/login").get_data(as_text=True)
+    assert "1物件だけPROを無料で試せます" in h
+
+
+def test_a_member_who_has_not_tried_yet_is_told_this_property_works(billing):
+    os.environ["SHINDAN_MOCK"] = "1"
+    c, _uid = _login(billing, "trial5@example.com")
+    h = c.post("/diagnose", data=dict(_KODATE, address=_ADDR_A,
+                                      ptype="chuko_kodate")).get_data(as_text=True)
+    assert "この物件で、契約前チェックを無料で作れます" in h
+    assert "会員登録して、この物件で試す" not in h
+
+
+def test_no_screen_still_says_login_is_needed_to_subscribe(billing):
+    os.environ["SHINDAN_MOCK"] = "1"
+    c = billing.app.app.test_client()
+    pages = [c.post("/diagnose", data=dict(_KODATE, address=_ADDR_A,
+                                           ptype="chuko_kodate")),
+             c.get("/plan"), c.get("/plan/confirm"), c.get("/login?next=/plan/confirm")]
+    for r in pages:
+        h = r.get_data(as_text=True)
+        assert "ログインが必要です" not in h
+
+
+def test_the_top_faq_no_longer_says_nothing_is_paid(billing):
+    import json
+    import re
+    h = billing.app.app.test_client().get("/").get_data(as_text=True)
+    assert "料金が発生する画面はありません" not in h
+    assert "PROは何が違いますか。試せますか。" in h
+    names = []
+    for m in re.finditer(r'<script type="application/ld\+json">(.*?)</script>',
+                         h, re.S):
+        for node in json.loads(m.group(1)).get("@graph", []):
+            if node.get("@type") == "FAQPage":
+                names = [q["name"] for q in node["mainEntity"]]
+    assert "PROは何が違いますか。試せますか。" in names, "構造化データも合わせる"
