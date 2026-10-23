@@ -9588,8 +9588,14 @@ COPY_GUIDE = (COPY_GUIDE
 
 @app.route("/copy-guide")
 def copy_guide():
-    """物件情報のコピーの仕方。フォームの注意書きから案内している。"""
-    return COPY_GUIDE
+    """物件情報のコピーの仕方。フォームの注意書きから案内している。
+
+    テンプレートとして描く。以前は文字列のまま返していて、canonical が
+    「{{ request.url_root... }}/copy-guide」のまま出ていた。Google はそれを
+    相対URLとして読み、存在しないページ（404）として報告していた
+    （2026-10-23、Search Console で見つけた）。
+    """
+    return render_template_string(COPY_GUIDE)
 
 
 PRO_FINANCE_FORM = """

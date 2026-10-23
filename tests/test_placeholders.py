@@ -86,3 +86,20 @@ def test_no_real_property_data_anywhere_in_the_repository():
 def io_read(path):
     import io
     return io.open(path, encoding="utf-8", errors="ignore").read()
+
+
+def test_no_page_prints_a_template_tag():
+    """テンプレートを描かずに返すと、{{ }} がそのまま出る（2026-10-23）。
+
+    /copy-guide の canonical が「{{ request.url_root... }}」のままで、
+    Google が存在しないURLとして拾っていた。
+    """
+    import app as webapp
+    c = webapp.app.test_client()
+    for path in ("/", "/buy", "/mansion", "/land", "/copy-guide", "/guide",
+                 "/plan", "/privacy", "/terms", "/about", "/pro",
+                 "/sample", "/sample/land", "/sample/finance"):
+        h = c.get(path).get_data(as_text=True)
+        assert "{{" not in h and "{%" not in h, path
+    h = c.get("/copy-guide").get_data(as_text=True)
+    assert 'href="http://localhost/copy-guide"' in h
