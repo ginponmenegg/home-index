@@ -147,3 +147,20 @@ def test_a_bad_value_is_treated_as_unknown():
                                            land_level="moon", pole_length="-3"))
     assert subj.land_shape == "unknown" and subj.land_level == "unknown"
     assert subj.pole_length_m is None
+
+
+def test_the_land_comparison_lists_what_land_pro_adds():
+    """2026-10-23。土地の無料とPROの比較表を、土地のPROの中身に合わせた。"""
+    import re
+    import app
+    v = app._land_example_v()
+    v.update(BASE)
+    h = _client().post("/land_diagnose", data=v).get_data(as_text=True)
+    i = h.find("無料でここまで／PROでここまで")
+    assert i > 0
+    card = re.sub(r"<[^>]+>", " ", h[i:h.find("</table>", i)])
+    for word in ("現地と書類の答えを点数に反映", "建てられる広さの計算し直し",
+                 "条件を揃えた成約の分布", "つなぎ融資の利息", "総額の積み上げ",
+                 "手取り・教育費で見た返済", "着工までの手続き", "結果の保存"):
+        assert word in card, word
+    assert "契約前チェック" not in card, "土地にはまだ無い"

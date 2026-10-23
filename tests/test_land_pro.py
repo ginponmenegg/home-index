@@ -469,7 +469,7 @@ def test_the_land_sheet_covers_what_matters_on_a_plot(client):
 def test_the_free_result_shows_what_pro_adds(client):
     free = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
     assert "無料でここまで／PROでここまで" in free
-    assert "つなぎ融資の利息と、支払いの時系列" in free
+    assert "つなぎ融資の利息と支払いの時系列" in free
     assert "条件を揃えた成約の分布" in free
     # いまの診断の実数を「無料」の列に出す
     assert "情報充足度" in free

@@ -5907,30 +5907,35 @@ HH_RESULT_PLACEHOLDER
    <table class="pc">
     <thead><tr><th></th><th>無料</th><th>PRO</th></tr></thead>
     <tbody>
-     <tr><th>100点の採点・近隣の坪単価の分布</th>
+     {# 2026-10-23。土地のPROで実際に出るものを並べる。列は記号か短い語だけ。 #}
+     <tr><th>採点・近隣の坪単価の分布<span class="pcs">計算は無料もPROも同じ</span></th>
       <td class="free">○</td><td>○</td></tr>
+     <tr><th>現地と書類の答えを点数に反映<span class="pcs">ライフライン・地盤・擁壁・古家・接道の種類など</span></th>
+      <td class="free">—</td><td>○</td></tr>
      <tr><th>情報充足度</th>
       <td class="free">{{d.suff}}%</td><td>上がる</td></tr>
-     <tr><th>つなぎ融資の利息と、支払いの時系列</th>
+     <tr><th>建てられる広さの計算し直し<span class="pcs">角地の指定・セットバック後の実測面積</span></th>
       <td class="free">—</td><td>○</td></tr>
-     <tr><th>総額の積み上げ</th><td class="free">—</td><td>○</td></tr>
-     <tr><th>現地と書類の確認（19項目）</th>
+     <tr><th>条件を揃えた成約の分布<span class="pcs">道路・広さ・建ぺい率が近いものだけ</span></th>
       <td class="free">—</td><td>○</td></tr>
-     <tr><th>重要事項説明書の、どこを見るか</th>
+     <tr><th>つなぎ融資の利息と支払いの時系列</th>
       <td class="free">—</td><td>○</td></tr>
-     <tr><th>条件を揃えた成約の分布</th>
+     <tr><th>総額の積み上げ<span class="pcs">付帯工事・外構・諸費用</span></th>
       <td class="free">—</td><td>○</td></tr>
+     <tr><th>手取り・教育費で見た返済<span class="pcs">無料は税込年収で計算</span></th>
+      <td class="free">—</td><td>○</td></tr>
+     <tr><th>重説で読む欄・着工までの手続き<span class="pcs">農地転用・埋蔵文化財など</span></th>
+      <td class="free">—</td><td>○</td></tr>
+     <tr><th>結果の保存</th>
+      <td class="free">{{pc_save}}件</td><td>無制限</td></tr>
     </tbody>
    </table>
   </div>
   <p class="muted" style="margin:10px 0 0">
-   「無料」の列は、いまのこの診断で実際に出ている数字です。
-   <b>情報充足度</b>は、上で「未確認」として点数に入れていない項目に
-   答えた分だけ上がります。<br>
-   <b>角地の指定</b>が確認できると、建ぺい率が10%上がって、建てられる
-   1階の広さが変わります（建築基準法53条3項2号）。<br>
-   採点のしかたは無料もPROも同じで、PROで点数の出し方が変わることは
-   ありません。</p>
+   「無料」の列は、この診断の実際の数字です。採点の仕方は無料もPROも同じで、
+   PROで甘くなることはありません。<br>
+   角地の指定が確認できると、建ぺい率が10%上がり、建てられる1階の広さが
+   変わります（建築基準法53条3項2号）。</p>
   {% if plan_price %}
   <p class="muted" style="margin:10px 0 0"><b>PRO　{{plan_price}}</b>
    ／ お申し込みにログインは要りません。会員登録（メールアドレスだけ）を
@@ -6458,7 +6463,7 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
                    pro=bool(pro), handover=handover),
         fig=fig,
         loan=loan, capped=capped, warnings=_public_warnings(res.warnings),
-        hh=hh_ctx,
+        hh=hh_ctx, pc_save=saved.FREE_LIMIT,
         fin=fin, pro=pro, handover=handover, procedures=procedures,
         matched=matched, save=save, sample=bool(f.get("sample")),
         plan_price=(price_now()[1] if billing_on() else None),
