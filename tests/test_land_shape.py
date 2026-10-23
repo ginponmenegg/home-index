@@ -163,4 +163,42 @@ def test_the_land_comparison_lists_what_land_pro_adds():
                  "条件を揃えた成約の分布", "つなぎ融資の利息", "総額の積み上げ",
                  "手取り・教育費で見た返済", "着工までの手続き", "結果の保存"):
         assert word in card, word
-    assert "契約前チェック" not in card, "土地にはまだ無い"
+    assert "契約前チェック（PDF）" in card
+
+
+# ---- 土地の契約前チェック（2026-10-23）-----------------------------------
+
+def _land_pro_html():
+    import app
+    v = app._land_pro_defaults()
+    v.update(BASE, settlement="2027-01-15", completion="2027-08-31",
+             bridge_rate="2.0", own_funds="300")
+    return _client().post("/pro/land", data=v).get_data(as_text=True)
+
+
+def test_land_pro_makes_a_pre_contract_check_pdf():
+    import io
+    import re
+    import pytest
+    pdfplumber = pytest.importorskip("pdfplumber")
+    h = _land_pro_html()
+    m = re.search(r'action="/pro/land/check.pdf">\s*<input type="hidden" '
+                  r'name="dx" value="([^"]+)"', h)
+    assert m, "PROの結果に、作るボタンが無い"
+    r = _client().post("/pro/land/check.pdf", data={"dx": m.group(1)})
+    assert r.mimetype == "application/pdf"
+    with pdfplumber.open(io.BytesIO(r.data)) as pdf:
+        t = "\n".join((p.extract_text() or "") for p in pdf.pages)
+    for word in ("契約前チェック", "確認すること", "回答・メモ", "総額の積み上げ",
+                 "つなぎ融資", "いつ、いくら要るか", "住宅ローン本体"):
+        assert word in t, word
+    assert "未定" in t
+
+
+def test_a_tampered_or_foreign_snapshot_makes_no_land_pdf():
+    import app
+    c = _client()
+    r = c.post("/pro/land/check.pdf", data={"dx": "broken"})
+    assert r.status_code == 302
+    house = app.sign_snapshot({"title": "戸建", "total": 70})
+    assert c.post("/pro/land/check.pdf", data={"dx": house}).status_code == 302

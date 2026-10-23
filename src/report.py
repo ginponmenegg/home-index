@@ -110,9 +110,10 @@ def _diagnosis_pages(story, d, st, W):
         f"作成日 {today}　／　{d.get('title', '')}", st["sub"]))
     story.append(Paragraph(
         "重要事項説明と契約の前に、手元に置いておくための1冊です。"
-        "1. この物件の要点　2. 仲介業者に聞くこと（回答を書き込む欄つき）　"
-        "3. 重要事項説明書で読む欄　4. 諸費用まで含めた資金計画、の順に"
-        "並べています。", st["note"]))
+        + (d.get("contents") or
+           "1. この物件の要点　2. 仲介業者に聞くこと（回答を書き込む欄つき）　"
+           "3. 重要事項説明書で読む欄　4. 諸費用まで含めた資金計画、の順に"
+           "並べています。"), st["note"]))
     if d.get("total") is None:
         story.append(Paragraph(
             "これは見本です。実在の物件ではないため、点数と注意することの節は"
@@ -142,7 +143,8 @@ def _diagnosis_pages(story, d, st, W):
 
     ask = d.get("ask") or []
     if ask:
-        story.append(Paragraph("仲介業者に聞くこと", st["h2"]))
+        story.append(Paragraph(d.get("ask_title") or "仲介業者に聞くこと",
+                               st["h2"]))
         story.append(Paragraph(
             "まだ分かっていない項目から組み立てています。答えを聞いたら、"
             "右の欄に書き込んでください。書類で確かめたものには印を。",
@@ -175,6 +177,130 @@ def _diagnosis_pages(story, d, st, W):
             story.append(Spacer(1, 3))
 
     story.append(PageBreak())
+
+
+def build_land_check_pdf(d: dict) -> bytes:
+    """土地の契約前チェック（2026-10-23）。
+
+    土地のPROには資金計画の画面が無い。代わりに、結果画面に出した
+    建てられる家・総額の積み上げ・つなぎ融資・支払いの時系列を、
+    結果画面が署名して持ち回した値のまま載せる（計算し直さない）。
+    """
+    _ensure_font()
+    st = _styles()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=18 * mm, rightMargin=18 * mm,
+        topMargin=16 * mm, bottomMargin=16 * mm,
+        title=f"{CHECK_TITLE}（土地）｜HOME INDEX PRO", author="HOME INDEX")
+    W = doc.width
+    story = []
+    _diagnosis_pages(story, d, st, W)
+
+    procs = d.get("procedures") or []
+    if procs:
+        story.append(Paragraph("着工までに要る手続き", st["h2"]))
+        for p in procs:
+            story.append(Paragraph(f"□ {p}", st["body"]))
+            story.append(Spacer(1, 3))
+
+    cap = d.get("cap") or []
+    if cap:
+        story.append(Paragraph("この土地に建てられる家", st["h2"]))
+        for line in cap:
+            story.append(Paragraph(f"・{line}", st["note"]))
+
+    money = d.get("money") or {}
+    if money.get("costs"):
+        story.append(Paragraph("総額の積み上げ", st["h2"]))
+        story.append(Paragraph(f"金額の出ている項目の合計　{money.get('total')}",
+                               st["body"]))
+        data = [[Paragraph("費目", st["cell"]), Paragraph("金額", st["cell"]),
+                 Paragraph("中身", st["cell"])]]
+        for name, amount, basis in money["costs"]:
+            data.append([Paragraph(name, st["cell"]),
+                         Paragraph(amount, st["num"]),
+                         Paragraph(basis or "", st["cellsub"])])
+        story.append(_header_style(
+            Table(data, colWidths=[W * 0.30, W * 0.20, W * 0.50],
+                  repeatRows=1), 3))
+        if money.get("unknown"):
+            story.append(Paragraph(
+                f"まだ金額の出ていない項目が{money['unknown']}件あります。合計には"
+                "入っていません。0円ではなく、いまは誰にも分からないという"
+                "意味です（地盤改良は地盤調査まで、解体は見積りまで決まりません）。",
+                st["note"]))
+
+    br = d.get("bridge") or {}
+    if br:
+        story.append(Paragraph("つなぎ融資", st["h2"]))
+        if br.get("interest"):
+            story.append(Paragraph(
+                f"利息 {br['interest']}（土地の決済から完成まで{br.get('days')}日、"
+                f"年{br.get('rate')}％、立て替える額 {br.get('principal')}）",
+                st["body"]))
+        else:
+            story.append(Paragraph("つなぎ融資の利息は計算していません。",
+                                   st["note"]))
+        draws = br.get("draws") or []
+        if draws:
+            data = [[Paragraph(h, st["cell"]) for h in
+                     ("実行するお金", "いつ", "金額", "完成まで", "利息")]]
+            for row in draws:
+                data.append([Paragraph(str(x), st["cell"]) for x in row])
+            story.append(_header_style(
+                Table(data, colWidths=[W * 0.28, W * 0.22, W * 0.18,
+                                       W * 0.14, W * 0.18], repeatRows=1), 5))
+        for n in (br.get("notes") or []):
+            story.append(Paragraph(n, st["note"]))
+
+    events = d.get("events") or []
+    if events:
+        story.append(Paragraph("いつ、いくら要るか", st["h2"]))
+        data = [[Paragraph(h, st["cell"]) for h in
+                 ("いつ", "何のお金", "金額", "どこから")]]
+        for date, name, amount, source in events:
+            data.append([Paragraph(date, st["cell"]), Paragraph(name, st["cell"]),
+                         Paragraph(amount, st["num"]),
+                         Paragraph(source or "", st["cellsub"])])
+        story.append(_header_style(
+            Table(data, colWidths=[W * 0.22, W * 0.38, W * 0.18, W * 0.22],
+                  repeatRows=1), 4))
+        story.append(Paragraph("手付金は融資の実行前に払います。", st["note"]))
+
+    loan = d.get("loan") or {}
+    if loan:
+        story.append(Paragraph("住宅ローン本体", st["h2"]))
+        rows = [("総額（土地＋建物予算）", loan.get("total", "—")),
+                ("借入額", loan.get("principal", "—")),
+                ("月々の返済（金利1.25％の試算）", loan.get("monthly", "—"))]
+        if loan.get("burden"):
+            rows.append(("返済負担率", f"{loan['burden']}％"))
+        story.append(_kv_table(rows, st, W))
+        story.append(Paragraph(
+            "総額には、外構・地盤改良・付帯工事・諸費用のうち金額の分からない"
+            "ものは入っていません。", st["note"]))
+
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(
+        "点数はルール計算であり、土地の価値や安全性を保証するものではありません。"
+        "建てられる大きさは、斜線制限・日影規制・条例を入れていない上限です。"
+        "最終判断は、現地と書類、専門家の確認を前提としてください。", st["note"]))
+
+    def _footer(canv, _doc):
+        canv.saveState()
+        canv.setFont(FONT, 7)
+        canv.setFillColor(SUB)
+        canv.drawString(18 * mm, 10 * mm,
+                        f"HOME INDEX　{CHECK_TITLE}（土地・PRO）　参考情報であり、"
+                        "最終判断は専門家の確認を前提としてください。")
+        canv.drawRightString(A4[0] - 18 * mm, 10 * mm,
+                             f"- {canv.getPageNumber()} -")
+        canv.restoreState()
+
+    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
+    return buf.getvalue()
 
 
 def build_finance_pdf(ctx: dict) -> bytes:

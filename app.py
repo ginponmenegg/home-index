@@ -5879,6 +5879,21 @@ HH_RESULT_PLACEHOLDER
  </div>
  {% endif %}
 
+ {% if land_check %}
+ <div class="card" data-html2canvas-ignore id="check" style="border-color:#111">
+  <h2>契約前チェック（PDF）</h2>
+  <p class="muted" style="margin:6px 0 10px">重要事項説明と契約の前に、手元に
+   置いておく1冊です。この土地の点数と注意すること、<b>確認すること
+   （回答を書き込む欄つき）</b>、重要事項説明書で読む欄、着工までの手続き、
+   建てられる家、総額の積み上げ、つなぎ融資と支払いの時系列を、1つのPDFに
+   まとめます。</p>
+  <form method="post" action="/pro/land/check.pdf">
+   <input type="hidden" name="dx" value="{{land_check}}">
+   <button type="submit">契約前チェックを作る（PDF）</button>
+  </form>
+ </div>
+ {% endif %}
+
  {% if d.confirm %}
  <div class="card" id="ask">
   <h2 style="margin-top:0">確認すること（{{d.confirm|length}}件）</h2>
@@ -5925,6 +5940,8 @@ HH_RESULT_PLACEHOLDER
      <tr><th>手取り・教育費で見た返済<span class="pcs">無料は税込年収で計算</span></th>
       <td class="free">—</td><td>○</td></tr>
      <tr><th>重説で読む欄・着工までの手続き<span class="pcs">農地転用・埋蔵文化財など</span></th>
+      <td class="free">—</td><td>○</td></tr>
+     <tr><th>契約前チェック（PDF）<span class="pcs">上の内容と総額・つなぎ融資を1冊に</span></th>
       <td class="free">—</td><td>○</td></tr>
      <tr><th>結果の保存</th>
       <td class="free">{{pc_save}}件</td><td>無制限</td></tr>
@@ -6452,6 +6469,13 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
         handover = {k: v for k, v in _land_pro_form_values(f).items()
                     if v not in (None, "", "unknown")}
 
+    # 契約前チェック（PDF）に載せる値。PROの結果のときだけ作る。
+    # 作り直すと外部APIを二度叩くので、画面に出したものを署名して持ち回す。
+    land_check = None
+    if pro:
+        land_check = sign_snapshot(_land_check_snapshot(
+            subject, d, cap_ctx, fin, procedures, disclosure_points, loan))
+
     circ = 2 * 3.14159265 * 58
     return render_template_string(
         LAND_RESULT, s=sctx, d=dctx, cap=cap_ctx, mk=mk,
@@ -6463,7 +6487,7 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
                    pro=bool(pro), handover=handover),
         fig=fig,
         loan=loan, capped=capped, warnings=_public_warnings(res.warnings),
-        hh=hh_ctx, pc_save=saved.FREE_LIMIT,
+        hh=hh_ctx, pc_save=saved.FREE_LIMIT, land_check=land_check,
         fin=fin, pro=pro, handover=handover, procedures=procedures,
         matched=matched, save=save, sample=bool(f.get("sample")),
         plan_price=(price_now()[1] if billing_on() else None),
@@ -7000,6 +7024,78 @@ def _run_land_pro(f):
                                matched=_matched_ctx(matched),
                                disclosure_points=disc,
                                hh_ctx=_hh_ctx(hc))
+
+
+def _land_check_snapshot(subject, d, cap, fin, procedures, disc, loan):
+    """土地の契約前チェックに載せる値（文字列だけ）。"""
+    def esc(x):
+        return html.escape(str(x), quote=False) if x is not None else ""
+
+    cap_lines = []
+    if cap.get("floor_m2"):
+        cap_lines.append(f"延床の上限 {cap['floor_m2']}㎡（{cap['floor_tsubo']}坪）")
+    if cap.get("footprint_m2"):
+        cap_lines.append(f"建築面積の上限 {cap['footprint_m2']}㎡")
+    if cap.get("coverage") or cap.get("effective_far"):
+        cap_lines.append(f"建ぺい率 {cap.get('coverage') or '—'}％ ／ "
+                         f"容積率 {cap.get('effective_far') or '—'}％")
+    cap_lines += [esc(n) for n in (cap.get("notes") or [])]
+    snap = {
+        "kind": "land",
+        "title": f"土地（PRO）　{subject.address}",
+        "total": d.total_score, "grade": d.grade, "suff": d.data_sufficiency,
+        "cats": [[c.name, c.points, c.weight, esc(c.reason)]
+                 for c in d.categories],
+        "risks": [[r.severity, r.type, r.status, esc(r.evidence)]
+                  for r in d.critical_risks],
+        "ask_title": "確認すること（仲介業者・役所に聞く）",
+        "ask": [esc(x) for x in (d.to_confirm or [])][:25],
+        "disc": [[x.where, x.law, esc(x.why)] for x in (disc or [])][:30],
+        "contents": ("1. この土地の要点　2. 確認すること（回答を書き込む欄つき）　"
+                     "3. 重要事項説明書で読む欄　4. 着工までの手続き・建てられる家・"
+                     "総額・つなぎ融資・支払いの時系列、の順に並べています。"),
+        "procedures": [esc(p) for p in (procedures or [])],
+        "cap": cap_lines,
+        "loan": {"total": loan.get("total"), "principal": loan.get("principal"),
+                 "monthly": loan.get("monthly"), "burden": loan.get("burden")},
+        "tk": accounts.trial_key("land", subject.address),
+    }
+    if fin:
+        snap["money"] = {
+            "total": fin.get("total"), "unknown": fin.get("unknown_count"),
+            # 「—」はPDFの書体で崩れるので、言葉で書く
+            "costs": [[i["name"], i["amount"] if i["known"] else "未定",
+                       esc(i["basis"])] for i in fin.get("costs") or []]}
+        snap["bridge"] = {
+            "interest": fin.get("interest") if fin.get("has_interest") else None,
+            "days": fin.get("days"), "rate": fin.get("rate"),
+            "principal": fin.get("principal"),
+            "draws": [[x["name"], x["date"], x["amount"], f"{x['days']}日",
+                       x["interest"]] for x in fin.get("draws") or []],
+            "notes": [esc(n) for n in (fin.get("assumed") or [])]
+                     + [esc(n) for n in (fin.get("notes") or [])]}
+        snap["events"] = [[e["date"], esc(e["name"]), e["amount"],
+                           esc(e.get("source") or "")]
+                          for e in fin.get("events") or []]
+    return snap
+
+
+@app.route("/pro/land/check.pdf", methods=["POST"])
+def pro_land_check_pdf():
+    """土地の契約前チェック（PDF）。値は結果画面が署名して持ち回したもの。"""
+    from flask import Response
+    snap = _unsign_snapshot(request.form.get("dx") or "")
+    if not snap or snap.get("kind") != "land":
+        return redirect("/pro/land")
+    g = _require_pro(trial="dx")
+    if g is not None:
+        return g
+    from src.report import build_land_check_pdf
+    quoted = urllib.parse.quote("HOME INDEX_契約前チェック（土地）.pdf")
+    return Response(build_land_check_pdf(snap), mimetype="application/pdf",
+                    headers={"Content-Disposition": (
+                        "attachment; filename=\"pre-contract-check-land.pdf\"; "
+                        f"filename*=UTF-8''{quoted}")})
 
 
 def _land_fin_ctx(bridge, total, events):
