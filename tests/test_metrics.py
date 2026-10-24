@@ -431,6 +431,18 @@ def test_an_ai_link_without_a_referrer_is_caught_by_its_tag(env):
     assert env.metrics.totals(1)["ref_ai"] == 1
 
 
+# ---- パンフレットのQR（2026-10-24）-----------------------------------------
+# 紙から来た人はリンク元が無く、そのままだと「直接」に混ざる。
+
+def test_a_pamphlet_qr_is_its_own_bucket(env):
+    b = env.metrics.ref_bucket
+    assert b("", "homeindex.jp", "pamphlet") == "ref_pamphlet"
+    assert b("", "homeindex.jp", "Pamphlet ") == "ref_pamphlet"
+    c = env.app.app.test_client()
+    c.get("/?utm_source=pamphlet", headers=_UA)
+    assert env.metrics.totals(1)["ref_pamphlet"] == 1
+    assert env.metrics.totals(1)["ref_none"] == 0
+    assert env.metrics.landings(1) == []
 
 # ---- AIの回答から着いたページ（2026-10-22）---------------------------------
 # 件数だけでは、どの記事がAIに引用されているかが分からない。

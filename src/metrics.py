@@ -91,6 +91,9 @@ EVENTS = {
     # AIの回答に載ったリンクから来た。AEOが効いているかは、ここでしか分からない
     # （Search Console には出ない）。2026-10-19 から数えている。
     "ref_ai":       "AIの回答から来た",
+    # 対面で渡すパンフレットのQR（2026-10-24から）。紙からはリンク元が
+    # 付かないので、QRのURLに utm_source=pamphlet を付けて見分ける。
+    "ref_pamphlet": "パンフレットのQRから来た",
     "ref_other":    "他のサイトから来た",
     "ref_none":     "リンク元なし（直接・アプリ内・巡回）",
 }
@@ -122,6 +125,8 @@ REF_BUCKETS = (
 # ChatGPT などは、リンクに utm_source を付けて送ってくることがある。リンク元を
 # 送らない設定の利用者でも、こちらで拾える。値は枠に丸めるだけで残さない。
 AI_UTM = ("chatgpt", "openai", "perplexity", "gemini", "copilot", "claude")
+# パンフレットのQRに付けている印。
+PAMPHLET_UTM = "pamphlet"
 
 
 def ref_bucket(referrer: str, own_host: str,
@@ -132,6 +137,8 @@ def ref_bucket(referrer: str, own_host: str,
     内部移動まで数えると、どこから来た人かが分からなくなる。
     """
     utm = (utm_source or "").strip().lower()
+    if utm == PAMPHLET_UTM:
+        return "ref_pamphlet"
     if utm and any(a in utm for a in AI_UTM):
         return "ref_ai"
     ref = (referrer or "").strip()

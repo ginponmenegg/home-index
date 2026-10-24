@@ -3709,8 +3709,9 @@ _METRIC_GROUPS = (
                    "login_plan", "login_sent", "login_open",
                    "login_plan_open", "plan_confirm",
                    "checkout", "pro_start", "pro_cancel")),
-    ("どこから来たか", ("ref_search", "ref_ai", "ref_x", "ref_threads",
-                        "ref_instagram", "ref_tiktok", "ref_other", "ref_none")),
+    ("どこから来たか", ("ref_search", "ref_ai", "ref_pamphlet", "ref_x",
+                        "ref_threads", "ref_instagram", "ref_tiktok",
+                        "ref_other", "ref_none")),
     ("不具合", ("mail_failed",)),
 )
 
