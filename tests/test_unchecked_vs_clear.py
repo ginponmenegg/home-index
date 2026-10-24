@@ -136,6 +136,16 @@ def test_the_copy_guide_matches_the_forms():
     assert "土地の診断にもどる" in h
 
 
+def test_the_top_page_matches_the_forms():
+    """トップの使い方も、5項目必要だと書いていた（2026-10-24）。"""
+    c = webapp.app.test_client()
+    h = c.get("/").get_data(as_text=True)
+    assert "駅徒歩の5つ" not in h
+    assert "所在地と価格の2つ" in h
+    m = c.get("/mansion").get_data(as_text=True)
+    assert "所在地・価格・専有面積の3つで診断できます" in m
+
+
 def test_the_land_form_lead_matches_its_required_fields():
     """冒頭で4つと言いながら、建物の予算に必須の表示が無かった。"""
     c = webapp.app.test_client()

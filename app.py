@@ -2572,7 +2572,9 @@ LP_MENU_PLACEHOLDER
           <div>
             <h3>読み取れた内容を確認して直す</h3>
             <p>自動で埋まった欄を目で確かめ、空いているところだけ手で入れます。
-             必ず要るのは<b>価格・所在地・面積・築年・駅徒歩の5つ</b>だけです。</p>
+             戸建なら、必ず要るのは<b>所在地と価格の2つ</b>だけです
+             （マンションは専有面積、土地は敷地面積も）。
+             分かる項目を足すほど、点の確からしさが上がります。</p>
             <p class="fine">世帯年収と頭金は任意です。入れると、
              月々の返済額と返済負担率まで見られます。</p>
           </div>
@@ -4755,7 +4757,7 @@ MANSION_FORM = """
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
 <title>中古マンションの購入診断｜成約価格・修繕積立金・災害リスク｜HOME INDEX</title>
-<meta name="description" content="中古マンションの購入診断ツール。100点で採点します。近隣の成約価格との比較、修繕積立金が国土交通省の目安の幅に入っているか、災害リスク、返済負担率まで。所在地と価格だけで診断できます。無料。">
+<meta name="description" content="中古マンションの購入診断ツール。100点で採点します。近隣の成約価格との比較、修繕積立金が国土交通省の目安の幅に入っているか、災害リスク、返済負担率まで。所在地・価格・専有面積の3つで診断できます。無料。">
 <link rel="canonical" href="{{ request.url_root.rstrip('/') }}/mansion">
 <style>
 MANSION_CSS_PLACEHOLDER
