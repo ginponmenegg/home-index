@@ -128,3 +128,38 @@ def send_login_link(to: str, url: str, ttl_min: int) -> tuple[bool, str]:
             f"このリンクは{ttl_min}分で使えなくなります。1回だけ有効です。\n"
             "心当たりがない場合は破棄してください。")
     return send(to, LOGIN_SUBJECT, html, text)
+
+
+SAVE_SUBJECT = "【HOME INDEX】診断結果の保存"
+
+# 本文に書くのは種別・価格・点数まで（2026-11-01）。所在地は書かない。
+# メールアドレスの打ち間違いで他人に届いても、物件が分からないように。
+_SAVE_HTML = """<div style="font-family:sans-serif;line-height:1.9;color:#111">
+<p>HOME INDEX で診断した結果を保存するためのリンクです。</p>
+<p style="margin:16px 0;padding:12px 16px;background:#f6f8fa;border-radius:8px">
+  {summary}</p>
+<p style="margin:24px 0">
+  <a href="{url}" style="display:inline-block;padding:14px 22px;background:#111;
+     color:#fff;border-radius:8px;text-decoration:none;font-weight:700">
+    この結果を保存する</a></p>
+<p style="font-size:13px;color:#555">
+  リンクを押すと保存が終わり、会員登録も済みます（パスワードはありません）。<br>
+  このリンクは{ttl}時間で使えなくなります。1回だけ有効です。<br>
+  心当たりがない場合は、このメールを破棄してください。
+  リンクを押さない限り、なにも登録されません。</p>
+<p style="font-size:13px;color:#555">開かない場合は、次のURLをブラウザに貼り付けてください。<br>
+  <span style="word-break:break-all">{url}</span></p>
+</div>"""
+
+
+def send_save_link(to: str, url: str, summary: str,
+                   ttl_h: int) -> tuple[bool, str]:
+    import html as _html
+    html = _SAVE_HTML.format(url=url, ttl=ttl_h, summary=_html.escape(summary))
+    text = (f"HOME INDEX で診断した結果を保存するためのリンクです。\n\n"
+            f"{summary}\n\n{url}\n\n"
+            "リンクを押すと保存が終わり、会員登録も済みます。\n"
+            f"このリンクは{ttl_h}時間で使えなくなります。1回だけ有効です。\n"
+            "心当たりがない場合は破棄してください。")
+    return send(to, SAVE_SUBJECT, html, text)
+

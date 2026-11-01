@@ -1055,8 +1055,9 @@ def test_a_visitor_is_told_about_the_trial_where_they_are(billing):
     c = billing.app.app.test_client()
     h = c.post("/diagnose", data=dict(_KODATE, address=_ADDR_A,
                                       ptype="chuko_kodate")).get_data(as_text=True)
-    assert "この物件の契約前チェックを無料で作れます" in h
-    assert "会員登録して保存する（1物件はPROも無料）" in h
+    assert "契約前チェックを1物件ぶん無料で作れます" in h
+    assert "本命が決まってから" in h
+    assert "この結果を保存する（メールアドレスだけ）" in h
     h = c.get("/login").get_data(as_text=True)
     assert "1物件だけPROを無料で試せます" in h
 

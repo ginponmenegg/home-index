@@ -77,11 +77,13 @@ def test_the_savebar_appears_on_a_land_result(env):
     assert "この結果を保存する" in h
 
 
-def test_a_visitor_is_asked_to_log_in_first(env):
+def test_a_visitor_saves_with_an_email_address(env):
+    """2026-11-01から、ログインしていない人はメールのリンクで保存する。"""
     c = env.app.app.test_client()
     h = c.post("/land_diagnose", data=FORM).get_data(as_text=True)
-    assert "ログインして保存する" in h
-    assert "この結果を保存する" not in h
+    assert 'action="/save/mail"' in h and "保存用のリンクを送る" in h
+    assert 'action="/save"' not in h
+    assert "保存した土地は" in h
 
 
 def test_a_land_result_can_be_saved_and_read_back(env):

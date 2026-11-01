@@ -196,3 +196,56 @@ def snapshot(res, subject, sctx, kind: str, enr=None, redo=None,
                        "burden": L.burden_ratio,
                        "principal": L.principal}
     return out
+
+
+# ---- メールで保存（2026-11-01）---------------------------------------------
+# ログインしていない人が結果画面でメールアドレスを入れたとき、保存する中身を
+# リンクが押されるまで預かる。アカウントには、リンクを押した（＝その
+# メールアドレスの持ち主だと分かった）あとで入れる。他人のアドレスを
+# 入れられても、その人のアカウントに中身は入らない。
+
+def add_pending(email: str, snap: str, ttl_min: int) -> str:
+    """預かって、リンクに載せる番号を返す。"""
+    import datetime
+    import secrets
+    now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+    pid = secrets.token_urlsafe(18)
+    exp = (now + datetime.timedelta(minutes=ttl_min)).isoformat()
+
+    def _go(exec_):
+        exec_("DELETE FROM pending_saves WHERE expires_at < ?",
+              (now.isoformat(),))
+        exec_("INSERT INTO pending_saves (id, email, snap, expires_at) "
+              "VALUES (?, ?, ?, ?)",
+              (pid, accounts.normalize_email(email), snap, exp))
+
+    db.run_many(_go)
+    return pid
+
+
+def take_pending(pid: str, email: str) -> str | None:
+    """預かった中身を取り出して消す。期限切れ・別のアドレスなら None。
+
+    別のアドレスのときは消さない。リンクを転送された人が開いても、本人の
+    保存は残る。
+    """
+    if not pid:
+        return None
+    now = db.now()
+
+    def _go(exec_):
+        row = exec_("SELECT email, snap, expires_at FROM pending_saves "
+                    "WHERE id = ?", (pid,)).fetchone()
+        if not row:
+            return None
+        row = dict(row)
+        if row["expires_at"] <= now:
+            exec_("DELETE FROM pending_saves WHERE id = ?", (pid,))
+            return None
+        if row["email"] != accounts.normalize_email(email):
+            return None
+        exec_("DELETE FROM pending_saves WHERE id = ?", (pid,))
+        return row["snap"]
+
+    return db.run_many(_go)
+

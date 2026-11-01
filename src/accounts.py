@@ -27,6 +27,10 @@ import re
 from . import db
 
 TOKEN_TTL_MIN = 30          # ログインリンクの有効時間（分）
+# 結果画面から「この結果を保存する」で送るリンク（2026-11-01）。内見の
+# 帰りや夜にメールを開いても間に合うよう、ログイン用より長くしてある。
+# 1回かぎりなのは同じ。
+SAVE_LINK_TTL_MIN = 24 * 60
 PER_EMAIL_PER_HOUR = 5      # 同じアドレスへの1時間あたりの発行上限
 PER_DAY_TOTAL = 80          # 全体の1日あたり発行上限（Resend無料枠100通の手前）
 
@@ -63,8 +67,11 @@ class TooManyRequests(Exception):
     """発行上限に達した。利用者には時間を置くよう伝える。"""
 
 
-def issue_login_token(email: str) -> str:
-    """使い捨てのログイントークンを発行して返す（呼び出し側がメールで送る）。"""
+def issue_login_token(email: str, ttl_min: int | None = None) -> str:
+    """使い捨てのログイントークンを発行して返す（呼び出し側がメールで送る）。
+
+    ttl_min を省くとログイン用の長さ（TOKEN_TTL_MIN）。
+    """
     email = normalize_email(email)
     now = _utcnow()
     hour_ago = _iso(now - datetime.timedelta(hours=1))
@@ -86,7 +93,8 @@ def issue_login_token(email: str) -> str:
         exec_("INSERT INTO login_tokens (token_hash, email, expires_at) "
               "VALUES (?, ?, ?)",
               (_hash(token), email,
-               _iso(now + datetime.timedelta(minutes=TOKEN_TTL_MIN))))
+               _iso(now + datetime.timedelta(
+                   minutes=ttl_min or TOKEN_TTL_MIN))))
 
     db.run_many(_go)
     return token

@@ -1161,6 +1161,100 @@ HH_RESULT = HH_RESULT.replace("{% if hh %}", "{% if hh %}<style>" + HH_CSS
                               + "</style>", 1)
 
 
+# ---- 前に診断した物件と並べる（2026-11-01）---------------------------------
+# 2件目を診断した人に、1件目と並べて見せる。要点だけを結果画面に載せ、
+# 利用者のブラウザ（localStorage）に残す。サーバーには何も残さない。
+# 並べるのは同じ種類どうし（戸建・マンション・土地で観点が違うので）。
+
+def _recent_entry(group, address, price, total, grade, categories) -> str:
+    """ブラウザに残す要点（JSON）。所在地は番地の手前まで。年収などは入れない。"""
+    addr = re.split(r"[0-9０-９]", address or "", maxsplit=1)[0].strip()
+    # 並べる表の見出しが狭いので、都道府県は外す（市区町村と町名で足りる）
+    addr = re.sub(r"^(北海道|東京都|京都府|大阪府|.{2,3}県)", "", addr)
+    entry = {"k": group, "l": addr[-12:] or "物件",
+             "p": man(price) if price else "",
+             "t": total, "g": grade or "",
+             "c": [[c.name, c.points, c.weight] for c in categories]}
+    # <script> の中に置くので、閉じタグに見える並びを崩しておく
+    return json.dumps(entry, ensure_ascii=False).replace("</", "<\\/")
+
+
+RECENT_CARD = """
+ {% if recent %}
+ <style>
+ .rc[hidden]{display:none}
+ .rc .rc-note{font-size:13px;color:var(--sub,#64748b);line-height:1.7;margin:4px 0 10px}
+ .rc .rc-wrap{overflow-x:auto}
+ .rc table{width:100%;border-collapse:collapse;font-size:14px}
+ .rc th,.rc td{padding:8px 6px;border-bottom:1px solid var(--line,#e5e7eb);
+  text-align:right;white-space:nowrap}
+ .rc tbody th{text-align:left;font-weight:400;color:var(--sub,#64748b)}
+ .rc thead th{vertical-align:bottom}
+ .rc .rc-tag{display:block;font-size:11px;color:var(--sub,#64748b);font-weight:400}
+ .rc .rc-l{display:block;font-size:13px;white-space:normal}
+ .rc .rc-p{display:block;font-size:12px;color:var(--sub,#64748b);font-weight:400}
+ .rc td.rc-total{font-weight:800}
+ .rc .rc-cta{font-size:14px;margin:12px 0 0;line-height:1.8}
+ .rc .rc-clear{background:none;border:0;padding:0;color:var(--sub,#64748b);
+  text-decoration:underline;font:inherit;font-size:12px;cursor:pointer}
+ </style>
+ <div class="card rc no-print" id="hi-recent" hidden>
+  <h2 style="margin-top:0">前に診断した物件と並べる</h2>
+  <p class="rc-note">この端末で前に診断した、同じ種類の物件です。記録はこの
+   ブラウザの中にだけあり、HOME INDEX には送っていません。</p>
+  <div class="rc-wrap"></div>
+  {% if save and not save.logged_in %}
+  <p class="rc-cta">保存すると、メモを付けて、別の端末でも比べ続けられます。
+   <a href="#save">この結果を保存する（メールアドレスだけ）</a></p>
+  {% elif save %}
+  <p class="rc-cta">保存した物件は、並べて比べられます。
+   <a href="/compare">保存した物件を比べる</a></p>
+  {% endif %}
+  <p class="rc-note" style="margin:10px 0 0"><button type="button"
+   class="rc-clear">この端末の記録を消す</button></p>
+ </div>
+ <script type="application/json" id="hi-recent-data">{{ recent|safe }}</script>
+ <script>
+ (function(){try{
+  var box=document.getElementById("hi-recent");
+  var cur=JSON.parse(document.getElementById("hi-recent-data").textContent);
+  var KEY="hi_recent",list=[];
+  try{list=JSON.parse(localStorage.getItem(KEY)||"[]");}catch(e){list=[];}
+  if(!Array.isArray(list)){list=[];}
+  function same(a){return a&&a.k===cur.k&&a.l===cur.l&&a.p===cur.p;}
+  var prev=list.filter(function(a){return a&&a.k===cur.k&&!same(a);}).slice(0,2);
+  cur.d=new Date().toISOString().slice(0,10);
+  list=[cur].concat(list.filter(function(a){return a&&!same(a);})).slice(0,6);
+  try{localStorage.setItem(KEY,JSON.stringify(list));}catch(e){}
+  box.querySelector(".rc-clear").addEventListener("click",function(){
+   try{localStorage.removeItem(KEY);}catch(e){} box.hidden=true;});
+  if(!prev.length){return;}
+  function el(t,txt,cls){var x=document.createElement(t);
+   if(txt!==null&&txt!==undefined){x.textContent=txt;} if(cls){x.className=cls;} return x;}
+  var cols=[cur].concat(prev),tb=el("table"),thd=el("thead"),hd=el("tr"),bd=el("tbody");
+  hd.appendChild(el("th",""));
+  cols.forEach(function(c,i){var th=el("th");
+   th.appendChild(el("span",i?"前の物件":"この物件","rc-tag"));
+   th.appendChild(el("span",c.l,"rc-l"));
+   th.appendChild(el("span",(c.p||"")+(i&&c.d?"　"+c.d:""),"rc-p"));
+   hd.appendChild(th);});
+  thd.appendChild(hd); tb.appendChild(thd);
+  function row(name,vals,strong){var tr=el("tr"); tr.appendChild(el("th",name));
+   vals.forEach(function(v){tr.appendChild(el("td",v,strong?"rc-total":""));});
+   bd.appendChild(tr);}
+  row("総合",cols.map(function(c){return c.t+"点"+(c.g?"（"+c.g+"）":"");}),true);
+  (cur.c||[]).forEach(function(k){row(k[0],cols.map(function(c){
+   var m=(c.c||[]).filter(function(x){return x[0]===k[0];})[0];
+   return m?(m[1]+" / "+m[2]):"—";}));});
+  tb.appendChild(bd); box.querySelector(".rc-wrap").appendChild(tb);
+  box.hidden=false;
+  new Image().src="/_h.gif?p=recent_shown&"+Date.now();
+ }catch(e){}})();
+ </script>
+ {% endif %}
+"""
+
+
 def to_int(s):
     s = (s or "").strip().replace(",", "")
     try:
@@ -1620,6 +1714,7 @@ BRAND_BAR
   {% if d.confirm %}<h2 style="margin-top:20px">要確認（情報が足りない項目）</h2><ul>{% for x in d.confirm %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
   <p class="foot">{{d.comment}}</p>
  </div>
+ RECENT_CARD_PLACEHOLDER
  {% if save %}
  <div class="savebar">
   {% if save.logged_in %}
@@ -1630,10 +1725,23 @@ BRAND_BAR
    <span class="why">保存すると、他の物件と項目ごとに並べて比べられます。
     <a href="/mypage">保存した物件を見る</a></span>
   {% else %}
-   <a class="b" href="/login" target="_blank" rel="noopener">{% if trial_state == 'guest' %}会員登録して保存する（1物件はPROも無料）{% else %}ログインして保存する{% endif %}</a>
-   <span class="why">保存すると、他の物件と項目ごとに並べて比べられます。<br>
-    ログイン画面は<b>別のタブで開きます</b>。この結果は開いたまま残るので、
-    ログインしたあとこの画面に戻って保存してください。</span>
+   <style>
+   .savemail{flex:1 1 320px;margin:0}
+   .savemail .sm-h{display:block;font-weight:700;font-size:15px;margin:0 0 8px}
+   .savemail .sm-row{display:flex;gap:8px;flex-wrap:wrap}
+   .savemail input[type=email]{flex:1 1 200px;min-width:0;padding:11px 12px;
+    border:1px solid #d0d5dd;border-radius:10px;font-size:16px;font-family:inherit}
+   </style>
+   <form method="post" action="/save/mail" class="savemail" id="save">
+    <input type="hidden" name="snap" value="{{save.token}}">
+    <span class="sm-h">この結果を保存する（メールアドレスだけ）</span>
+    <span class="sm-row"><input type="email" name="email" required
+      autocomplete="email" placeholder="you@example.com" aria-label="メールアドレス">
+     <button type="submit">保存用のリンクを送る</button></span>
+   </form>
+   <span class="why">届いたリンクを押すと、保存が終わり、会員登録も済みます。
+    保存した物件は、項目ごとに並べて比べられます。PROの契約前チェックも
+    1物件ぶん無料で作れます（使う物件は、本命が決まってから選べます）。</span>
   {% endif %}
  </div>
  {% endif %}
@@ -1832,15 +1940,17 @@ HH_RESULT_PLACEHOLDER
    </p>
    {% if trial_state == 'guest' %}
    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px;margin:0 0 12px;font-size:14px;line-height:1.85">
-    <b>会員登録（メールアドレスだけ）で、この物件の契約前チェックを無料で作れます。</b>
-    1物件だけのお試しです。会員登録は別のタブで開くので、登録が済んだら
-    この画面に戻り、下のボタンを押してください。<br>
-    <a href="/login" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;font-weight:700">会員登録して、この物件で試す（別のタブ） →</a>
+    <b>会員登録（メールアドレスだけ）しておけば、契約前チェックを1物件ぶん無料で作れます。</b>
+    登録しただけでは、お試しは減りません。<b>本命が決まってから</b>、
+    その物件で使えます。会員登録は、この画面の下の「この結果を保存する」から
+    できます（保存も同時に済みます）。<br>
+    <a href="#save" style="display:inline-block;margin-top:8px;font-weight:700">この結果を保存して、会員登録する ↓</a>
    </div>
    {% elif trial_state == 'unused' %}
    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px;margin:0 0 12px;font-size:14px;line-height:1.85">
     <b>この物件で、契約前チェックを無料で作れます</b>（1物件だけのお試し）。
     下のボタンを押すと、この物件がお試しの物件になります。
+    お試しは使うまで減らないので、本命が決まってから使うこともできます。
    </div>
    {% endif %}
    {% endif %}
@@ -2021,6 +2131,7 @@ FORM = (FORM.replace("CARD_CSS_PLACEHOLDER", CARD_CSS)
         .replace("</div></body></html>", FOOTER + "</div></body></html>"))
 RESULT = (RESULT.replace("CARD_CSS_PLACEHOLDER", CARD_CSS)
           .replace("HH_RESULT_PLACEHOLDER", HH_RESULT)
+          .replace("RECENT_CARD_PLACEHOLDER", RECENT_CARD)
           .replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
           .replace("PLAN_LINKS_PLACEHOLDER", _PLAN_LINKS)
           .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
@@ -3166,19 +3277,24 @@ _ACC_STORE = ("""<p>アカウントをご利用の場合に限り、利用者ご
 <b>住所そのものは保存しません。</b></p>
 <p>ログインはパスワードを用いず、メールアドレス宛の使い捨てリンクで行います。
 <b>パスワードは保管しません。</b>リンクの文字列そのものも保存せず、
-照合用のハッシュのみを持ち、30分・1回かぎりで無効になります。</p>"""
+照合用のハッシュのみを持ち、ログイン用は30分、保存用は24時間で、どちらも
+1回かぎりで無効になります。</p>
+<p>ログインせずに結果画面の「この結果を保存する」を使った場合は、メールのリンクが
+押されるまでのあいだ（最長24時間）、保存する診断結果とメールアドレスをお預かりします。
+リンクが押されたら保存し、期限を過ぎたものは削除します。</p>"""
               if db.enabled() else "")
 
 _ACC_PURPOSE = ("""、(4) アカウントの認証と、保存された診断結果の保管・表示"""
                 if db.enabled() else "")
 
 _ACC_MAIL = ("""<h2>5-2. メールの送信</h2>
-<p>ログイン用リンクの送信に、メール配信事業者（Resend）を利用します。
-この目的のためにメールアドレスを同社へ送信します。広告・宣伝のメールは
-お送りしません。</p>""" if db.enabled() else "")
+<p>ログイン用のリンクと、診断結果を保存するためのリンクの送信に、
+メール配信事業者（Resend）を利用します。この目的のためにメールアドレスを
+同社へ送信します。保存用のメールには、物件の種別・価格・点数を書きます
+（<b>所在地は書きません</b>）。広告・宣伝のメールはお送りしません。</p>""" if db.enabled() else "")
 
 _PRIVACY_BODY = ("""
-<p class="sub">最終改定日：2026年10月23日</p>
+<p class="sub">最終改定日：2026年11月1日</p>
 <h2>1. 取得する情報</h2>
 <p>本サービスは、診断のために利用者が入力・貼り付けした情報（物件の所在地・価格・面積・築年・
 駅距離・種別、任意入力の世帯年収・頭金等。PROでは本人と配偶者それぞれの年収、お子さまの年齢）を処理します。あわせて、アクセスに伴う技術情報
@@ -3194,7 +3310,11 @@ _PRIVACY_BODY = ("""
 （不正防止のためのアクセス記録を除く）。</p>
 """ + _OBS_STORE + """
 <p>取り扱いにあたっては適切な安全管理措置を講じます。
-地図・座標情報は各提供元の利用条件に従って取り扱います。</p>""" + _ACC_STORE + """
+地図・座標情報は各提供元の利用条件に従って取り扱います。</p>
+<p>診断結果の画面では、同じ端末で前に診断した物件と並べて見られるよう、
+直近の診断の要点（番地を除いた所在地・価格・点数）を、利用者のブラウザの中
+（localStorage）に残します。<b>この記録は当サービスには送信されません。</b>
+画面の「この端末の記録を消す」で、いつでも消せます。</p>""" + _ACC_STORE + """
 <h2>4. 第三者提供</h2>
 <p>法令に基づく場合を除き、利用者の同意なく個人情報を第三者に提供しません。
 診断に必要な範囲で公的データAPI等の外部サービスに対し、住所等の照会を行う場合があります。</p>
@@ -3774,8 +3894,9 @@ _METRIC_GROUPS = (
         "h_view_sample", "h_plan_view", "h_pro_cta", "h_login_view",
         "h_plan_confirm")),
     ("診断と保存", ("diag_kodate", "diag_mansion", "diag_land", "pro_diag",
-                    "paste_used", "paste_none", "saved")),
-    ("会員とPRO", ("signup", "trial_start", "plan_view", "pro_cta",
+                    "paste_used", "paste_none", "saved", "recent_shown")),
+    ("会員とPRO", ("signup", "save_mail_sent", "save_mail_done",
+                   "trial_start", "plan_view", "pro_cta",
                    "login_view",
                    "login_plan", "login_sent", "login_open",
                    "login_plan_open", "plan_confirm",
@@ -4709,16 +4830,17 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
     if accounts_on():
         kind = getattr(subject, "property_type", "") or ""
         title = f"{sctx.get('ptype', '物件')}　{sctx.get('address', '')}".strip()
+        # ログインしていない人もメールで保存できる（2026-11-01）ので、
+        # 署名した中身はいつでも載せる。
         save = {"logged_in": bool(current_user())}
-        if save["logged_in"]:
-            save["token"] = sign_snapshot(dict(
-                kind=kind, title=title, address=sctx.get("address"),
-                price=getattr(subject, "price", None),
-                total=d.total_score, grade=d.grade,
-                payload=saved.snapshot(
-                    res, subject, sctx, kind, enr, redo,
-                    # 頭金と年収は渡さない（保存しないと明言している）。
-                    fin=_finance_carry(subject, 0, loan_years))))
+        save["token"] = sign_snapshot(dict(
+            kind=kind, title=title, address=sctx.get("address"),
+            price=getattr(subject, "price", None),
+            total=d.total_score, grade=d.grade,
+            payload=saved.snapshot(
+                res, subject, sctx, kind, enr, redo,
+                # 頭金と年収は渡さない（保存しないと明言している）。
+                fin=_finance_carry(subject, 0, loan_years))))
 
     if finance_carry is not None:
         # 資金計画のPDFに診断を載せるため、点数とリスクを署名して持ち回す。
@@ -4740,6 +4862,11 @@ def _render_result(res, subject, sctx, down_yen, loan_years,
 
     return render_template_string(
         RESULT, s=sctx, price_man=man(subject.price), age=age, save=save,
+        # 前に診断した物件と並べる。無料の結果だけ（見本とPROは並べない）。
+        recent=(None if sample or free_diagnosis is not None else _recent_entry(
+            "mansion" if _trial_kind(subject) == "mansion" else "kodate",
+            sctx.get("address"), getattr(subject, "price", None),
+            d.total_score, d.grade, d.categories)),
         sample=bool(sample),
         p=price_ctx, d=dctx, loan=loan, hh=household,
         # 比較表の出し分け（マンション／新築戸建／中古戸建）と、無料の保存件数
@@ -5653,6 +5780,7 @@ BRAND_BAR
   {% endif %}
  </div>
 
+ RECENT_CARD_PLACEHOLDER
  {% if save %}
  <div class="savebar no-print">
   {% if save.logged_in %}
@@ -5663,10 +5791,23 @@ BRAND_BAR
    <span class="why">保存すると、他の土地と項目ごとに並べて比べられます。
     <a href="/mypage">保存した物件を見る</a></span>
   {% else %}
-   <a class="b" href="/login" target="_blank" rel="noopener">{% if trial_state == 'guest' %}会員登録して保存する（1物件はPROも無料）{% else %}ログインして保存する{% endif %}</a>
-   <span class="why">保存すると、他の土地と項目ごとに並べて比べられます。<br>
-    ログイン画面は<b>別のタブで開きます</b>。この結果は開いたまま残るので、
-    ログインしたあとこの画面に戻って保存してください。</span>
+   <style>
+   .savemail{flex:1 1 320px;margin:0}
+   .savemail .sm-h{display:block;font-weight:700;font-size:15px;margin:0 0 8px}
+   .savemail .sm-row{display:flex;gap:8px;flex-wrap:wrap}
+   .savemail input[type=email]{flex:1 1 200px;min-width:0;padding:11px 12px;
+    border:1px solid #d0d5dd;border-radius:10px;font-size:16px;font-family:inherit}
+   </style>
+   <form method="post" action="/save/mail" class="savemail" id="save">
+    <input type="hidden" name="snap" value="{{save.token}}">
+    <span class="sm-h">この結果を保存する（メールアドレスだけ）</span>
+    <span class="sm-row"><input type="email" name="email" required
+      autocomplete="email" placeholder="you@example.com" aria-label="メールアドレス">
+     <button type="submit">保存用のリンクを送る</button></span>
+   </form>
+   <span class="why">届いたリンクを押すと、保存が終わり、会員登録も済みます。
+    保存した土地は、項目ごとに並べて比べられます。PROの契約前チェックも
+    1物件ぶん無料で作れます（使う物件は、本命が決まってから選べます）。</span>
   {% endif %}
  </div>
  {% endif %}
@@ -6197,6 +6338,7 @@ _RESULT_CSS = RESULT[RESULT.index("<style>") + len("<style>"):
 assert "LAND_FOOTER_PLACEHOLDER" in LAND_RESULT
 LAND_RESULT = (LAND_RESULT
                .replace("HH_RESULT_PLACEHOLDER", HH_RESULT)
+               .replace("RECENT_CARD_PLACEHOLDER", RECENT_CARD)
                .replace("PLAN_LINKS_PLACEHOLDER", _PLAN_LINKS)
                .replace("LAND_RESULT_CSS_PLACEHOLDER", _RESULT_CSS)
                .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
@@ -6583,14 +6725,13 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
         redo.update({k: (f.get(k) or "")
                      for k in _land_pro_form_values(f) if f.get(k)})
         save = {"logged_in": bool(current_user())}
-        if save["logged_in"]:
-            save["token"] = sign_snapshot(dict(
-                kind=LAND_KIND,
-                title=f"土地　{subject.address}",
-                address=subject.address, price=subject.price,
-                total=d.total_score, grade=d.grade,
-                payload=saved.snapshot(res, subject, sctx, LAND_KIND,
-                                       None, redo)))
+        save["token"] = sign_snapshot(dict(
+            kind=LAND_KIND,
+            title=f"土地　{subject.address}",
+            address=subject.address, price=subject.price,
+            total=d.total_score, grade=d.grade,
+            payload=saved.snapshot(res, subject, sctx, LAND_KIND,
+                                   None, redo)))
 
     # 無料の結果からPROへ入力を持っていくための値。年収などを含むので
     # URLには載せず、hiddenでPOSTする（戸建・マンションと同じ作り）。
@@ -6620,6 +6761,9 @@ def _render_land_result(res, subject, f, down_yen, loan_years,
         hh=hh_ctx, pc_save=saved.FREE_LIMIT, land_check=land_check,
         fin=fin, pro=pro, handover=handover, procedures=procedures,
         matched=matched, save=save, sample=bool(f.get("sample")),
+        recent=(None if pro or f.get("sample") else _recent_entry(
+            "land", subject.address, subject.price,
+            d.total_score, d.grade, d.categories)),
         plan_price=(price_now()[1] if billing_on() else None),
         land_preview=(None if pro else _pro_preview(res, subject, land=True)),
         disc=[dict(where=x.where, law=x.law, why=x.why)
@@ -8352,7 +8496,8 @@ def _inject_trial_note():
         if accounts.trial_unused(u):
             return {"trial_state": "unused", "trial_note": (
                 "<b>お試し中です。</b>1物件だけ、PROを無料でお使いいただけます。"
-                "最初に診断した物件が、お試しの物件になります。")}
+                "最初に診断した物件が、お試しの物件になります。"
+                "使うまで減らないので、本命が決まってから使っても構いません。")}
         return {"trial_state": "used", "trial_note": (
             "<b>お試しの物件があります。</b>同じ物件（同じ住所）なら、入力を"
             "直して何度でも診断し直せます。ほかの物件はPROのお申し込みが"
@@ -8418,7 +8563,7 @@ def _safe_next(p):
     if not p.startswith("/") or p.startswith("//") or "\\" in p:
         return None
     path = p.split("?", 1)[0].split("#", 1)[0]
-    if path in _NEXT_OK or path.startswith("/pro/"):
+    if path in _NEXT_OK or path.startswith(("/pro/", "/save/claim/")):
         return path
     return None
 
@@ -8446,7 +8591,8 @@ LOGIN_PAGE = """
    ログイン用のリンクをお送りします。<br>
    保存した診断を、あとから別の端末でも見られるようにするためのものです。
    {% if trial_state == 'guest' %}<br>会員登録すると、<b>1物件だけPROを無料で試せます</b>
-   （その物件の契約前チェックのPDFも作れます）。{% endif %}</p>
+   （その物件の契約前チェックのPDFも作れます）。登録しただけでは減らないので、
+   本命が決まってから使えます。{% endif %}</p>
   {% if error %}<div class="note warn">{{ error }}</div><br>{% endif %}
   <form method="post" action="/login">
    {% if nxt %}<input type="hidden" name="next" value="{{ nxt }}">{% endif %}
@@ -8562,7 +8708,8 @@ def login_verify(token):
     if not user:
         body = ('<div class="card"><h1>リンクが使えません</h1>'
                 '<div class="note warn">期限が切れているか、すでに使われたリンクです。'
-                'ログイン用リンクは30分・1回かぎり有効です。</div>'
+                'ログイン用のリンクは30分、保存用のリンクは24時間で使えなくなります。'
+                'どちらも1回かぎりです。</div>'
                 '<p style="margin-top:14px"><a class="btn" href="/login">'
                 'もう一度送る</a></p></div>')
         return _account_page("ログイン", body, chip="ログイン"), 400
@@ -8619,6 +8766,11 @@ def save_diagnosis():
     meta = _unsign_snapshot(request.form.get("snap") or "")
     if not meta:
         return redirect("/mypage")
+    return _save_meta(user, meta)
+
+
+def _save_meta(user, meta):
+    """署名を確かめた中身を保存して、マイページへ戻す。"""
     try:
         saved.save(user, meta.get("kind", ""), meta.get("title", "診断結果"),
                    meta.get("address"), meta.get("price"),
@@ -8630,6 +8782,126 @@ def save_diagnosis():
         return redirect("/mypage?err=1")
     _bump("saved")
     return redirect("/mypage?added=1")
+
+
+# ---- ログインしていない人の保存（2026-11-01）--------------------------------
+# 以前は「会員登録して保存する」でログイン画面が別のタブに開き、メールの
+# リンクを押してから元のタブに戻って、もう一度「保存」を押す必要があった。
+# 10/21からの11日、ログインのメールは1通も送られていない。
+# 結果画面でメールアドレスを入れるだけにし、届いたリンクを押せば
+# ログイン（初めてなら会員登録）と保存が一度に終わるようにする。
+
+_SAVE_KIND_JA = {"chuko_kodate": "中古戸建", "shinchiku_kodate": "新築戸建",
+                 "chuko_mansion": "マンション", "tochi": "土地"}
+
+
+def _save_summary(meta) -> str:
+    """メールの本文に書く1行。所在地は書かない（打ち間違いで他人に届くため）。"""
+    parts = [_SAVE_KIND_JA.get(meta.get("kind"), "物件")]
+    if meta.get("price"):
+        parts.append(man(meta.get("price")))
+    if meta.get("total") is not None:
+        parts.append(f"{meta.get('total')}点")
+    s = "・".join(parts)
+    return s + (f"（{meta.get('grade')}）" if meta.get("grade") else "")
+
+
+SAVE_MAIL_FORM = """
+<div class="card">
+ <h1>この結果を保存する</h1>
+ {% if error %}<div class="note warn">{{ error }}</div><br>{% endif %}
+ <form method="post" action="/save/mail">
+  <input type="hidden" name="snap" value="{{ snap }}">
+  <label for="email" style="font-size:13px;font-weight:700">メールアドレス</label>
+  <div style="margin:6px 0 14px"><input id="email" type="email" name="email"
+    required autocomplete="email" placeholder="you@example.com"
+    value="{{ email or '' }}"></div>
+  <button class="btn" type="submit">保存用のリンクを送る</button>
+ </form>
+</div>
+"""
+
+SAVE_MAIL_SENT = """
+<div class="card">
+ <h1>保存用のリンクをお送りしました</h1>
+ <div class="note ok">{{ email }} 宛にリンクを送りました。リンクを押すと、
+  <b>この診断の保存が終わり、会員登録も済みます。</b>
+  リンクは{{ ttl }}時間・1回かぎり有効です。</div>
+ <p class="lead" style="margin-top:14px">届かない場合は、迷惑メールに入っていないか
+  ご確認ください。この画面を閉じても、リンクはそのまま使えます。</p>
+ {% if devlink %}
+  <div class="note warn" style="margin-top:10px">
+   <b>開発用の表示です。</b>メール送信が設定されていないため、リンクを直接出しています。<br>
+   <a href="{{ devlink }}" style="word-break:break-all">{{ devlink }}</a></div>
+ {% endif %}
+</div>
+"""
+
+
+@app.route("/save/mail", methods=["POST"])
+def save_by_mail():
+    if not accounts_on():
+        return _account_page("準備中", _OFF_BODY)
+    snap = request.form.get("snap") or ""
+    meta = _unsign_snapshot(snap)
+    if not meta:
+        return redirect("/")
+    user = current_user()
+    if user:                       # 別のタブでログイン済みなら、そのまま保存
+        return _save_meta(user, meta)
+    email = accounts.normalize_email(request.form.get("email"))
+
+    def again(err):
+        return _account_page("保存", render_template_string(
+            SAVE_MAIL_FORM, snap=snap, email=email, error=err), chip="保存")
+
+    if not accounts.valid_email(email):
+        return again("メールアドレスの形式をご確認ください。")
+    ttl = accounts.SAVE_LINK_TTL_MIN
+    try:
+        token = accounts.issue_login_token(email, ttl_min=ttl)
+        pid = saved.add_pending(email, snap, ttl)
+    except accounts.TooManyRequests as e:
+        return again("短い時間に何度も送信されています。しばらく置いてからお試しください。"
+                     if str(e) == "email" else
+                     "本日の送信上限に達しました。お手数ですが翌日にお試しください。")
+    except Exception:
+        return again("ただいま混み合っています。時間をおいてお試しください。")
+    link = (urllib.parse.urljoin(request.url_root, f"login/{token}")
+            + "?next=" + urllib.parse.quote(f"/save/claim/{pid}"))
+    ok, msg = mailer.send_save_link(email, link, _save_summary(meta), ttl // 60)
+    devlink = None if (ok or mailer.enabled()) else link
+    if not ok and mailer.enabled():
+        metrics.bump("mail_failed")
+        return again(msg)
+    if ok:
+        _did("save_mail_sent")
+    return _account_page("確認", render_template_string(
+        SAVE_MAIL_SENT, email=email, ttl=ttl // 60, devlink=devlink), chip="保存")
+
+
+@app.route("/save/claim/<pid>")
+def save_claim(pid):
+    """メールのリンクの行き先。ログインは済んでいる（/login/<token> を通る）。"""
+    r = _require_login()
+    if r is not None:
+        return r
+    user = current_user()
+    meta = None
+    try:
+        meta = _unsign_snapshot(saved.take_pending(pid, user["email"]) or "")
+    except Exception:
+        meta = None
+    if not meta:
+        return _account_page("保存", (
+            '<div class="card"><h1>保存できませんでした</h1>'
+            '<div class="note warn">期限（24時間）が切れているか、すでに保存済みか、'
+            '別のメールアドレスで送ったリンクです。お手数ですが、もう一度診断して'
+            '保存してください。</div>'
+            '<p style="margin-top:14px"><a class="btn" href="/mypage">'
+            'マイページへ</a></p></div>'), chip="保存"), 400
+    _did("save_mail_done")
+    return _save_meta(user, meta)
 
 
 SAVED_DETAIL = """
@@ -8980,6 +9252,11 @@ MYPAGE = """
  <h2 style="margin-top:0">プランと設定</h2>
  <p class="lead">いまは<b>{{ 'PRO' if pro else '無料プラン' }}</b>です。
   {% if limit %}保存できるのは{{ limit }}件までです。{% else %}保存できる件数に制限はありません。{% endif %}</p>
+ {% if trial_state == 'unused' %}
+ <div class="note ok" style="margin:0 0 12px">PROのお試しが<b>1物件ぶん</b>残っています。
+  使うまで減らないので、本命が決まったら、その物件の結果画面の「PROで詳しく」から
+  始めてください。その物件の契約前チェック（PDF）も作れます。</div>
+ {% endif %}
  <p><a class="btn ghost sm" href="/plan">プランを見る</a></p>
  <form method="post" action="/logout" style="margin-top:14px">
   <button class="btn ghost sm" type="submit">ログアウト</button></form>

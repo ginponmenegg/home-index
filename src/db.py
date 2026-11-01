@@ -150,6 +150,15 @@ def schema_sql() -> list[str]:
               expires_at TEXT NOT NULL,
               used_at TEXT
             )""",
+        # メールで保存を受け付けた診断（2026-11-01）。リンクが押されるまで
+        # だけ預かり、押されたら saved_diagnoses へ移して消す。期限（24時間）
+        # を過ぎたものは、次に書き込むときに消す。snap は署名つきの中身。
+        """CREATE TABLE IF NOT EXISTS pending_saves (
+              id TEXT PRIMARY KEY,
+              email TEXT NOT NULL,
+              snap TEXT NOT NULL,
+              expires_at TEXT NOT NULL
+            )""",
         # 保存した診断。比較のために使う。
         # payload には結果の要約をJSONで入れる（点数の再計算はしない）。
         f"""CREATE TABLE IF NOT EXISTS saved_diagnoses (
