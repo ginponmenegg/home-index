@@ -33,6 +33,7 @@ from src.pipeline import (run_pipeline, run_mansion_pipeline,  # noqa: E402
                           run_land_pipeline)
 from src.extract import parse_listing_text, extract_from_url  # noqa: E402
 from src.citycode import CityCodeResolver  # noqa: E402
+from src.geocoding import MISMATCH  # noqa: E402
 from src import structure as structure_mod  # noqa: E402
 from src import guides  # noqa: E402
 from src import disclosure  # noqa: E402
@@ -778,6 +779,22 @@ def _form_miss(kind: str, field: str) -> None:
 _OBS_KIND_JA = {"kodate": "戸建", "mansion": "マンション", "tochi": "土地"}
 
 
+def _hazard_gap(res):
+    """ハザードを引けなかった理由。引けていれば None。
+
+    enrichment が無いのは見本（MOCK）のときだけで、数えない。
+    """
+    e = getattr(res, "enrichment", None)
+    if e is None or e.hazard.checked:
+        return None
+    gc = getattr(res, "geocode", None)
+    if gc is None:
+        return "hz_no_place"
+    if gc.level == MISMATCH:
+        return "hz_other_town"
+    return "hz_fetch"
+
+
 def _observe(kind, subject, res) -> None:
     """診断された物件を1行残す。**利用者を結びつける鍵は渡さない。**
 
@@ -786,6 +803,9 @@ def _observe(kind, subject, res) -> None:
     """
     if _skip_counting():
         return
+    gap = _hazard_gap(res)
+    if gap:
+        metrics.bump(gap)
     observations.record(
         kind, subject, res.diagnosis,
         enrichment=getattr(res, "enrichment", None),
@@ -3904,6 +3924,7 @@ _METRIC_GROUPS = (
     ("どこから来たか", ("ref_search", "ref_ai", "ref_pamphlet", "ref_x",
                         "ref_threads", "ref_instagram", "ref_tiktok",
                         "ref_other", "ref_none")),
+    ("ハザード未確認の理由（2026-11-01から）", metrics.HAZARD_GAPS),
     ("不具合", ("mail_failed",)),
 )
 

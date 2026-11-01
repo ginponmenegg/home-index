@@ -61,6 +61,11 @@ class GeocodingService(Protocol):
 _PREF = re.compile(r"^(北海道|東京都|京都府|大阪府|[^都道府県]{2,3}県)")
 # 先頭の市区町村名（郡を含む）。最短で取るので「平塚市紅谷町」は「平塚市」で止まる
 _MUNI = re.compile(r"^(?:.+?郡)?.+?[市区町村]")
+# 郡。国土地理院は返す住所から郡を落とす（「中郡二宮町」→「二宮町」）。
+# 片方にだけあるときに外す（_drop_gun）。両方にあれば、それは市の名前の
+# 一部（大和郡山市）。八頭町郡家のように町名の中にある郡は、前に町村名が
+# あるので拾わない。
+_GUN = re.compile(r"^[^\d町村]+?郡(?=\D*?[町村])")
 _KANJI_DIGIT = {"〇": 0, "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
                 "六": 6, "七": 7, "八": 8, "九": 9}
 
@@ -85,6 +90,12 @@ def normalize_address(s: str) -> str:
     s = unicodedata.normalize("NFKC", s or "")
     s = s.replace(" ", "").replace("　", "")
     s = _PREF.sub("", s)
+    # 国土地理院は「大字」を落とし、「ケ」を「ヶ」で書く。入力の側が
+    # 正式な書き方（秦野市大字今泉、茅ケ崎市）だと、同じ町なのに別の町と
+    # 判定し、地図を使う項目をまるごと飛ばしていた（2026-11-01に確認。
+    # 郡も同じで、そちらは match_level で外す）。
+    s = s.replace("大字", "")
+    s = re.sub("[ヶヵ]", "ケ", s)
     s = re.sub(r"[〇一二三四五六七八九十]+(?=丁目)",
                lambda m: _kanji_number(m.group(0)), s)
     s = re.sub(r"(丁目|番地|番|号)", "-", s)
@@ -99,9 +110,16 @@ def _split_town(s: str):
     return m.group(1), m.group(2)
 
 
+def _drop_gun(a: str, b: str) -> str:
+    """a の先頭の郡が b に無ければ外す。"""
+    m = _GUN.match(a)
+    return a[m.end():] if m and not b.startswith(m.group(0)) else a
+
+
 def match_level(query: str, title: str) -> str:
     """入力した住所に対して、返ってきた住所がどこまで当たっているか。"""
     q, t = normalize_address(query), normalize_address(title)
+    q, t = _drop_gun(q, t), _drop_gun(t, q)
     if not t:
         return MISMATCH
     q_town, q_num = _split_town(q)

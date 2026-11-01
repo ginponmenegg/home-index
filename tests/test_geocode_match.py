@@ -138,3 +138,64 @@ def test_the_land_form_offers_the_zoning_choice():
     assert h.count("<option value=\"第一種低層住居専用地域\"") == 1
     assert webapp._valid_use_district("準住居地域") == "準住居地域"
     assert webapp._valid_use_district("でたらめ") is None
+
+
+# ---- 書き方の違いで別の町にしない（2026-11-01）-----------------------------
+# 国土地理院は郡と「大字」を落とし、「ケ」を「ヶ」で返す。入力が正式な
+# 書き方だと別の町と判定し、用途地域もハザードも周辺施設も飛ばしていた。
+
+def test_a_county_name_does_not_make_it_another_town():
+    m = g.match_level
+    assert m("神奈川県中郡二宮町二宮100", "神奈川県二宮町二宮１００番地") == g.ADDRESS
+    assert m("神奈川県足柄下郡湯河原町宮下100", "神奈川県湯河原町宮下") == g.TOWN
+    assert m("二宮町二宮100", "神奈川県中郡二宮町二宮１００番地") == g.ADDRESS
+    assert m("北海道余市郡余市町黒川町1-1", "北海道余市町黒川町一丁目１番") == g.ADDRESS
+
+
+def test_a_county_inside_a_name_is_left_alone():
+    m = g.match_level
+    # 市の名前の一部（大和郡山市）と、町名の中の郡（八頭町郡家）
+    assert m("奈良県大和郡山市北郡山町100",
+             "奈良県大和郡山市北郡山町１００番地") == g.ADDRESS
+    assert m("鳥取県八頭郡八頭町郡家100", "鳥取県八頭町郡家１００番地") == g.ADDRESS
+    assert m("福島県郡山市朝日1-1-1", "福島県郡山市朝日一丁目１番１号") == g.ADDRESS
+
+
+def test_oaza_and_the_small_ke_are_the_same_town():
+    m = g.match_level
+    assert m("神奈川県秦野市大字今泉100", "神奈川県秦野市今泉") == g.TOWN
+    assert m("神奈川県茅ケ崎市本村1-1-1",
+             "神奈川県茅ヶ崎市本村一丁目１番１号") == g.ADDRESS
+
+
+def test_a_really_different_town_is_still_told():
+    m = g.match_level
+    assert m("神奈川県平塚市真土1234", "神奈川県平塚市真田") == g.MISMATCH
+    assert m("神奈川県足柄上郡開成町吉田島100", "神奈川県大井町吉田島") == g.MISMATCH
+    assert m("神奈川県足柄上郡開成町吉田島100", "神奈川県開成町") == g.MISMATCH
+
+
+# ---- ハザードを引けなかった理由を数える -------------------------------------
+
+def test_the_reason_a_hazard_was_not_checked():
+    import app as webapp
+    from src.enrichment import HazardResult
+
+    def res(gc, checked):
+        r = pl.DiagnosisResult()
+        r.geocode = gc
+        r.enrichment = Enrichment(hazard=HazardResult(checked=checked))
+        return r
+
+    hit = g.GeocodeResult(35.3, 139.3, "x", "gsi", level=g.ADDRESS)
+    other = g.GeocodeResult(35.3, 139.3, "x", "gsi", level=g.MISMATCH)
+    gap = webapp._hazard_gap
+    assert gap(res(hit, True)) is None
+    assert gap(res(None, False)) == "hz_no_place"
+    assert gap(res(other, False)) == "hz_other_town"
+    assert gap(res(hit, False)) == "hz_fetch"
+    mock = pl.DiagnosisResult()
+    assert gap(mock) is None, "見本（MOCK）は数えない"
+    from src import metrics
+    for name in metrics.HAZARD_GAPS:
+        assert name in metrics.EVENTS
