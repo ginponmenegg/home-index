@@ -431,6 +431,79 @@ def test_an_ai_link_without_a_referrer_is_caught_by_its_tag(env):
     assert env.metrics.totals(1)["ref_ai"] == 1
 
 
+# ---- ブラウザで開かれた画面（2026-11-01）-----------------------------------
+# 普通のブラウザを名乗る巡回が来るので、画面の中の画像で数え直す。
+
+def test_a_counted_page_carries_its_beacon(env):
+    c = env.app.app.test_client()
+    h = _human(c, "/buy").get_data(as_text=True)
+    assert "/_h.gif?p=view_buy&" in h
+    assert h.index("/_h.gif?p=view_buy&") < h.rindex("</body>")
+
+
+def test_a_named_crawler_gets_no_beacon(env):
+    c = env.app.app.test_client()
+    h = c.get("/buy", headers={"User-Agent": "Googlebot/2.1"}).get_data(as_text=True)
+    assert "/_h.gif?p=" not in h
+
+
+def test_the_beacon_counts_a_human_view(env):
+    c = env.app.app.test_client()
+    c.get("/_h.gif?p=view_buy&1", headers=_UA)
+    c.get("/_h.gif?p=plan_confirm&1", headers=_UA)
+    c.get("/_h.gif?p=diag_kodate&1", headers=_UA)    # 画面でないものは数えない
+    c.get("/_h.gif?p=nonsense&1", headers=_UA)
+    t = env.metrics.totals(1)
+    assert t["h_view_buy"] == 1 and t["h_plan_confirm"] == 1
+    assert t["diag_kodate"] == 0
+    assert t["browser"] == 0, "トップの数には混ぜない"
+
+
+# ---- 入力で止まった欄（2026-11-01）---------------------------------------
+
+def test_the_free_forms_report_a_blocked_field(env):
+    c = env.app.app.test_client()
+    for path, kind in (("/buy", "kodate"), ("/mansion", "mansion"),
+                       ("/land", "land")):
+        h = _human(c, path).get_data(as_text=True)
+        assert f'data-miss="{kind}"' in h, path
+        assert 'addEventListener("invalid"' in h, path
+
+
+def test_a_blocked_field_is_counted_by_name_only(env):
+    c = env.app.app.test_client()
+    c.get("/_h.gif?f=mansion:area&1", headers=_UA)
+    c.get("/_h.gif?f=mansion:area&2", headers=_UA)
+    c.get("/_h.gif?f=kodate:price&1", headers=_UA)
+    c.get("/_h.gif?f=other:price&1", headers=_UA)          # 知らない種類
+    c.get("/_h.gif?f=kodate:" + "x" * 40 + "&1", headers=_UA)
+    c.get("/_h.gif?f=kodate:価格&1", headers=_UA)
+    c.get("/_h.gif?f=kodate:price&1", headers={"User-Agent": "Googlebot"})
+    assert env.metrics.form_misses(1) == [("mansion", "area", 2),
+                                          ("kodate", "price", 1)]
+    assert env.metrics.totals(1)["browser"] == 0
+
+
+def test_a_paste_with_nothing_readable_is_counted(env):
+    c = env.app.app.test_client()
+    c.post("/parse", data={"listing": "こんにちは"}, headers=_UA)
+    c.post("/parse", data={"listing": "価格 3,480万円 築年 2005年"},
+           headers=_UA)
+    t = env.metrics.totals(1)
+    assert t["paste_used"] == 2
+    assert t["paste_none"] == 1
+
+
+def test_the_metrics_page_shows_both_new_readings(env):
+    c = env.app.app.test_client()
+    c.get("/_h.gif?f=land:area&1", headers=_UA)
+    c.get("/_h.gif?p=plan_view&1", headers=_UA)
+    h = c.get("/metrics?key=ひみつ").get_data(as_text=True)
+    assert "入力で止まった欄" in h and "land:area" in h
+    assert "ブラウザで" in h
+    assert "プランの画面を開いた（ブラウザ）" in h
+    assert "/_h.gif?p=" not in h, "数字の画面そのものは数えない"
+
 # ---- パンフレットのQR（2026-10-24）-----------------------------------------
 # 紙から来た人はリンク元が無く、そのままだと「直接」に混ざる。
 

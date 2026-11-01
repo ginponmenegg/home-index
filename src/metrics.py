@@ -32,6 +32,7 @@ IPアドレス、住所、価格、会員IDは入れない。プライバシー�
 from __future__ import annotations
 
 import datetime
+import re
 
 from . import db
 
@@ -51,6 +52,9 @@ EVENTS = {
     # 貼り付けの自動入力が実際に使われているか。手入力を前面に出したので、
     # この機能を残す意味があるかどうかを、あとで数字で決められるようにする。
     "paste_used":   "貼り付けから自動入力した",
+    # 貼り付けたのに、価格も住所も面積も1つも読み取れなかった回数
+    # （2026-11-01）。使われないのか、使っても失敗するのかを分ける。
+    "paste_none":   "貼り付けたが何も読み取れなかった",
     "diag_kodate":  "戸建の診断が出た",
     "diag_mansion": "マンションの診断が出た",
     "diag_land":    "土地の診断が出た",
@@ -82,6 +86,19 @@ EVENTS = {
     "pro_cancel":   "PROを解約した",
     # 実際にブラウザで開かれた回数。HTMLを取るだけの巡回とは別に数える。
     "browser":      "トップをブラウザで開いた",
+    # 2026-11-01。普通のブラウザを名乗る巡回が来るようになり、名乗りでは
+    # 見分けられなくなった（10/29は記事の閲覧748件に対し、ブラウザで
+    # 開いたトップは12件）。画面のJavaScriptが読み込む1×1の画像で数え直す。
+    # トップの「browser」と同じ仕組みで、Cookieも識別子も使わない。
+    "h_view_buy":     "戸建の入力画面を開いた（ブラウザ）",
+    "h_view_mansion": "マンションの入力画面を開いた（ブラウザ）",
+    "h_view_land":    "土地の入力画面を開いた（ブラウザ）",
+    "h_view_guide":   "解説記事を開いた（ブラウザ）",
+    "h_view_sample":  "見本の結果を開いた（ブラウザ）",
+    "h_plan_view":    "プランの画面を開いた（ブラウザ）",
+    "h_pro_cta":      "PROの壁を開いた（ブラウザ）",
+    "h_login_view":   "ログイン画面を開いた（ブラウザ）",
+    "h_plan_confirm": "申込の最終確認を開いた（ブラウザ）",
     # どこから来たか。ホスト名は残さず、この5つのどれかを1増やすだけ。
     "ref_x":        "Xから来た",
     "ref_threads":  "Threadsから来た",
@@ -211,6 +228,52 @@ def landings(days: int = 30) -> list[tuple]:
                   (since(days).isoformat(), AI_LANDING + "%"), "all") or []
     out = [(r["name"][len(AI_LANDING):], int(r["n"] or 0)) for r in rows]
     return sorted(out, key=lambda x: (-x[1], x[0]))
+
+
+# ---- ブラウザで開かれた画面（2026-11-01）-----------------------------------
+# 画面を返したときの件数（view_buy など）と並べて読む。差が巡回のぶん。
+HUMAN = {n: "h_" + n for n in (
+    "view_buy", "view_mansion", "view_land", "view_guide", "view_sample",
+    "plan_view", "pro_cta", "login_view", "plan_confirm")}
+HUMAN_SINCE = "2026-11-01"
+
+
+def bump_human(name: str) -> None:
+    """画面の中から読み込まれた画像で、人が開いた回数を1件数える。"""
+    if name in HUMAN:
+        bump(HUMAN[name])
+
+
+# ---- 入力で止まった欄（2026-11-01）---------------------------------------
+# 必須の欄が空のまま「診断する」を押されて、ブラウザが止めた回数を欄ごとに。
+# 名前は「form_miss:mansion:area」の形で daily_counts に入れる（EVENTS には
+# 載せない）。残すのは診断の種類と欄の名前だけで、入力された値は受け取らない。
+FORM_MISS = "form_miss:"
+FORM_MISS_SINCE = "2026-11-01"
+FORM_KINDS = ("kodate", "mansion", "land")
+_FIELD_RE = re.compile(r"^[a-z_]{1,24}$")
+
+
+def bump_form_miss(kind: str, field: str) -> None:
+    if kind not in FORM_KINDS or not _FIELD_RE.match(field or ""):
+        return
+    if not db.enabled():
+        return
+    bump_raw(f"{FORM_MISS}{kind}:{field}")
+
+
+def form_misses(days: int = 30) -> list[tuple]:
+    """(種類, 欄, 件数) を多い順に。"""
+    if not db.enabled():
+        return []
+    rows = db.run("SELECT name, SUM(n) AS n FROM daily_counts "
+                  "WHERE day >= ? AND name LIKE ? GROUP BY name",
+                  (since(days).isoformat(), FORM_MISS + "%"), "all") or []
+    out = []
+    for r in rows:
+        kind, _, field = r["name"][len(FORM_MISS):].partition(":")
+        out.append((kind, field, int(r["n"] or 0)))
+    return sorted(out, key=lambda x: (-x[2], x[0], x[1]))
 
 
 def since(days: int) -> datetime.date:

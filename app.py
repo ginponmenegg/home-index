@@ -19,7 +19,7 @@ import webbrowser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flask import (Flask, request, render_template_string,  # noqa: E402
-                   session, redirect)
+                   session, redirect, g)
 from src import db, accounts, saved, mailer, billing, campaign  # noqa: E402
 from src import metrics  # noqa: E402
 from src import observations  # noqa: E402
@@ -765,6 +765,13 @@ def _did(name: str) -> None:
     if _skip_counting():
         return
     metrics.bump(name)
+    _mark_beacon(name)
+
+
+def _form_miss(kind: str, field: str) -> None:
+    """サーバーの側で入力を差し戻した欄を数える（ブラウザの必須を抜けたもの）。"""
+    if not _skip_counting():
+        metrics.bump_form_miss(kind, field)
 
 
 # 観測の種別。保存した診断の種別（chuko_kodate など）とは別の粗い分け方。
@@ -796,6 +803,7 @@ def _seen(name: str) -> None:
     if _skip_counting():
         return
     metrics.bump(name)
+    _mark_beacon(name)
     bucket = metrics.ref_bucket(request.headers.get("Referer") or "",
                                request.host or "",
                                request.args.get("utm_source") or "")
@@ -817,11 +825,68 @@ _PIXEL = base64.b64decode(
 
 @app.route("/_h.gif")
 def _heartbeat_pixel():
+    """p= があれば、その画面がブラウザで開かれた。f= があれば、入力で
+    止まった欄（「mansion:area」の形）。どちらも無ければトップ。"""
     from flask import Response
     if not _skip_counting():
-        metrics.bump("browser")
+        page = request.args.get("p")
+        miss = request.args.get("f")
+        if miss:
+            kind, _, field = miss.partition(":")
+            metrics.bump_form_miss(kind, field)
+        elif page:
+            metrics.bump_human(page)
+        else:
+            metrics.bump("browser")
     return Response(_PIXEL, mimetype="image/gif", headers={
         "Cache-Control": "no-store, max-age=0"})
+
+
+# ---- ブラウザで開かれたかを、画面の中から数える（2026-11-01）---------------
+# _seen / _did で数えた画面のうち、metrics.HUMAN にあるものには、閉じる
+# </body> の前に1行のスクリプトを足す。HTMLを取るだけの巡回はスクリプトを
+# 動かさないので、画像が読まれた数が「人が開いた数」に近くなる。
+_BEACON_JS = ('<script>(function(){try{new Image().src="/_h.gif?p=%s&"'
+              '+Date.now();}catch(e){}})();</script>')
+
+# 入力フォーム（data-miss のあるもの）で、必須の欄が空のまま送ろうとして
+# ブラウザに止められたら、その欄の名前だけを送る。値は送らない。
+_FORM_MISS_JS = (
+    '<script>(function(){try{'
+    'var fs=document.querySelectorAll("form[data-miss]");'
+    'Array.prototype.forEach.call(fs,function(f){var seen={};'
+    'f.addEventListener("invalid",function(e){'
+    'var n=e.target&&e.target.name;if(!n||seen[n])return;seen[n]=1;'
+    'new Image().src="/_h.gif?f="+encodeURIComponent('
+    'f.getAttribute("data-miss")+":"+n)+"&"+Date.now();},true);});'
+    '}catch(e){}})();</script>')
+
+
+def _mark_beacon(name: str) -> None:
+    if name in metrics.HUMAN:
+        g.hi_beacon = name
+
+
+@app.after_request
+def _add_beacons(resp):
+    try:
+        if (resp.direct_passthrough or resp.mimetype != "text/html"
+                or resp.status_code != 200):
+            return resp
+        name = g.get("hi_beacon")
+        body = resp.get_data(as_text=True)
+        add = ""
+        if name:
+            add += _BEACON_JS % name
+        if 'data-miss="' in body:
+            add += _FORM_MISS_JS
+        if not add:
+            return resp
+        i = body.rfind("</body>")
+        resp.set_data(body[:i] + add + body[i:] if i >= 0 else body + add)
+    except Exception as e:        # pragma: no cover
+        print(f"[beacon] 足せませんでした: {e}")
+    return resp
 
 
 def _client_ip():
@@ -1163,7 +1228,7 @@ BRAND_BAR
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
 
- <form class="card" method="post" action="/diagnose">
+ <form class="card" method="post" action="/diagnose" data-miss="kodate">
   <label>物件の所在地 <span class="req">必須</span></label>
   <input name="address" value="{{v.address}}" placeholder="例）〇〇県〇〇市〇〇町1-2-3" required>
   <div class="hint"><b>番地まで入れると、判定が正確になります。</b>ハザードや用途地域は
@@ -3704,8 +3769,12 @@ _METRIC_GROUPS = (
     ("画面を見た", ("view_lp", "browser", "view_buy", "view_mansion",
                     "view_land", "view_guide", "view_sample",
                     "view_sample_finance")),
+    ("ブラウザで開いた（巡回を除く・2026-11-01から）", (
+        "h_view_buy", "h_view_mansion", "h_view_land", "h_view_guide",
+        "h_view_sample", "h_plan_view", "h_pro_cta", "h_login_view",
+        "h_plan_confirm")),
     ("診断と保存", ("diag_kodate", "diag_mansion", "diag_land", "pro_diag",
-                    "paste_used", "saved")),
+                    "paste_used", "paste_none", "saved")),
     ("会員とPRO", ("signup", "trial_start", "plan_view", "pro_cta",
                    "login_view",
                    "login_plan", "login_sent", "login_open",
@@ -3834,6 +3903,12 @@ def metrics_page():
              ("申込の最終確認へ", tot["plan_confirm"]),
              ("決済画面へ進んだ", tot["checkout"]),
              ("契約が始まった", tot["pro_start"])]
+    # 画面を返した数には巡回が混ざる（2026-10-29に最終確認が13件）。
+    # ブラウザで開かれた数を横に並べる。診断・決済・契約はフォームか
+    # Stripe を通るので、巡回では増えない。
+    step_human = {"プランの画面を見た": tot["h_plan_view"],
+                  "PROの壁に当たった": tot["h_pro_cta"],
+                  "申込の最終確認へ": tot["h_plan_confirm"]}
 
     def step_rows():
         out = []
@@ -3843,10 +3918,36 @@ def metrics_page():
             else:
                 prev = steps[i - 1][1]
                 pct = f"{round(n / prev * 100)}%" if prev else "—"
+            hum = step_human.get(label)
             out.append(f'<tr><th class="rowlbl">{label}</th>'
                        f'<td data-name="件数"><b>{n}</b></td>'
+                       f'<td data-name="ブラウザで">'
+                       f'{"—" if hum is None else hum}</td>'
                        f'<td data-name="前の段から">{pct}</td></tr>')
         return "".join(out)
+
+    # ---- 入力で止まった欄 -----------------------------------------------
+    _kind_ja = {"kodate": "戸建", "mansion": "マンション", "land": "土地"}
+    _field_ja = {"address": "所在地", "price": "価格", "area": "面積",
+                 "email": "メールアドレス"}
+    misses = metrics.form_misses(days)
+    miss_rows = "".join(
+        f'<tr><th class="rowlbl">{_kind_ja.get(k, html.escape(k))}・'
+        f'{_field_ja.get(fld, html.escape(fld))}'
+        f'<br><span class="sub">{html.escape(k)}:{html.escape(fld)}</span></th>'
+        f'<td data-name="件数">{n}</td></tr>'
+        for k, fld, n in misses)
+    form_miss = (
+        '<h2 style="margin:26px 0 0">入力で止まった欄</h2>'
+        '<p class="sub" style="margin:0 0 4px">必須の欄が空のまま「診断する」を'
+        '押した回数を、欄ごとに。入力された値は受け取っていません。'
+        f'数え始めたのは{metrics.FORM_MISS_SINCE}です。</p>'
+        + (f'<table class="mx-ev"><tbody>{miss_rows}</tbody></table>'
+           if miss_rows else
+           '<p class="sub" style="margin:6px 0 0">この期間はまだありません。</p>')
+        + f'<p class="sub" style="margin:6px 0 0">貼り付け {tot["paste_used"]}回のうち、'
+          f'何も読み取れなかった {tot["paste_none"]}回'
+          '（読み取れなかった回を数え始めたのは2026-11-01）。</p>')
 
     def _n(v, unit="", nd=0):
         """集計の数字。Noneは「—」。平均は母数と一緒に出すこと。"""
@@ -3983,6 +4084,9 @@ table.mx-ev thead th{{font-size:12px;color:#64748b;font-weight:600}}
   <b>入力画面 → 診断</b>　{rate("diag_kodate", "view_buy")}（戸建）／
   {rate("diag_mansion", "view_mansion")}（マンション）／
   {rate("diag_land", "view_land")}（土地）<br>
+  <b>ブラウザで開いた入力画面 → 診断</b>　{rate("diag_kodate", "h_view_buy")}（戸建）／
+  {rate("diag_mansion", "h_view_mansion")}（マンション）／
+  {rate("diag_land", "h_view_land")}（土地）<br>
   <b>診断 → 会員登録</b>　{tot["signup"]}人／診断{diag}件
  </div>
 
@@ -3991,9 +4095,13 @@ table.mx-ev thead th{{font-size:12px;color:#64748b;font-weight:600}}
   率は「ひとつ前の段から」です。ログイン済みの人は、ログインの2段を
   通らずに最終確認へ進みます。ログインの段を数え始めたのは2026-10-21です。</p>
  <table class="mx-ev">
-  <thead><tr><th class="rowlbl">段</th><th>件数</th><th>前の段から</th></tr></thead>
+  <thead><tr><th class="rowlbl">段</th><th>件数</th><th>ブラウザで</th><th>前の段から</th></tr></thead>
   <tbody>{step_rows()}</tbody>
  </table>
+ <p class="sub" style="margin:4px 0 0">「ブラウザで」は、画面の中の画像が読み込まれた数です。
+  HTMLを取るだけの巡回は入りません。{metrics.HUMAN_SINCE}から数えています。</p>
+
+ {form_miss}
 
  <h2 style="margin:26px 0 0">日ごと</h2>
  <p class="sub" style="margin:0 0 4px">棒は診断の件数。押すと、その日の内訳が開きます。</p>
@@ -4083,6 +4191,11 @@ def parse():
         return render_template_string(FORM, v=_example_v(), listing="",
                                       banner="貼り付け欄が空です。物件説明を貼り付けてください。")
     p = parse_listing_text(text)
+    # 築年は数えない。築年の書かれていない戸建は「新築・今年」と補うので、
+    # 何も読めなかった貼り付けでも埋まってしまう（src/extract.py）。
+    if not any(p.get(k) is not None for k in (
+            "price_man", "address", "land", "building", "station")):
+        _bump("paste_none")
     # 全国：住所から市区町村コード・町名を解決（神奈川以外も対応）
     if p.get("address"):
         try:
@@ -4780,7 +4893,7 @@ BRAND_BAR
   重要事項説明でご確認ください。
  </div>
 
- <form class="card" method="post" action="/mansion_diagnose">
+ <form class="card" method="post" action="/mansion_diagnose" data-miss="mansion">
   <label>所在地 <span class="req">必須</span></label>
   <input name="address" value="{{v.address}}" placeholder="例）〇〇県〇〇市〇〇町2-3-4" required>
   <div class="hint"><b>番地まで入れると、判定が正確になります。</b>ハザードや用途地域は
@@ -4998,6 +5111,9 @@ def mansion_parse():
             MANSION_FORM, v=_mansion_example_v(), directions=DIRECTIONS,
             listing="", banner="貼り付け欄が空です。物件説明を貼り付けてください。")
     p = parse_mansion_text(text)
+    if not any(p.get(k) is not None for k in (
+            "price_man", "address", "area", "byear", "station")):
+        _bump("paste_none")
     if p.get("address") and not p.get("city"):
         try:
             code, _nm, dist = _resolve_city(p["address"])
@@ -5059,6 +5175,7 @@ def _run_mansion_diagnose(f):
 
     area = to_float(f.get("area"))
     if not area or area <= 0:
+        _form_miss("mansion", "area")
         return render_template_string(
             MANSION_FORM, v=_mansion_form_values(f), directions=DIRECTIONS,
             listing=f.get("listing", ""),
@@ -5189,7 +5306,7 @@ BRAND_BAR
   近隣でいくらで売買されているかの分布をそのままお見せします。
  </div>
 
- <form class="card" method="post" action="/land_diagnose">
+ <form class="card" method="post" action="/land_diagnose" data-miss="land">
   <label>所在地 <span class="req">必須</span></label>
   <input name="address" value="{{v.address}}" placeholder="例）〇〇県〇〇市〇〇町2-3-4" required>
 
@@ -6259,6 +6376,7 @@ def _land_subject_from(f):
 def _run_land_diagnose(f):
     subject, city, district, err = _land_subject_from(f)
     if err:
+        _form_miss("land", "area")
         return render_template_string(
             LAND_FORM, v=_land_form_values(f), road_types=LAND_ROAD_TYPES,
             conditions=LAND_CONDITIONS, banner=err)
