@@ -632,17 +632,17 @@ class LoanDeduction:
 
 
 def _floor_area_notes(floor_area_m2: Optional[float],
-                      fmin: Optional[float]) -> List[str]:
+                      requirement: Optional[str]) -> List[str]:
     """床面積の但し書き。入力が無ければ何も言わない。
 
     言うのは3つ。判定は登記簿の面積で行うこと、マンションの登記簿面積は
     内法なので販売図面の壁芯面積より小さいこと、登記簿の面積が分かるなら
     それを入れ直してほしいこと。
     """
-    if floor_area_m2 is None or not fmin:
+    if floor_area_m2 is None or not requirement:
         return []
     return [
-        f"床面積が{fmin}㎡以上という要件は、登記事項証明書に記載された面積で"
+        f"床面積の要件（{requirement}）は、登記事項証明書に記載された面積で"
         "判定されます。この試算は、入力された面積のまま計算しています。",
         "マンションの専有面積は、登記簿では内法（壁の内側）で測ります。"
         "販売図面やチラシに載っている専有面積は壁芯（壁の中心線）である"
@@ -682,23 +682,39 @@ def loan_deduction(principal: int, annual_rate: float, years: int,
         return LoanDeduction(category, None, None, [], 0, UNKNOWN,
                              f"合計所得金額が{man_yen(income_limit)}を超えるため対象外", src)
 
-    # 中古住宅の床面積要件は50㎡以上。40〜50㎡が対象になるのは
-    # 「特例特別特例取得」に該当する場合だけで、取得時期の条件がある。
-    # その条件をここでは確かめられないので、下限は下げない。下げると、
-    # 実際には使えない控除を「使える」と見せることになる。
+    # 床面積の要件は50㎡以上。令和8年以降に住み始める中古住宅（買取再販を
+    # 含む）は、40㎡以上50㎡未満でも対象になる。ただし合計所得金額が
+    # 1,000万円以下の人に限られ、子育て世帯・若者夫婦世帯の上乗せは無い
+    # （国税庁 No.1211-3・1211-2）。控除は令和12年末までに住み始める
+    # 人の制度なので、これから買う人は全員この扱いになる。
     fmin = c.get("floor_area_min")
+    smin, s_income = c.get("small_floor_area_min"), c.get("small_income_limit")
+    small = bool(floor_area_m2 is not None and fmin and smin
+                 and smin <= floor_area_m2 < fmin)
+    req = None
+    if fmin:
+        req = f"{fmin}㎡以上"
+        if smin and s_income:
+            req += f"。合計所得金額が{man_yen(s_income)}以下なら{smin}㎡以上"
     # 判定に使うのは登記簿の面積。マンションの専有部分は登記簿では内法
     # （壁の内側）で測るので、販売図面の壁芯面積より小さくなる。ここは
     # 入力された面積のまま計算し、差があることを但し書きで伝える。
-    area_notes = _floor_area_notes(floor_area_m2, fmin)
-    if floor_area_m2 is not None and fmin and floor_area_m2 < fmin:
-        # 40㎡台なら、条件次第で対象になり得る。門前払いにしない。
-        sp = c.get("floor_area_special_min")
-        if sp and floor_area_m2 >= sp and c.get("floor_area_special_note"):
-            area_notes = [c["floor_area_special_note"]] + area_notes
+    area_notes = _floor_area_notes(floor_area_m2, req)
+    floor = smin or fmin
+    if floor_area_m2 is not None and floor and floor_area_m2 < floor:
         return LoanDeduction(category, None, None, [], 0, UNKNOWN,
-                             f"床面積が{fmin}㎡未満のため対象外", src,
+                             f"床面積が{floor}㎡未満のため対象外", src,
                              notes=area_notes)
+    if small:
+        # 入力は年収で、合計所得金額（人ごと・給与所得控除の後）ではない。
+        # 超えていたら対象外として出し、対象になり得ることを書き添える。
+        # 控除を多く見せる側には倒さない。
+        if annual_income is not None and s_income and annual_income > s_income:
+            return LoanDeduction(category, None, None, [], 0, UNKNOWN,
+                                 f"床面積が{fmin}㎡未満で、年収が"
+                                 f"{man_yen(s_income)}を超えるため対象外として試算",
+                                 src, notes=[c.get("small_income_note", "")] + area_notes)
+        notes.append(c.get("small_note", ""))
 
     notes.extend(area_notes)
 
@@ -707,7 +723,9 @@ def loan_deduction(principal: int, annual_rate: float, years: int,
         notes.append(c.get("quake_cert_note", ""))
 
     limit = band.get("limit")
-    if is_kosodate and band.get("limit_kosodate"):
+    if is_kosodate and small:
+        notes.append(c.get("small_kosodate_note", ""))
+    elif is_kosodate and band.get("limit_kosodate"):
         limit = band["limit_kosodate"]
         notes.append("子育て世帯・若者夫婦世帯の上乗せを適用しています。")
     elif is_kosodate:
@@ -722,7 +740,8 @@ def loan_deduction(principal: int, annual_rate: float, years: int,
         bal = remaining_balance(principal, annual_rate, years, y * 12)
         yearly.append(int(round(min(bal, limit) * rate)))
     total = sum(yearly)
-    basis = (f"{category}（{'買取再販' if is_resale else '既存住宅'}）"
+    basis = (f"{category}（{'買取再販' if is_resale else '既存住宅'}"
+             f"{'・床面積40㎡台' if small else ''}）"
              f"／借入限度額 {man_yen(limit)} × 控除率 {rate*100:.1f}% × {n_years}年")
     notes.append("実際の控除額は、その年の所得税・住民税の額が上限になります。")
     return LoanDeduction(category, limit, n_years, yearly, total,

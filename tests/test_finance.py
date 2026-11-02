@@ -291,32 +291,73 @@ def test_loan_deduction_kosodate_and_area():
     assert small.status == UNKNOWN
 
 
-def test_the_floor_area_floor_is_fifty_not_forty():
-    """40〜50㎡が対象になるのは取得時期に条件のある特例だけ。
+# ---- 床面積40㎡以上50㎡未満 ------------------------------------------------
+#
+# 国税庁 No.1211-3（中古）・1211-2（買取再販）［令和8年4月1日現在］。
+# 令和8年以降に住み始めるなら40㎡以上50㎡未満も対象。ただし合計所得金額
+# 1,000万円以下に限られ、特例対象個人の上乗せは無い。
 
-    その条件はここでは確かめられない。既定で下限を下げると、実際には
-    使えない控除を「使える」と見せることになる。ズレの向きが買う方向に
-    効くので、安全側に置く。
-    """
+def test_the_config_follows_the_tax_answer_for_small_flats():
     from src.finance import FCONFIG
     c = FCONFIG["loan_deduction"]
     assert c["floor_area_min"] == 50
-    assert "high_income_threshold" not in c, "所得で下限を下げる仕掛けを残さない"
+    assert c["small_floor_area_min"] == 40
+    assert c["small_income_limit"] == 10_000_000
+    assert "1211-3" in c["floor_area_source"] and "1211-2" in c["floor_area_source"]
+    assert "floor_area_special_note" not in c, "取得時期の条件があるという古い説明を残さない"
+
+
+def test_a_flat_in_the_forties_gets_the_deduction():
     d = loan_deduction(20_000_000, 0.0125, 35, category="その他",
                        annual_income=6_000_000, floor_area_m2=45.0)
+    full = loan_deduction(20_000_000, 0.0125, 35, category="その他",
+                          annual_income=6_000_000, floor_area_m2=60.0)
+    assert d.status == full.status and d.total == full.total > 0
+    assert "40㎡台" in d.basis
+    assert any("1,000万円以下" in n for n in d.notes), "所得の条件を書く"
+
+
+def test_a_resale_flat_in_the_forties_gets_it_too():
+    d = loan_deduction(30_000_000, 0.0125, 35, category="長期優良・低炭素",
+                       is_resale=True, annual_income=6_000_000, floor_area_m2=45.0)
+    assert d.total > 0 and d.limit == 45_000_000
+
+
+def test_no_family_uplift_under_fifty():
+    kw = dict(category="長期優良・低炭素", is_kosodate=True, annual_income=6_000_000)
+    small = loan_deduction(50_000_000, 0.0125, 35, floor_area_m2=45.0, **kw)
+    big = loan_deduction(50_000_000, 0.0125, 35, floor_area_m2=60.0, **kw)
+    assert small.limit == 35_000_000 and big.limit == 45_000_000
+    assert any("上乗せがありません" in n for n in small.notes)
+    assert not any("上乗せを適用" in n for n in small.notes)
+
+
+def test_income_over_ten_million_is_shown_as_out_but_explained():
+    """年収と合計所得金額は違う。対象外として出し、対象になり得ると書く。"""
+    d = loan_deduction(20_000_000, 0.0125, 35, category="その他",
+                       annual_income=11_000_000, floor_area_m2=45.0)
     assert d.status == UNKNOWN and d.total == 0
-
-
-def test_a_flat_in_the_forties_is_told_the_exception_exists():
-    """門前払いにしない。条件次第で対象になり得ることは伝える。"""
-    d = loan_deduction(20_000_000, 0.0125, 35, category="その他",
-                       annual_income=6_000_000, floor_area_m2=45.0)
+    assert "対象外" in d.basis
     joined = "".join(d.notes)
-    assert "特例特別特例取得" in joined
-    assert "税務署または税理士" in joined
-    small = loan_deduction(20_000_000, 0.0125, 35, category="その他",
-                           annual_income=6_000_000, floor_area_m2=35.0)
-    assert "特例特別特例取得" not in "".join(small.notes),         "40㎡未満には可能性が無いので、言わない"
+    assert "給与所得控除" in joined and "税務署または税理士" in joined
+    # 50㎡以上なら同じ年収でも対象
+    ok = loan_deduction(20_000_000, 0.0125, 35, category="その他",
+                        annual_income=11_000_000, floor_area_m2=60.0)
+    assert ok.total > 0
+
+
+def test_under_forty_is_out():
+    d = loan_deduction(20_000_000, 0.0125, 35, category="その他",
+                       annual_income=6_000_000, floor_area_m2=39.9)
+    assert d.status == UNKNOWN and d.total == 0
+    assert "40㎡未満" in d.basis
+
+
+def test_the_area_note_names_both_lines():
+    d = loan_deduction(20_000_000, 0.0125, 35, category="その他",
+                       annual_income=6_000_000, floor_area_m2=75.0)
+    first = d.notes[0]
+    assert "50㎡以上" in first and "40㎡以上" in first and "登記事項証明書" in first
 
 
 def test_fire_insurance_and_scrivener():

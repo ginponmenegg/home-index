@@ -457,6 +457,9 @@ def test_the_deduction_article_matches_the_config():
     assert f"{c['rate'] * 100:.1f}%" in body, "控除率"
     assert f"{c['income_limit'] // 10000:,}万円" in body, "所得の上限"
     assert f"{c['floor_area_min']}㎡以上" in body, "床面積の下限"
+    assert f"{c['small_floor_area_min']}㎡以上{c['floor_area_min']}㎡未満" in body, "40㎡台の線"
+    assert f"{c['small_income_limit'] // 10000:,}万円以下" in body, "40㎡台の所得の上限"
+    assert "1211-3" in body and "1211-2" in body, "出典"
 
     def man(v):
         return f"{v // 10000:,}万円"
