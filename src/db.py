@@ -227,6 +227,9 @@ ADDED_COLUMNS = [
     # 住所そのものではなく、種別と住所から作った指紋（ハッシュ）で持つ。
     ("users", "trial_key", "TEXT"),
     ("users", "trial_at", "TEXT"),
+    # 90日パス（2026-11-03）。PROにした決済（Checkoutセッション）のID。
+    # Webhookと戻り画面の両方から来るので、同じ決済で二度延ばさないために持つ。
+    ("users", "plan_pass_sessions", "TEXT"),
 ]
 
 

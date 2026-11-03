@@ -4,7 +4,7 @@
 決済サービスはまだ繋いでいない。ここで確かめるのは、
 ・課金の準備が整うまで画面が表に出ないこと
 ・出したときに、特定商取引法の表示義務を満たしていること
-・解約が引き止め無しで、かつ誤操作しにくい深さになっていること
+・90日パス（1回払い・自動更新なし）が、同じ決済で二度延びないこと
 の3つ。
 """
 import os
@@ -23,7 +23,7 @@ _ENV = {"BILLING_ENABLED": "1", "OPERATOR_NAME": "山田 太郎",
         "OPERATOR_TEL": "0465-00-0000",
         "CONTACT_EMAIL": "support@example.jp",
         "STRIPE_SECRET_KEY": "sk_test_dummy",
-        "STRIPE_PRICE_ID": "price_dummy",
+        "STRIPE_PASS_PRICE_ID": "price_dummy",
         "STRIPE_WEBHOOK_SECRET": "whsec_dummy"}
 
 
@@ -129,33 +129,36 @@ def test_final_confirmation_screen_has_all_required_items(billing):
     h = c.get("/plan/confirm").get_data(as_text=True)
     required = {
         "①分量": "診断の回数に制限はありません",
-        "②販売価格": "2,980円（税込）",
-        "②2回目以降": "2回目以降も同額",
-        "②総額": "解約されるまで、毎月",
+        "①期間": "お支払いの完了から90日間",
+        "②販売価格": "5,980円（税込）",
+        "②総額": "これ以外の請求はありません",
         "③支払方法": "クレジットカード",
-        "③支払時期": "毎月同じ日に自動で決済",
+        "③支払時期": "お申込み時に1回だけ",
         "④提供時期": "決済の完了後、ただちに",
-        "⑤解約の方法": "マイページ →「プランと設定」",
-        "⑤返金": "日割りでの返金は行っておりません",
+        "⑤期間の終了": "解約の手続きは要りません",
+        "⑤返金": "取消し・返金はお受けしておりません",
     }
     for label, needle in required.items():
         assert needle in h, label
 
 
-def test_cancellation_method_is_on_the_screen_not_behind_a_link(billing):
-    """解約方法は「見やすい位置」に書く。規約へのリンクで済ませない。"""
+def test_no_renewal_is_said_next_to_the_price(billing):
+    """止まっていたのは料金と自動更新を見る段。料金のすぐ近くに書く。"""
     c, _ = _login(billing, "onscreen@example.com")
     h = c.get("/plan/confirm").get_data(as_text=True)
-    i = h.index("解約の方法")
-    # 見出しの近くに手順そのものがあること
-    assert "マイページ" in h[i:i + 400]
+    i = h.index("支払時期")
+    assert "自動更新はありません" in h[i:i + 200]
+    assert "毎月" not in h and "月額" not in h
+    assert "年" in h[h.index("利用期間"):h.index("利用期間") + 200], "いつまでかを書く"
 
 
 def test_tokushoho_page_shows_the_three_items_that_cannot_be_omitted(billing):
     h = billing.app.app.test_client().get("/tokushoho").get_data(as_text=True)
     for k in ["山田 太郎", "神奈川県小田原市栄町1-1-1", "0465-00-0000"]:
         assert k in h, k
-    assert "日割りでの返金も行っておりません" in h
+    assert "取消し・返金はお受けしておりません" in h
+    assert "自動更新はありません" in h
+    assert "毎月" not in h
 
 
 def test_the_trade_name_is_composed_on_the_page_not_in_the_variable(billing):
@@ -177,105 +180,149 @@ def test_the_trade_name_is_composed_on_the_page_not_in_the_variable(billing):
 
 def test_terms_gain_the_billing_clauses(billing):
     h = billing.app.app.test_client().get("/terms").get_data(as_text=True)
-    for k in ["有料プラン", "自動で更新", "第8条（解約）", "第9条（返金）",
-              "1か月前までに"]:
+    for k in ["有料プラン", "90日間", "自動で更新されることはなく",
+              "第8条（利用期間の終了）", "第9条（返金）", "1か月前までに"]:
         assert k in h, k
+    assert "毎月" not in h
 
 
-# ---- 解約導線 -------------------------------------------------------------
+# ---- 90日パス（2026-11-03）----------------------------------------------
 
-def test_cancelling_takes_a_confirmation_step(billing):
-    """ボタン1つで即完了にしない。誤操作を防ぐため。"""
-    c, uid = _login(billing, "cancel@example.com")
-    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO,
-                              "2099-01-01T00:00:00+00:00")
-    # 1画面目：プランから解約へ入れる
-    assert "/plan/cancel" in c.get("/plan").get_data(as_text=True)
-    # 2画面目：GETでは解約されない
-    h = c.get("/plan/cancel").get_data(as_text=True)
-    assert "解約を確定する" in h
-    assert billing.accounts.is_pro(billing.accounts.get_user(uid)), \
-        "確認画面を見ただけで解約されてはいけない"
-    # 3画面目：POSTで確定
-    h = c.post("/plan/cancel").get_data(as_text=True)
-    assert "解約しました" in h
+def _pass_session(uid=None, sid="cs_pass", paid=True, email=None):
+    """本番と同じ型のCheckoutセッション（1回払い）。"""
+    import stripe
+    data = {"id": sid, "object": "checkout.session", "mode": "payment",
+            "payment_status": "paid" if paid else "unpaid",
+            "client_reference_id": str(uid) if uid else None,
+            "customer": "cus_" + sid, "subscription": None}
+    if email:
+        data["customer_details"] = {"email": email}
+    return stripe.checkout.Session.construct_from(data, "sk_test_dummy")
+
+
+def _hook(c, obj):
+    body, sig = _signed(_event("checkout.session.completed", obj))
+    return c.post("/stripe/webhook", data=body,
+                  headers={"Stripe-Signature": sig,
+                           "Content-Type": "application/json"})
+
+
+def _days_left(billing, uid):
+    import datetime
+    exp = billing.accounts.get_user(uid)["plan_expires_at"]
+    left = (datetime.datetime.fromisoformat(exp)
+            - datetime.datetime.now(datetime.timezone.utc))
+    return left.total_seconds() / 86400
+
+
+def test_a_pass_turns_pro_on_for_ninety_days(billing):
+    c, uid = _login(billing, "pass1@example.com")
+    r = _hook(c, {"id": "cs_p1", "object": "checkout.session",
+                  "mode": "payment", "payment_status": "paid",
+                  "client_reference_id": str(uid), "customer": "cus_p1"})
+    assert r.status_code == 200, r.get_data(as_text=True)
     u = billing.accounts.get_user(uid)
-    assert u["plan_cancel_at"] == "2099-01-01T00:00:00+00:00"
+    assert billing.accounts.is_pro(u)
+    assert 89.9 < _days_left(billing, uid) <= 90
+    assert u["stripe_customer_id"] == "cus_p1"
+    assert not u["stripe_subscription_id"], "サブスクリプションは作らない"
 
 
-def test_a_cancelled_member_keeps_pro_until_the_period_ends(billing):
-    """解約しても、支払い済みの期間はPROのまま使える。
+def test_the_same_payment_does_not_extend_twice(billing, monkeypatch):
+    """Webhookと戻り画面の両方から同じ決済が来る。二度延ばさない。"""
+    c, uid = _login(billing, "pass2@example.com")
+    obj = {"id": "cs_p2", "object": "checkout.session", "mode": "payment",
+           "payment_status": "paid", "client_reference_id": str(uid),
+           "customer": "cus_p2"}
+    _hook(c, obj)
+    _hook(c, obj)                                     # Stripeの再送
+    monkeypatch.setattr(billing.app.billing, "checkout_session",
+                        lambda sid: _pass_session(uid, "cs_p2"))
+    c.get("/plan/done?session_id=cs_p2")              # 戻り画面
+    assert _days_left(billing, uid) <= 90
 
-    画面も特商法の表記も規約も「お支払い済みの期間の末日まで」と
-    書いてある。ここで即座に落とすと、受け取った代金に対して役務を
-    渡していないことになる。
-    """
-    c, uid = _login(billing, "keeppro@example.com")
-    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO,
-                              "2099-01-01T00:00:00+00:00")
-    c.post("/plan/cancel")
-    assert billing.accounts.is_pro(billing.accounts.get_user(uid)),         "解約した瞬間に使えなくなってはいけない"
-    assert "<form" in c.get("/pro/diagnose").get_data(as_text=True),         "PROの画面もそのまま使える"
-    # 期間末を過ぎたら無料に戻る
-    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO,
-                              "2000-01-01T00:00:00+00:00")
+
+def test_buying_again_before_it_ends_adds_to_the_end(billing):
+    """残りを捨てさせない。いまの期限の後ろに90日を足す。"""
+    import datetime
+    c, uid = _login(billing, "pass3@example.com")
+    soon = (datetime.datetime.now(datetime.timezone.utc)
+            + datetime.timedelta(days=10)).replace(microsecond=0).isoformat()
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, soon)
+    billing.db.run("UPDATE users SET plan_pass_sessions = ? WHERE id = ?",
+                   ("cs_old", uid))
+    _hook(c, {"id": "cs_p3", "object": "checkout.session", "mode": "payment",
+              "payment_status": "paid", "client_reference_id": str(uid),
+              "customer": "cus_p3"})
+    assert 99.9 < _days_left(billing, uid) <= 100
+
+
+def test_an_unpaid_pass_grants_nothing(billing):
+    c, uid = _login(billing, "pass4@example.com")
+    _hook(c, {"id": "cs_p4", "object": "checkout.session", "mode": "payment",
+              "payment_status": "unpaid", "client_reference_id": str(uid),
+              "customer": "cus_p4"})
     assert not billing.accounts.is_pro(billing.accounts.get_user(uid))
 
 
-def test_the_plan_page_says_when_it_ends_and_hides_the_button(billing):
-    """解約済みの人に、もう一度「解約する」を出さない。"""
-    c, uid = _login(billing, "ended@example.com")
+def test_extending_opens_only_in_the_last_two_weeks(billing):
+    """まだ要らない期間を先に払わせない。"""
+    import datetime
+    c, uid = _login(billing, "pass5@example.com")
+
+    def until(days):
+        return (datetime.datetime.now(datetime.timezone.utc)
+                + datetime.timedelta(days=days)).replace(microsecond=0).isoformat()
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, until(60))
+    assert c.get("/plan/confirm").status_code == 302
+    assert c.post("/plan/subscribe").status_code == 302
+    h = c.get("/plan").get_data(as_text=True)
+    assert "14日以内になると" in h and "/plan/confirm" not in h
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, until(7))
+    h = c.get("/plan/confirm").get_data(as_text=True)
+    assert "いまの期限の後ろに90日" in h and "（延長）" in h
+    assert "90日延長する" in c.get("/plan").get_data(as_text=True)
+
+
+def test_the_plan_page_says_until_when_and_that_nothing_renews(billing):
+    c, uid = _login(billing, "pass6@example.com")
     billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO,
                               "2099-03-31T00:00:00+00:00")
-    c.post("/plan/cancel")
     h = c.get("/plan").get_data(as_text=True)
-    assert "解約を受け付けました" in h
-    assert "2099-03-31" in h
-    assert "追加の請求はありません" in h
-    assert "/plan/cancel" not in h, "解約済みなのに解約ボタンが出ている"
-    # 二重に解約しようとしても、確認画面に入れない
-    assert c.get("/plan/cancel").status_code in (301, 302)
+    assert "2099年3月31日 9:00まで" in h, "期限は日本時間で書く"
+    assert "自動更新はありません" in h and "追加の請求はありません" in h
+    assert "解約する" not in h
 
 
-def test_cancelling_without_a_known_end_date_stops_at_once(billing):
-    """期間末が分からないPRO（手動付与など）は、その場で無料に戻す。
-
-    ここをPROのまま残すと、期限なし＝永久にPROになる。
-    """
-    c, uid = _login(billing, "manual@example.com")
-    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, None)
-    c.post("/plan/cancel")
-    u = billing.accounts.get_user(uid)
-    assert not billing.accounts.is_pro(u)
-    assert not u["plan_cancel_at"]
+def test_a_visitor_sees_the_pass_and_no_monthly_wording(billing):
+    h = billing.app.app.test_client().get("/plan").get_data(as_text=True)
+    assert "90日パス 5,980円（税込）" in h
+    assert "自動更新はありません" in h
+    assert "毎月" not in h and "月額" not in h and "いつでも解約" not in h
 
 
-def test_restarting_clears_the_cancellation(billing, monkeypatch):
-    """解約したあとに再開したら、終了予定を消す。"""
-    c, uid = _login(billing, "restart@example.com")
+def test_there_is_no_cancel_screen_any_more(billing):
+    c, uid = _login(billing, "pass7@example.com")
     billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO,
                               "2099-01-01T00:00:00+00:00")
-    c.post("/plan/cancel")
-    assert billing.accounts.get_user(uid)["plan_cancel_at"]
-    monkeypatch.setattr(billing.app.billing, "subscription",
-                        lambda i: _stripe_obj("Subscription", {
-                            "id": "sub_r", "object": "subscription",
-                            "current_period_end": 4102444800}))
-    body, sig = _signed(_event("checkout.session.completed", {
-        "id": "cs_r", "object": "checkout.session", "payment_status": "paid",
-        "client_reference_id": str(uid), "customer": "cus_r",
-        "subscription": "sub_r"}))
-    c.post("/stripe/webhook", data=body,
-           headers={"Stripe-Signature": sig,
-                    "Content-Type": "application/json"})
-    u = billing.accounts.get_user(uid)
-    assert billing.accounts.is_pro(u)
-    assert not u["plan_cancel_at"]
-    assert "/plan/cancel" in c.get("/plan").get_data(as_text=True)
+    assert c.get("/plan/cancel").status_code == 404
+    assert c.post("/plan/cancel").status_code == 404
+
+
+def test_a_second_purchase_is_counted(billing, monkeypatch):
+    seen = []
+    monkeypatch.setattr(billing.app, "_bump", lambda k: seen.append(k))
+    c, uid = _login(billing, "pass8@example.com")
+    for sid in ("cs_p8a", "cs_p8b"):
+        billing.accounts.set_plan(uid, billing.accounts.PLAN_FREE, None)
+        _hook(c, {"id": sid, "object": "checkout.session", "mode": "payment",
+                  "payment_status": "paid", "client_reference_id": str(uid),
+                  "customer": "cus_p8"})
+    assert seen.count("pro_start") == 2 and seen.count("pro_again") == 1
 
 
 def test_a_cancellation_made_on_stripes_side_shows_here(billing):
-    """ポータルや管理画面で解約された場合も、画面の表示をそろえる。"""
+    """月額のころの契約が残っていても、画面の表示をそろえる。"""
     c, uid = _login(billing, "portalside@example.com")
     billing.accounts.set_stripe_ids(uid, "cus_p", "sub_p")
     billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, None)
@@ -292,46 +339,12 @@ def test_a_cancellation_made_on_stripes_side_shows_here(billing):
     assert "解約を受け付けました" in c.get("/plan").get_data(as_text=True)
 
 
-def test_the_confirmation_says_what_survives(billing):
-    """解約する人が知るべきことを、確認画面で示す。"""
-    c, uid = _login(billing, "survive@example.com")
-    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO,
-                              "2099-12-31T00:00:00+00:00")
-    h = c.get("/plan/cancel").get_data(as_text=True)
-    assert "2099-12-31" in h, "いつまで使えるか"
-    assert "保存した診断は消えません" in h
-    assert "日割りでの返金はありません" in h
-    assert "いつでも再開できます" in h
-
-
-def test_no_retention_tactics(billing):
-    """引き止めは置かない。前回の合意どおり。"""
-    c, uid = _login(billing, "noretain@example.com")
-    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, None)
-    h = c.get("/plan/cancel").get_data(as_text=True)
-    for banned in ["一時停止", "プランを変更", "特典", "もう一度お考え",
-                   "お得"]:
-        assert banned not in h, banned
-
-
-def test_the_survey_comes_after_cancelling_not_before(billing):
-    """アンケートを解約の前に置くと妨害になる。後なら妨害にならない。"""
-    c, uid = _login(billing, "survey@example.com")
-    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, None)
-    before = c.get("/plan/cancel").get_data(as_text=True)
-    assert "理由" not in before, "解約の前に理由を聞かない"
-    after = c.post("/plan/cancel").get_data(as_text=True)
-    assert "理由を1つだけ" in after
-    # 答えなくても解約は済んでいる
-    assert not billing.accounts.is_pro(billing.accounts.get_user(uid))
-    assert "答えずに戻る" in after
-
-
-def test_saved_diagnoses_survive_cancelling(billing):
-    """解約しても保存は消さない。超過分も読める（新規保存だけ止まる）。"""
+def test_saved_diagnoses_survive_the_end_of_the_pass(billing):
+    """期間が終わっても保存は消さない。超過分も読める（新規保存だけ止まる）。"""
     from src import saved as saved_mod
     c, uid = _login(billing, "keep@example.com")
-    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO, None)
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO,
+                              "2099-01-01T00:00:00+00:00")
     u = billing.accounts.get_user(uid)
     payload = {"kind": "chuko_kodate", "total": 70, "grade": "B",
                "sufficiency": 48.0, "categories": [], "risks": [],
@@ -339,7 +352,8 @@ def test_saved_diagnoses_survive_cancelling(billing):
                "price": {"verdict": "判定不可"}}
     ids = [saved_mod.save(u, "chuko_kodate", f"物件{i}", "住所", 1, 70, "B",
                           payload) for i in range(saved_mod.FREE_LIMIT + 2)]
-    c.post("/plan/cancel")
+    billing.accounts.set_plan(uid, billing.accounts.PLAN_PRO,
+                              "2000-01-01T00:00:00+00:00")     # 期限切れ
 
     u2 = billing.accounts.get_user(uid)
     assert not billing.accounts.is_pro(u2)
@@ -585,7 +599,8 @@ def test_the_gate_keeps_what_the_visitor_already_typed(billing):
 def test_the_gate_says_the_price_and_that_login_is_needed(billing):
     """押す前に分からなかったことを、止めた画面で先に出す。"""
     h = billing.app.app.test_client().get("/pro/finance").get_data(as_text=True)
-    assert "月額" in h, "料金が書かれていない"
+    assert "90日パス" in h, "料金が書かれていない"
+    assert "自動更新はありません" in h
     assert "ログイン" in h, "ログインが要ることが書かれていない"
     assert "/sample/finance" in h, "中身を見られる場所を出していない"
 
@@ -664,34 +679,22 @@ def test_pro_stays_open_while_it_is_free():
 # 「この決済は済んでいるか」を聞きに行く。
 
 
-def _fake_session(uid, paid=True, cust="cus_z", sub="sub_z"):
-    """本番と同じ型を返す。dictを返すと本番で落ちる書き方を見逃す。"""
-    import stripe
-    return stripe.checkout.Session.construct_from(
-        {"id": "cs_x", "object": "checkout.session",
-         "payment_status": "paid" if paid else "unpaid",
-         "client_reference_id": str(uid), "customer": cust,
-         "subscription": sub}, "sk_test_dummy")
-
-
 def test_the_return_screen_asks_stripe_when_the_hook_is_late(billing,
                                                              monkeypatch):
     c, uid = _login(billing, "late@example.com")
     monkeypatch.setattr(billing.app.billing, "checkout_session",
-                        lambda sid: _fake_session(uid))
-    monkeypatch.setattr(billing.app.billing, "subscription", lambda i: {})
-    monkeypatch.setattr(billing.app.billing, "period_end",
-                        lambda s: "2099-01-01T00:00:00+00:00")
-    h = c.get("/plan/done?session_id=cs_test_1").get_data(as_text=True)
+                        lambda sid: _pass_session(uid, "cs_late"))
+    h = c.get("/plan/done?session_id=cs_late").get_data(as_text=True)
     assert billing.accounts.is_pro(billing.accounts.get_user(uid))
     assert "確認をしています" not in h
+    assert "自動更新はありません" in h
 
 
 def test_an_unpaid_session_grants_nothing(billing, monkeypatch):
     c, uid = _login(billing, "unpaidsess@example.com")
     monkeypatch.setattr(billing.app.billing, "checkout_session",
-                        lambda sid: _fake_session(uid, paid=False))
-    c.get("/plan/done?session_id=cs_test_2")
+                        lambda sid: _pass_session(uid, "cs_unpaid", paid=False))
+    c.get("/plan/done?session_id=cs_unpaid")
     assert not billing.accounts.is_pro(billing.accounts.get_user(uid))
 
 
@@ -700,10 +703,8 @@ def test_someone_elses_session_grants_nothing(billing, monkeypatch):
     c, uid = _login(billing, "borrower@example.com")
     other = billing.accounts._upsert_user("owner@example.com")
     monkeypatch.setattr(billing.app.billing, "checkout_session",
-                        lambda sid: _fake_session(other["id"]))
-    monkeypatch.setattr(billing.app.billing, "subscription", lambda i: {})
-    monkeypatch.setattr(billing.app.billing, "period_end", lambda s: None)
-    c.get("/plan/done?session_id=cs_test_3")
+                        lambda sid: _pass_session(other["id"], "cs_other"))
+    c.get("/plan/done?session_id=cs_other")
     assert not billing.accounts.is_pro(billing.accounts.get_user(uid))
     assert not billing.accounts.is_pro(
         billing.accounts.get_user(other["id"])), "他人のプランも動かさない"
@@ -774,6 +775,7 @@ def test_a_stale_customer_id_does_not_block_signing_up():
     finally:
         b._stripe = keep
     assert url == "https://checkout.stripe.com/ok"
+    assert calls[0]["mode"] == "payment", "1回払い。サブスクリプションは作らない"
     assert len(calls) == 2, "顧客IDを外して1度だけやり直すこと"
     assert "customer" not in calls[1]
     assert calls[1]["customer_email"] == "a@example.com"
@@ -878,11 +880,11 @@ def test_an_operator_address_is_pro_without_paying(billing, monkeypatch):
     assert "/plan/cancel" not in h, "解約するものが無いので、解約の導線を出さない"
 
 
-def test_an_operator_cannot_cancel_by_accident(billing, monkeypatch):
+def test_an_operator_is_not_sold_a_pass(billing, monkeypatch):
     c, uid = _login(billing, "owner2@example.jp")
     monkeypatch.setenv("PRO_EMAILS", "owner2@example.jp")
-    assert c.get("/plan/cancel").status_code == 302
-    assert c.post("/plan/cancel").status_code == 302
+    assert c.get("/plan/confirm").status_code == 302
+    assert c.post("/plan/subscribe").status_code == 302
     assert billing.accounts.is_pro(billing.accounts.get_user(uid))
 
 
@@ -973,26 +975,13 @@ def test_a_visitor_goes_to_stripe_without_logging_in(billing, monkeypatch):
     assert seen["user_id"] is None and seen["email"] is None
 
 
-def _guest_session(email, sub="sub_guest", ref=None, paid=True):
-    import stripe
-    return stripe.checkout.Session.construct_from(
-        {"id": "cs_guest", "object": "checkout.session",
-         "payment_status": "paid" if paid else "unpaid",
-         "client_reference_id": ref, "customer": "cus_" + sub,
-         "subscription": sub, "customer_details": {"email": email}},
-        "sk_test_dummy")
-
-
-def _quiet_stripe(billing, monkeypatch, email, sub):
+def _quiet_stripe(billing, monkeypatch, email, sid):
     monkeypatch.setattr(billing.app.billing, "checkout_session",
-                        lambda sid: _guest_session(email, sub))
-    monkeypatch.setattr(billing.app.billing, "subscription", lambda i: {})
-    monkeypatch.setattr(billing.app.billing, "period_end",
-                        lambda s: "2099-01-01T00:00:00+00:00")
+                        lambda _sid: _pass_session(None, sid, email=email))
 
 
 def test_a_guest_checkout_creates_the_member_and_logs_in(billing, monkeypatch):
-    _quiet_stripe(billing, monkeypatch, "guest1@example.com", "sub_g1")
+    _quiet_stripe(billing, monkeypatch, "guest1@example.com", "cs_guest")
     c = billing.app.app.test_client()
     h = c.get("/plan/done?session_id=cs_guest").get_data(as_text=True)
     assert "で会員を作りました" in h
@@ -1012,9 +1001,9 @@ def test_paying_with_an_existing_members_address_does_not_log_in(billing,
                                                                  monkeypatch):
     """他人のメールアドレスで払って、その人のアカウントに入れてはいけない。"""
     _login(billing, "owner2@example.com")          # 本人は前にログイン済み
-    _quiet_stripe(billing, monkeypatch, "owner2@example.com", "sub_g2")
+    _quiet_stripe(billing, monkeypatch, "owner2@example.com", "cs_guest2")
     c = billing.app.app.test_client()
-    h = c.get("/plan/done?session_id=cs_guest").get_data(as_text=True)
+    h = c.get("/plan/done?session_id=cs_guest2").get_data(as_text=True)
     assert "すでに会員として登録されていました" in h
     assert "ここから先はPROです" in c.get("/pro/diagnose").get_data(as_text=True)
 
@@ -1022,7 +1011,7 @@ def test_paying_with_an_existing_members_address_does_not_log_in(billing,
 def test_the_webhook_makes_the_member_from_the_checkout_email(billing):
     body, sig = _signed(_event("checkout.session.completed", {
         "id": "cs_g3", "object": "checkout.session", "payment_status": "paid",
-        "customer": "cus_g3", "subscription": None,
+        "mode": "payment", "customer": "cus_g3", "subscription": None,
         "customer_details": {"email": "Guest3@Example.com"}}))
     c = billing.app.app.test_client()
     r = c.post("/stripe/webhook", data=body,

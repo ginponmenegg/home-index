@@ -216,6 +216,46 @@ def set_plan(user_id, plan: str, expires_at: str | None = None) -> None:
            (plan, expires_at, _uid(user_id)))
 
 
+def grant_pass(user_id, session_id: str, days: int) -> str | None:
+    """90日パスを1回分付ける。付けた期限（ISO）を返す。付けなければ None。
+
+    同じ決済が2回来る（Webhookと、戻り画面からの問い合わせ）。二度延ばさない
+    よう、決済のIDを持っておき、更新の条件にも入れる。同時に届いても、
+    後から来たほうは条件に合わず何も書かない。
+
+    期限が残っているうちに買い足した場合は、その期限の後ろに足す。
+    買った日から数えると、残りの日数を捨てさせることになる。
+    """
+    u = get_user(user_id)
+    if not u or not session_id:
+        return None
+    if session_id in (u.get("plan_pass_sessions") or "").split():
+        return None
+    base = _utcnow()
+    exp = u.get("plan_expires_at")
+    if u.get("plan") == PLAN_PRO and exp:
+        try:
+            base = max(base, datetime.datetime.fromisoformat(str(exp)))
+        except ValueError:
+            pass
+    until = _iso(base + datetime.timedelta(days=days))
+    kept = ((u.get("plan_pass_sessions") or "").split() + [session_id])[-20:]
+
+    def go(ex):
+        return ex("UPDATE users SET plan = ?, plan_expires_at = ?, "
+                  "plan_cancel_at = NULL, plan_pass_sessions = ? "
+                  "WHERE id = ? AND (' ' || COALESCE(plan_pass_sessions, '') "
+                  "|| ' ') NOT LIKE ?",
+                  (PLAN_PRO, until, " ".join(kept), _uid(user_id),
+                   f"% {session_id} %")).rowcount
+    return until if db.run_many(go) else None
+
+
+def bought_before(user: dict | None) -> bool:
+    """パスを買ったことがあるか（延長・再購入を数えるため）。"""
+    return bool((user or {}).get("plan_pass_sessions"))
+
+
 def set_stripe_ids(user_id, customer_id: str | None = None,
                    subscription_id: str | None = None) -> None:
     """決済側のIDを結びつける。渡したものだけ書き換える。"""

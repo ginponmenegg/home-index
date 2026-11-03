@@ -7,15 +7,13 @@ Stripeがホストする画面なので、カード番号がこちらのサー�
 PCI DSS の対象範囲を持たないための線引きなので、自前のカード入力欄を
 作らないこと。
 
-■解約だけは自前で受ける
-Customer Portal でも解約はできるが、そちらは使わない。解約の導線は
-「確認を1枚挟み、引き止めない」形をこちらで持ちたいため（仕様書§8）。
-Portal 側では解約を無効にし、支払い方法の変更と請求履歴だけを開ける。
+■90日パス（2026-11-03から）
+月額のサブスクリプションをやめ、1回払いで90日使えるパスにした。自動更新は
+しない。plan_expires_at に期限を入れておけば、accounts.is_pro がそれを見て
+無料に戻すので、期限切れの処理も解約の手続きも要らない。
 
-■期限を残して落とす
-解約は cancel_at_period_end。日割り返金はしない代わりに、支払い済みの
-期間は最後まで使える。plan_expires_at に期間末を入れておき、
-accounts.is_pro がそれを見て切り替える。
+月額のころの契約が残っていた場合に備えて、サブスクリプションのWebhookは
+受け続ける（app._apply_stripe_event）。新しく作ることはない。
 
 ■Webhookが正
 Checkout から戻ってきた画面でプランを上げない。戻る前にブラウザを閉じる
@@ -29,7 +27,7 @@ import os
 from typing import Optional
 
 SECRET_KEY = "STRIPE_SECRET_KEY"
-PRICE_ID = "STRIPE_PRICE_ID"
+PASS_PRICE_ID = "STRIPE_PASS_PRICE_ID"
 WEBHOOK_SECRET = "STRIPE_WEBHOOK_SECRET"
 
 
@@ -43,7 +41,7 @@ def enabled() -> bool:
     鍵と価格IDが無ければ、申込画面を出しても押した先で失敗する。
     出す前にここで止める。
     """
-    return bool(_env(SECRET_KEY) and _env(PRICE_ID))
+    return bool(_env(SECRET_KEY) and _env(PASS_PRICE_ID))
 
 
 def _stripe():
@@ -62,8 +60,7 @@ def mode() -> str:
 
 
 def checkout_url(email: Optional[str], user_id, success_url: str,
-                 cancel_url: str, customer_id: Optional[str] = None,
-                 price: Optional[str] = None) -> str:
+                 cancel_url: str, customer_id: Optional[str] = None) -> str:
     """申込のCheckoutを作ってURLを返す。
 
     client_reference_id に会員IDを入れる。Webhookが「どの会員の支払いか」を
@@ -75,8 +72,11 @@ def checkout_url(email: Optional[str], user_id, success_url: str,
     """
     s = _stripe()
     kw = dict(
-        mode="subscription",
-        line_items=[{"price": price or _env(PRICE_ID), "quantity": 1}],
+        mode="payment",
+        line_items=[{"price": _env(PASS_PRICE_ID), "quantity": 1}],
+        # 領収書が要る人がいる。請求書（PDF）を作っておけば、Stripeの
+        # 支払い履歴の画面から本人が取り出せる。
+        invoice_creation={"enabled": True},
         success_url=success_url,
         cancel_url=cancel_url,
         locale="ja",
@@ -100,29 +100,21 @@ def checkout_url(email: Optional[str], user_id, success_url: str,
             kw.pop("customer")
     if email:
         kw["customer_email"] = email
+    # 1回払いでは、黙っていると顧客が作られない。作っておけば、次に買う
+    # ときに同じ顧客に寄せられ、支払い履歴の画面も開ける。
+    kw["customer_creation"] = "always"
     return s.checkout.Session.create(**kw).url
 
 
 def portal_url(customer_id: str, return_url: str) -> str:
-    """支払い方法の変更と請求履歴。解約はここではなく自前の画面で受ける。"""
+    """支払いの履歴と領収書（Stripeの画面）。"""
     s = _stripe()
     return s.billing_portal.Session.create(
         customer=customer_id, return_url=return_url).url
 
 
-def cancel_at_period_end(subscription_id: str) -> Optional[str]:
-    """期間末で解約する。返すのは期間末（ISO文字列）。
-
-    即時解約にしないのは、日割り返金をしない代わりに支払い済みの期間を
-    使えるようにするため。規約と解約画面もその前提で書いてある。
-    """
-    s = _stripe()
-    sub = s.Subscription.modify(subscription_id, cancel_at_period_end=True)
-    return period_end(sub)
-
-
 def period_end(sub) -> Optional[str]:
-    """サブスクリプションの期間末をISO文字列で返す。"""
+    """サブスクリプションの期間末をISO文字列で返す（月額のころの契約用）。"""
     ts = _get(sub, "current_period_end")
     if not ts:
         # 新しいAPIバージョンでは期間末がサブスクリプションではなく

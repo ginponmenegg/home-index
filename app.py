@@ -8,6 +8,7 @@ http://127.0.0.1:5000 を開いて使う。金額は万円で入力。
 import os
 import sys
 import base64
+import datetime
 import time
 import json
 import html
@@ -20,7 +21,7 @@ import webbrowser
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flask import (Flask, request, render_template_string,  # noqa: E402
                    session, redirect, g)
-from src import db, accounts, saved, mailer, billing, campaign  # noqa: E402
+from src import db, accounts, saved, mailer, billing  # noqa: E402
 from src import metrics  # noqa: E402
 from src import observations  # noqa: E402
 
@@ -448,56 +449,87 @@ OPERATOR_ADDRESS = os.environ.get("OPERATOR_ADDRESS", "")
 OPERATOR_TEL = os.environ.get("OPERATOR_TEL", "")
 
 # ---- 課金 -----------------------------------------------------------------
-# 決済サービスはまだ繋いでいない。課金開始日も未定なので、
-# BILLING_ENABLED が立つまでプランの申込・解約の画面は出さない。
+# BILLING_ENABLED が立つまでプランの申込の画面は出さない。
 # 立てるのは、特定商取引法に基づく表記が実名・実住所で出せるようになり、
 # 規約の課金条項も整えてから。
-PRICE_YEN = 2980                     # 税込。総額表示義務があるため税別で持たない
-PRICE_LABEL = f"月額 {PRICE_YEN:,}円（税込）"
+#
+# 2026-11-03、月額（2,980円）をやめて90日パスにした。家探しは数か月で
+# 終わる一度きりのことで、月額は「解約を忘れたら払い続ける」心配が先に立つ。
+# 最終確認の画面まで来た17件のうち決済へ進んだのは2件で、止まっていたのは
+# 料金と自動更新を見る段だった。
+PRICE_YEN = 5980                     # 税込。総額表示義務があるため税別で持たない
+PASS_DAYS = 90
+PRICE_LABEL = f"90日パス {PRICE_YEN:,}円（税込）"
+# 申込の前に見る場所すべてに置く一文。止まっていたのはここだった。
+NO_RENEW = "1回払いです。自動更新はありません。"
 
 
 def price_now():
-    """いま申し込む人に請求する金額とラベル。
-
-    キャンペーン中は安いほうを返す。特商法の最終確認画面はここの値を
-    出すので、実際に請求する額とずれないよう、Priceを選ぶのと同じ関数
-    から取る。表示と請求を別々に組み立てると、片方だけ直し忘れる。
-    """
-    if campaign.active():
-        return campaign.price_yen(), campaign.label()
+    """いま申し込む人に請求する金額とラベル。"""
     return PRICE_YEN, PRICE_LABEL
 
 
 PRICE_PLACEHOLDER = "〔ここに料金〕"
-CAMPAIGN_PLACEHOLDER = "〔ここにキャンペーンの注記〕"
-
-
-def _campaign_note() -> str:
-    """いまキャンペーン中なら、その条件を本文に足す。"""
-    if not campaign.active():
-        return ""
-    return ('<p class="sub">いまお申し込みの場合、'
-            + campaign.until_ja() + 'までの'
-            + campaign.label() + 'が適用されます。'
-            'ご契約が続くかぎりこの金額のままで、通常価格（月額'
-            + f"{PRICE_YEN:,}" + '円・税込）に上がることはありません。</p>')
 
 
 def with_price(body: str) -> str:
     """規約・特商法の本文に、いま請求する金額を差し込む。
 
-    金額を定数として文字列に焼き付けていたため、キャンペーン中は
-    申込画面が1,980円、規約と特商法が2,980円という状態になっていた。
-    特定商取引法の「販売価格」は実際に請求する額でなければならないので、
-    表示のたびに price_now() から取り直す。
+    特定商取引法の「販売価格」は実際に請求する額でなければならない。
+    金額を本文に焼き付けると、変えたときに片方だけ直し忘れる。
     """
-    return (body.replace(PRICE_PLACEHOLDER, price_now()[1])
-                .replace(CAMPAIGN_PLACEHOLDER, _campaign_note()))
+    return body.replace(PRICE_PLACEHOLDER, price_now()[1])
 
 
-def campaign_price_id():
-    """申込に使うStripeのPrice。キャンペーン中だけ差し替わる。"""
-    return campaign.price_id() if campaign.active() else None
+JST = datetime.timezone(datetime.timedelta(hours=9))
+
+
+def _until_ja(iso) -> str:
+    """期限を日本時間で書く。UTCの日付のまま出すと、朝9時前に買った人の
+    期限が1日早く見える。"""
+    try:
+        t = datetime.datetime.fromisoformat(str(iso)).astimezone(JST)
+    except (TypeError, ValueError):
+        return ""
+    return f"{t.year}年{t.month}月{t.day}日 {t.hour}:{t.minute:02d}"
+
+
+def _pass_until(user) -> str:
+    """いま買ったら、いつまで使えるか（日本時間）。残りがあればその後ろから。"""
+    base = datetime.datetime.now(datetime.timezone.utc)
+    if accounts.is_pro(user) and (user or {}).get("plan_expires_at"):
+        try:
+            base = max(base, datetime.datetime.fromisoformat(
+                str(user["plan_expires_at"])))
+        except ValueError:
+            pass
+    return _until_ja((base + datetime.timedelta(days=PASS_DAYS)).isoformat())
+
+
+EXTEND_WITHIN_DAYS = 14
+
+
+def _can_buy(user) -> bool:
+    """パスを買える状態か。
+
+    PROでない人は買える。PROの人は、期限が14日以内に迫っているときだけ
+    延長として買える。それより前に売ると、まだ要らない期間を先に払わせる。
+    運営者のアカウントと、期限のないPRO（手動付与・月額のころの契約）には
+    売らない。
+    """
+    if not accounts.is_pro(user):
+        return True
+    if accounts.is_comped(user) or (user or {}).get("stripe_subscription_id"):
+        return False
+    exp = (user or {}).get("plan_expires_at")
+    if not exp:
+        return False
+    try:
+        left = (datetime.datetime.fromisoformat(str(exp))
+                - datetime.datetime.now(datetime.timezone.utc))
+    except ValueError:
+        return False
+    return left <= datetime.timedelta(days=EXTEND_WITHIN_DAYS)
 
 
 def billing_on() -> bool:
@@ -523,16 +555,16 @@ LEGAL_LINKS = (_about_link()
                   '特定商取引法に基づく表記</a>' if billing_on() else ''))
 
 # 試験公開のあいだは無料で開けていた。課金を始めた以上、同じ案内を
-# 出し続けると「無料と書いて2,980円を請求する」表示になる。
+# 出し続けると「無料と書いて請求する」表示になる。
 TRIAL_BANNER = ('' if billing_on() else
                 '<div class="banner"><b>試験公開中です。</b>現在は無料でお使い'
-                'いただけますが、将来は有料（月額）になる予定です。'
+                'いただけますが、将来は有料になる予定です。'
                 '会員登録はまだ不要です。</div>')
 TRIAL_NOTE = ('' if billing_on() else
               '<p style="background:#fafafa;border:1px solid #e5e5e5;'
               'border-radius:10px;padding:12px 14px;font-size:14px;'
               'line-height:1.8;margin:12px 0"><b>試験公開中です。</b>'
-              '現在は無料でお使いいただけますが、将来は有料（月額）に'
+              '現在は無料でお使いいただけますが、将来は有料に'
               'なる予定です。会員登録はまだ不要です。</p>')
 
 # フッターのPRO。課金を始めたとき、非会員が押すとロック画面に落ちるのを嫌って
@@ -1892,8 +1924,7 @@ HH_RESULT_PLACEHOLDER
    {% if plan_price %}
    <p class="muted" style="margin:10px 0 0"><b>PRO　{{plan_price}}</b>
     ／ お申し込みにログインは要りません。会員登録（メールアドレスだけ）を
-    すると、1物件だけ無料で試せます。いつでも解約できます。
-    解約しても、お支払い済みの期間の最後まで使えます。</p>
+    すると、1物件だけ無料で試せます。1回払いで、自動更新はありません。</p>
    {% endif %}
    PLAN_LINKS_PLACEHOLDER
   </div>
@@ -1919,9 +1950,9 @@ HH_RESULT_PLACEHOLDER
     点数の付け方は無料もPROも同じで、PROで採点が甘くなることはありません。</p>
    {% if plan_price %}
    <p style="margin:12px 0 0"><b>{{plan_price}}</b>
-    <span class="muted">／ いつでも解約できます。解約しても、お支払い済みの
-    期間の最後まで使えます。お申し込みにログインは要りません。会員登録
-    （メールアドレスだけ）をすると、1物件だけ無料で試せます。</span></p>
+    <span class="muted">／ 1回払いで、自動更新はありません。お申し込みに
+    ログインは要りません。会員登録（メールアドレスだけ）をすると、1物件だけ
+    無料で試せます。</span></p>
    {% endif %}
    <form method="post" action="{{handover_action}}">
     {% for k, val in handover.items() %}
@@ -2193,7 +2224,7 @@ LP = """<!doctype html><html lang="ja"><head>
  "description":"中古戸建の価格・立地・災害リスク・住宅ローン返済を公的データから100点で採点する無料の診断ツール。",
  "publisher":{"@id":"CANONICAL_URL#org"}},
 {"@type":"FAQPage","mainEntity":[
-{"@type":"Question","name":"本当に無料ですか。あとから請求されませんか。","acceptedAnswer":{"@type":"Answer","text":"購入診断（戸建・マンション・土地）は無料で、会員登録も要りません。診断のあとに請求が来ることはありません。有料なのは、申し込んだ方だけが使うPRO（月額）で、申し込まない限り料金は発生しません。物件の仲介やローンの紹介も行わないため、診断後に営業の連絡が来ることもありません。"}},
+{"@type":"Question","name":"本当に無料ですか。あとから請求されませんか。","acceptedAnswer":{"@type":"Answer","text":"購入診断（戸建・マンション・土地）は無料で、会員登録も要りません。診断のあとに請求が来ることはありません。有料なのは、申し込んだ方だけが使うPRO（90日パス・1回払い・自動更新なし）で、申し込まない限り料金は発生しません。物件の仲介やローンの紹介も行わないため、診断後に営業の連絡が来ることもありません。"}},
 {"@type":"Question","name":"PROは何が違いますか。試せますか。","acceptedAnswer":{"@type":"Answer","text":"PROでは、内見や書類で分かったことを入れて診断し直し、重要事項説明の日に持っていく「契約前チェック」（PDF）を物件ごとに作れます。仲介業者に聞くこと、重要事項説明書で読む欄、諸費用まで含めた資金計画を1冊にまとめたものです。会員登録（メールアドレスだけ）をすると、1物件だけ無料で試せます。料金はプランの画面に書いています。"}},
 {"@type":"Question","name":"入力した年収や住所は保存されますか。","acceptedAnswer":{"@type":"Answer","text":"診断の計算に使うだけで、営業目的では利用しません。詳細はプライバシーポリシーに記載しています。気になる場合は、年収や頭金を概算で入力しても価格・リスクの診断は機能します。"}},
 {"@type":"Question","name":"物件のURLを貼れば診断できますか。","acceptedAnswer":{"@type":"Answer","text":"URLではなく、物件ページに書かれている説明文（価格・所在地・面積・築年・駅徒歩など）をコピーして貼り付けてください。ご自身がコピーした情報を解析する形をとっています。販売図面のPDFも、開いて文字をコピーすれば同じように読み取れます。"}},
@@ -2923,7 +2954,7 @@ LP_MENU_PLACEHOLDER
     <h2>使う前に、よくいただく質問。</h2>
     <details>
       <summary>本当に無料ですか。あとから請求されませんか。</summary>
-      <p>購入診断（戸建・マンション・土地）は無料で、会員登録も要りません。診断のあとに請求が来ることはありません。有料なのは、申し込んだ方だけが使うPRO（月額）で、申し込まない限り料金は発生しません。物件の仲介やローンの紹介も行わないため、診断後に営業の連絡が来ることもありません。</p>
+      <p>購入診断（戸建・マンション・土地）は無料で、会員登録も要りません。診断のあとに請求が来ることはありません。有料なのは、申し込んだ方だけが使うPRO（90日パス・1回払い・自動更新なし）で、申し込まない限り料金は発生しません。物件の仲介やローンの紹介も行わないため、診断後に営業の連絡が来ることもありません。</p>
     </details>
     <details>
       <summary>PROは何が違いますか。試せますか。</summary>
@@ -3185,36 +3216,28 @@ def healthz():
 
 _BILLING_TERMS = ("""<h2>第7条（有料プラン）</h2>
 <p>本サービスには、無料で利用できる範囲と、有料プラン（以下「PRO」）があります。
-PROの内容・料金・支払方法・提供時期・解約の方法は、申込みの最終確認画面および
+PROの内容・料金・支払方法・提供時期は、申込みの最終確認画面および
 <a href="/tokushoho">特定商取引法に基づく表記</a>に表示します。</p>
 <p>PROの料金は、""" + PRICE_PLACEHOLDER + """です。
-<b>解約されない限り、毎月同じ日に自動で更新されます。</b>
-初回と2回目以降で金額が変わることはありません。</p>
-<p>料金は、<b>お申込みの時点で表示していた金額を適用します。</b>
-キャンペーン価格でお申し込みいただいた場合も、その契約が続くかぎり、
-あとから通常価格に変わることはありません。ただし、解約されたのちに
-改めてお申し込みいただく場合は、そのときに表示している料金を適用します。</p>
-""" + CAMPAIGN_PLACEHOLDER + """
-<h2>第8条（解約）</h2>
-<p>利用者は、マイページからいつでもPROを解約できます。解約の手続に、
-電話や書面は必要ありません。</p>
-<p>解約後も、支払済みの期間の末日まではPROをご利用いただけます。
-その後は無料プランに切り替わります。</p>
+<b>1回のお支払いで、お支払いの完了から90日間ご利用いただけます。
+自動で更新されることはなく、継続して請求することもありません。</b></p>
+<p>利用期間の残りが14日以内になったときは、改めてお申し込みいただくことで、
+残りの期間の末日から90日間延長できます。</p>
+<h2>第8条（利用期間の終了）</h2>
+<p>利用期間が終わると、PROは自動的に無料プランに切り替わります。
+解約の手続きは必要ありません。</p>
 <h2>第9条（返金）</h2>
 <p>本サービスは役務の提供であり、その性質上、返品はできません。
-<b>日割りその他の返金は行いません。</b>
+<b>お支払いの完了後の取消しおよび返金は行いません。</b>
 ただし、当方の責めに帰すべき事由により長期間サービスを提供できなかった場合は、
 個別に対応します。</p>
 <h2>第10条（保存データの扱い）</h2>
-<p>解約しても、保存された診断結果およびメモは消去しません。
+<p>利用期間が終わっても、保存された診断結果およびメモは消去しません。
 無料プランの保存件数を超えている分についても、引き続き閲覧および比較が
 できます。ただし、上限を超えている間は新たな保存ができません。</p>
 <h2>第11条（料金の改定）</h2>
 <p>料金を改定する場合は、<b>改定の1か月前までに本サービス上で告知します。</b>
-改定後の料金は、告知後に到来する更新日から適用します。改定に同意されない
-場合は、更新日までに解約してください。</p>
-<p><b>キャンペーン価格でご契約中の方の金額は、この改定の対象としません。</b>
-その契約が続くかぎり、お申込み時の金額のままです。</p>
+改定は、お支払い済みの利用期間には影響しません。</p>
 """ if billing_on() else "")
 
 # 有料の条文が入ると、末尾の2条の番号がうしろへずれる。
@@ -3470,24 +3493,20 @@ _TOKUSHO_BODY = ("""
 <p>""" + CONTACT + """</p>
 <h2>販売価格</h2>
 <p>""" + PRICE_PLACEHOLDER + """<br>
-<span class="sub">解約されるまで毎月同額が発生します。初回と2回目以降で
- 金額が変わることはありません。解約されたのちに改めてお申し込みいただく
- 場合は、そのときに表示している料金を適用します。</span></p>
-""" + CAMPAIGN_PLACEHOLDER + """
+<span class="sub">1回のお支払いで、お支払いの完了から90日間ご利用いただけます。
+ <b>自動更新はありません。</b>継続して請求することもありません。</span></p>
 <h2>商品代金以外に必要な費用</h2>
 <p>インターネット接続に要する通信料は、お客様のご負担となります。
  それ以外に当方が申し受ける費用はありません。</p>
 <h2>支払方法・支払時期</h2>
-<p>クレジットカード決済。お申込み時に初回分をお支払いいただき、
- 以降は毎月同日に自動で決済されます。</p>
+<p>クレジットカード決済。お申込み時に1回だけお支払いいただきます。</p>
 <h2>サービスの提供時期</h2>
 <p>決済の完了後、ただちにご利用いただけます。</p>
-<h2>解約・返金について</h2>
-<p>マイページの「プランと設定」からいつでも解約できます。
- 解約後も、お支払い済みの期間の末日まではご利用いただけます。<br>
+<h2>利用期間の終了・返金について</h2>
+<p>90日が過ぎると、自動的に無料プランに切り替わります。解約の手続きは要りません。<br>
  <b>本サービスは役務の提供であり、性質上、返品はできません。</b>
- 日割りでの返金も行っておりません。<br>
- 解約後も、保存された診断結果は消去されません。無料プランの保存件数を
+ お支払いの完了後の取消し・返金はお受けしておりません。<br>
+ 利用期間の終了後も、保存された診断結果は消去されません。無料プランの保存件数を
  超えている分も引き続きご覧いただけます（新たな保存はできません）。</p>
 <h2>動作環境</h2>
 <p>インターネットに接続できる端末と、標準的なウェブブラウザ。</p>
@@ -3496,7 +3515,6 @@ _TOKUSHO_BODY = ("""
 
 # 目印を書き損じると、規約に「〔ここに料金〕」がそのまま出る。
 assert PRICE_PLACEHOLDER in _TOKUSHO_BODY, "特商法の料金欄の目印が無い"
-assert CAMPAIGN_PLACEHOLDER in _TOKUSHO_BODY, "特商法のキャンペーン欄の目印が無い"
 assert (PRICE_PLACEHOLDER in _TERMS_BODY) == billing_on(), \
     "規約の料金欄の目印が、課金の有無と合っていない"
 
@@ -3920,7 +3938,7 @@ _METRIC_GROUPS = (
                    "login_view",
                    "login_plan", "login_sent", "login_open",
                    "login_plan_open", "plan_confirm",
-                   "checkout", "pro_start", "pro_cancel")),
+                   "checkout", "pro_start", "pro_again", "pro_cancel")),
     ("どこから来たか", ("ref_search", "ref_ai", "ref_pamphlet", "ref_x",
                         "ref_threads", "ref_instagram", "ref_tiktok",
                         "ref_other", "ref_none")),
@@ -3987,8 +4005,8 @@ def metrics_page():
         tile("今日の診断", f"{diag_today:,}", today_.isoformat()),
         tile(f"会員登録（直近{days}日）", f"{tot['signup']:,}",
              f"累計 {ever['signup']:,}"),
-        tile("PRO", f"開始 {tot['pro_start']}",
-             f"解約 {tot['pro_cancel']}（累計 開始 {ever['pro_start']}）"),
+        tile("PRO", f"購入 {tot['pro_start']}",
+             f"うち延長・買い直し {tot['pro_again']}（累計 購入 {ever['pro_start']}）"),
         tile("トップをブラウザで開いた", f"{tot['browser']:,}",
              f"HTMLの取得 {tot['view_lp']:,} のうち {rate('browser', 'view_lp')}"),
     ])
@@ -4044,7 +4062,7 @@ def metrics_page():
              ("申込のためのリンクを開いた", tot["login_plan_open"]),
              ("申込の最終確認へ", tot["plan_confirm"]),
              ("決済画面へ進んだ", tot["checkout"]),
-             ("契約が始まった", tot["pro_start"])]
+             ("パスを買った", tot["pro_start"])]
     # 画面を返した数には巡回が混ざる（2026-10-29に最終確認が13件）。
     # ブラウザで開かれた数を横に並べる。診断・決済・契約はフォームか
     # Stripe を通るので、巡回では増えない。
@@ -6247,8 +6265,7 @@ HH_RESULT_PLACEHOLDER
   {% if plan_price %}
   <p class="muted" style="margin:10px 0 0"><b>PRO　{{plan_price}}</b>
    ／ お申し込みにログインは要りません。会員登録（メールアドレスだけ）を
-    すると、1物件だけ無料で試せます。いつでも解約できます。
-   解約しても、お支払い済みの期間の最後まで使えます。</p>
+    すると、1物件だけ無料で試せます。1回払いで、自動更新はありません。</p>
   {% endif %}
   PLAN_LINKS_PLACEHOLDER
  </div>
@@ -6269,9 +6286,9 @@ HH_RESULT_PLACEHOLDER
   {% endif %}
   {% if plan_price %}
   <p style="margin:12px 0 0"><b>{{plan_price}}</b>
-   <span class="muted">／ いつでも解約できます。解約しても、お支払い済みの
-   期間の最後まで使えます。お申し込みにログインは要りません。会員登録
-    （メールアドレスだけ）をすると、1物件だけ無料で試せます。</span></p>
+   <span class="muted">／ 1回払いで、自動更新はありません。お申し込みに
+   ログインは要りません。会員登録（メールアドレスだけ）をすると、1物件だけ
+   無料で試せます。</span></p>
   {% endif %}
   <form method="post" action="/pro/land/start" style="margin-top:10px">
    {% for k, val in handover.items() %}
@@ -8345,8 +8362,8 @@ _PRO_GATE = """
  <p class="lead">{{ intro }}</p>
  <div class="note" style="margin:14px 0">
   <b>PRO　{{ price_label }}</b><br>
-  <span class="sub">いつでも解約できます。解約後も、支払済みの期間の末日までは
-   お使いいただけます。</span>
+  <span class="sub">お支払いの完了から90日間使えます。1回払いで、
+   自動更新はありません。</span>
  </div>
  <p>PROでできること</p>
  <ul>
@@ -9544,8 +9561,7 @@ def compare():
 
 
 # ---- プラン --------------------------------------------------------------
-# 決済はまだ繋いでいない。特定商取引法に基づく表記や、課金・解約・返金の
-# 定めを整えてから繋ぐ。ここでは枠組み（プランの区別と上限）だけを持つ。
+# 2026-11-03から90日パス（1回払い・自動更新なし）。解約の画面は無い。
 
 PLAN_PAGE = """
 <div class="card">
@@ -9566,37 +9582,37 @@ PLAN_PAGE = """
  </div>
 {% elif pro and cancel_at %}
  <div class="note" style="margin-top:14px">
-  <b>解約を受け付けました。</b>
+  <b>月額のころのご契約です。解約を受け付けました。</b>
   {{ cancel_at[:10] }}まで、これまでどおりPROをご利用いただけます。<br>
-  その日以降は自動的に無料プランへ切り替わります。<b>追加の請求はありません。</b><br>
-  保存した診断は、そのあともご覧いただけます。
+  その日以降は自動的に無料プランへ切り替わります。<b>追加の請求はありません。</b>
  </div>
- <p class="sub" style="margin-top:10px">
-  続けたくなったときは、この画面からいつでも再開できます。</p>
-{% elif pro %}
+{% elif pro and expires %}
  <div class="note ok" style="margin-top:14px">
-  PROをご利用中です。{{ price_label }}が毎月かかります。
-  {% if expires %}<br>次回の更新日：{{ expires[:10] }}{% endif %}
+  PROをご利用中です。<b>{{ expires_ja }}まで</b>お使いいただけます。<br>
+  自動更新はありません。その日を過ぎると無料プランに戻り、
+  <b>追加の請求はありません。</b>保存した診断は、そのあともご覧いただけます。
  </div>
- <p style="margin-top:14px"><a class="btn ghost" href="/plan/cancel">解約する</a></p>
+ {% if can_buy %}
+ <p style="margin-top:14px"><a class="btn" href="/plan/confirm">90日延長する</a></p>
+ <p class="sub" style="margin-top:6px">いまの期限の後ろに90日を足します。残りの日数は
+  そのまま使えます。</p>
+ {% else %}
+ <p class="sub" style="margin-top:10px">期限が14日以内になると、この画面から延長できます。</p>
+ {% endif %}
+ {% if has_customer %}
+ <form method="post" action="/plan/billing" style="margin-top:10px">
+  <button class="btn ghost sm" type="submit">領収書・お支払いの履歴</button></form>
+ {% endif %}
+{% elif pro %}
+ <div class="note ok" style="margin-top:14px">PROをご利用中です。</div>
 {% else %}
  <div class="note" style="margin-top:14px">
-  {% if campaign %}
-  <p style="margin:0 0 6px"><b>PRO　{{ price_label }}</b>
-   <span class="sub" style="text-decoration:line-through">{{ normal_label }}</span></p>
-  <p style="margin:0 0 6px"><b>{{ campaign_until }}までにお申し込みの方は、
-   そのあともずっとこの金額です。</b>あとから通常価格に上がることはありません。</p>
-  {% else %}
   <p style="margin:0 0 6px"><b>PRO　{{ price_label }}</b></p>
-  {% endif %}
-  <p style="margin:0"><b>いつでも解約できます。</b>解約しても、お支払い済みの期間の
-   最後まで使えます。手続きはマイページからです。<br>
-   解約されるまで毎月自動で更新されます。金額は初回も2回目以降も同じです。
-   解約後も、保存した診断はそのままご覧いただけます。</p>
-  {% if campaign %}
-  <p class="sub" style="margin:6px 0 0">
-   いったん解約されますと、再開のお申し込みは通常価格になります。</p>
-  {% endif %}
+  <p style="margin:0"><b>1回払いで、お支払いの完了から90日間使えます。
+   自動更新はありません。</b>90日が過ぎると無料プランに戻るだけで、
+   解約の手続きも、追加の請求もありません。<br>
+   期間中は、物件をいくつ診断しても同じ料金です。
+   期間が終わっても、保存した診断はそのままご覧いただけます。</p>
  </div>
  <p style="margin-top:14px">
   <a class="btn" href="/plan/confirm">PROに申し込む</a></p>
@@ -9735,8 +9751,8 @@ PLAN_PAGE = """
 #   ⑤申込みの撤回・解除に関すること ⑥申込期間（定めがある場合）
 # を表示することを義務づけている。表示が無い、または誤認させる表示をした
 # 場合、誤認して申し込んだ人は契約を取り消せる。
-# ⑤は「顧客が見やすい位置に」とされているので、規約へのリンクではなく
-# この画面に手順そのものを書く。
+# ①は利用できる期間（90日・いつまでか）。⑤は「顧客が見やすい位置に」と
+# されているので、規約へのリンクではなくこの画面に書く。
 # ⑥は期間限定販売ではないため該当しない。
 PLAN_CONFIRM = """
 <div class="card">
@@ -9748,38 +9764,29 @@ PLAN_CONFIRM = """
  <div class="tablewrap"><table class="cmp">
   <tbody>
    <tr><th class="rowlbl">内容</th>
-    <td>HOME INDEX PRO<br>
-     <span class="sub">契約期間中、詳細診断・仲介業者に聞くことの一覧・
+    <td>HOME INDEX PRO　90日パス{% if extend %}（延長）{% endif %}<br>
+     <span class="sub">期間中、詳細診断・仲介業者に聞くことの一覧・
       重要事項説明書で確認することの一覧・契約前チェック（資金計画を含むPDF）を
       ご利用いただけます。診断の回数に制限はありません。
       {% if pro_limit %}診断結果の保存は{{ pro_limit }}件までです。{% else %}診断結果の保存にも件数の制限はありません。{% endif %}</span></td></tr>
+   <tr><th class="rowlbl">利用期間</th>
+    <td><b>{% if extend %}いまの期限の後ろに90日{% else %}お支払いの完了から90日間{% endif %}
+     （{{ until_ja }}まで）</b></td></tr>
    <tr><th class="rowlbl">料金</th>
-    <td><b>{{ price_label }}</b><br>
-     {% if campaign %}
-     <span class="sub"><b>{{ campaign_until }}までのお申し込みに適用される
-      価格です。</b>通常価格は月額{{ normal_yen }}円（税込）ですが、
-      いまお申し込みいただいた場合、ご契約が続くかぎり上の金額のままです。<br>
-      2回目以降も同額です。あとから値上がりすることはありません。<br>
-      なお、解約されたあとに再開される場合は、通常価格となります。</span>
-     {% else %}
-     <span class="sub">2回目以降も同額です。初回だけ安くなる、
-      あとから値上がりする、といったことはありません。</span>
-     {% endif %}</td></tr>
+    <td><b>{{ price_label }}</b></td></tr>
    <tr><th class="rowlbl">支払総額</th>
-    <td><b>解約されるまで、毎月{{ price_yen }}円（税込）が発生します。</b><br>
-     <span class="sub">契約期間の定めがないため、総額はご利用期間によります。
-      3か月なら{{ price_yen * 3 }}円、6か月なら{{ price_yen * 6 }}円です。</span></td></tr>
+    <td><b>{{ "{:,}".format(price_yen) }}円（税込）。これ以外の請求はありません。</b></td></tr>
    <tr><th class="rowlbl">支払方法</th><td>クレジットカード</td></tr>
    <tr><th class="rowlbl">支払時期</th>
-    <td>初回はお申込み時。以降は<b>毎月同じ日に自動で決済</b>されます。</td></tr>
+    <td>お申込み時に1回だけ。<b>自動更新はありません。</b></td></tr>
    <tr><th class="rowlbl">提供時期</th>
     <td>決済の完了後、ただちにご利用いただけます。</td></tr>
-   <tr><th class="rowlbl">解約の方法</th>
-    <td><b>マイページ →「プランと設定」→「プランを見る」→「解約する」</b><br>
-     <span class="sub">いつでも解約できます。解約後も、お支払い済みの期間の
-      末日まではご利用いただけます。<b>日割りでの返金は行っておりません。</b><br>
-      本サービスは役務の提供であり、性質上、返品はできません。</span></td></tr>
-   <tr><th class="rowlbl">解約後の保存データ</th>
+   <tr><th class="rowlbl">期間の終了</th>
+    <td>90日が過ぎると、自動的に無料プランに戻ります。<b>解約の手続きは要りません。</b></td></tr>
+   <tr><th class="rowlbl">取消し・返金</th>
+    <td>お支払いの完了後の取消し・返金はお受けしておりません。<br>
+     <span class="sub">本サービスは役務の提供であり、性質上、返品はできません。</span></td></tr>
+   <tr><th class="rowlbl">期間終了後の保存データ</th>
     <td>消去されません。無料プランの{{ free_limit }}件を超えている分も、
      引き続きご覧いただけます（新たな保存はできません）。</td></tr>
   </tbody>
@@ -9797,74 +9804,12 @@ PLAN_CONFIRM = """
   ありません。ほかの端末からは、そのアドレスに届くリンクでログインします。</p>
  {% endif %}
  <form method="post" action="/plan/subscribe" style="margin-top:16px">
-  <button class="btn" type="submit">上記に同意して申し込む</button>
+  <button class="btn" type="submit">上記に同意して支払いへ進む</button>
  </form>
  <p class="sub" style="margin-top:8px">
-  このボタンを押すと有料の契約が成立し、初回の決済が行われます。</p>
+  次の決済の画面でお支払いを確定すると、契約が成立します。</p>
 </div>
 """
-
-
-# ---- 解約 ----------------------------------------------------------------
-# 引き止めは置かない。一方でボタン1つで即完了にもしない。
-# 誤操作を防ぐためと、「いつまで使えるか」は解約する人が知るべき情報だから。
-# アンケートは完了画面に置く。解約の前に置くと妨害になるが、後ならならない。
-PLAN_CANCEL = """
-<div class="card">
- <a href="/plan" style="font-size:14px">← プランへもどる</a>
- <h1 style="margin-top:10px">解約の確認</h1>
- <div class="note" style="margin-top:12px">
-  <p style="margin:0 0 8px"><b>解約すると、こうなります。</b></p>
-  <ul style="margin:0;padding-left:18px">
-   <li>{% if expires %}<b>{{ expires[:10] }}まで</b>は、これまでどおりPROをご利用いただけます{% else %}お支払い済みの期間の末日までご利用いただけます{% endif %}</li>
-   <li>その後は無料プランに切り替わります</li>
-   <li><b>保存した診断は消えません。</b>無料プランの{{ free_limit }}件を超えている分も、
-    引き続き閲覧・比較できます（新たな保存はできなくなります）</li>
-   <li>メモもそのまま残ります</li>
-   <li>日割りでの返金はありません</li>
-   <li>いつでも再開できます。そのときデータはそのままです</li>
-  </ul>
- </div>
- <form method="post" action="/plan/cancel" style="margin-top:16px">
-  <button class="btn" type="submit">解約を確定する</button>
-  <a class="btn ghost" href="/plan" style="margin-left:8px">やめる</a>
- </form>
-</div>
-"""
-
-PLAN_CANCELED = """
-<div class="card">
- <h1>解約しました</h1>
- <div class="note ok">
-  {% if expires %}{{ expires[:10] }}まではPROをご利用いただけます。
-  その後は無料プランに切り替わります。{% else %}無料プランに切り替わりました。{% endif %}<br>
-  保存した診断とメモはそのまま残っています。
- </div>
- <p class="lead" style="margin-top:14px">ご利用ありがとうございました。
-  またお使いいただけるよう、<a href="/plan">プランのページ</a>からいつでも再開できます。</p>
-
- <form method="post" action="/plan/cancel/why" style="margin-top:8px">
-  <p style="font-size:14px;font-weight:700;margin:0 0 8px">
-   よろしければ、理由を1つだけ教えてください（任意）</p>
-  {% for val, lbl in reasons %}
-   <label style="display:block;font-size:14px;line-height:2.1">
-    <input type="radio" name="why" value="{{ val }}"> {{ lbl }}</label>
-  {% endfor %}
-  <button class="btn ghost sm" type="submit" style="margin-top:10px">送信する</button>
-  <a class="btn ghost sm" href="/mypage" style="margin-left:8px">答えずに戻る</a>
- </form>
-</div>
-"""
-
-# 1問だけにする。設問が多いほど答えてもらえなくなるうえ、
-# 解約したい人を引き止める形になってしまう。
-CANCEL_REASONS = [
-    ("bought", "住まいが決まった"),
-    ("stopped", "購入の検討をやめた"),
-    ("not_useful", "期待した内容ではなかった"),
-    ("price", "料金が見合わなかった"),
-    ("other", "その他"),
-]
 
 
 @app.route("/plan")
@@ -9877,10 +9822,11 @@ def plan_page():
         PLAN_PAGE, pro=accounts.is_pro(u), comped=accounts.is_comped(u),
         billing=billing_on(),
         cancel_at=(u or {}).get("plan_cancel_at"),   # 未ログインでも開ける
-        campaign=campaign.active(), campaign_until=campaign.until_ja(),
-        normal_label=PRICE_LABEL,
         price_label=price_now()[1],
         expires=(u or {}).get("plan_expires_at"),
+        expires_ja=_until_ja((u or {}).get("plan_expires_at")),
+        can_buy=_can_buy(u),
+        has_customer=bool((u or {}).get("stripe_customer_id")),
         free_limit=saved.FREE_LIMIT, pro_limit=saved.PRO_LIMIT,
         juyo=disclosure.catalogue())
     return _account_page(
@@ -9900,15 +9846,15 @@ def plan_confirm():
     if not billing_on():
         from flask import abort
         abort(404)
-    if accounts.is_pro(current_user()):
+    u = current_user()
+    if not _can_buy(u):
         return redirect("/plan")
     _did("plan_confirm")
     body = render_template_string(
         PLAN_CONFIRM, price_label=price_now()[1], price_yen=price_now()[0],
-        campaign=campaign.active(), campaign_until=campaign.until_ja(),
-        normal_yen=PRICE_YEN,
+        until_ja=_pass_until(u), extend=accounts.is_pro(u),
         free_limit=saved.FREE_LIMIT, pro_limit=saved.PRO_LIMIT,
-        guest=not current_user())
+        guest=not u)
     return _account_page("お申込みの確認", body, chip="プラン")
 
 
@@ -9921,7 +9867,7 @@ def plan_subscribe():
         from flask import abort
         abort(404)
     u = current_user()       # ログインしていなくてよい（2026-10-23）
-    if accounts.is_pro(u):
+    if not _can_buy(u):
         return redirect("/plan")
     base = request.url_root.rstrip("/")
     _did("checkout")
@@ -9930,8 +9876,7 @@ def plan_subscribe():
             email=(u or {}).get("email"), user_id=(u or {}).get("id"),
             success_url=f"{base}/plan/done?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base}/plan/confirm",
-            customer_id=(u or {}).get("stripe_customer_id") or None,
-            price=campaign_price_id())
+            customer_id=(u or {}).get("stripe_customer_id") or None)
     except Exception as e:
         # 決済側の不調をそのまま500にしない。押した人には何が起きたかを
         # 伝え、こちらはログで拾う。
@@ -9983,15 +9928,16 @@ def _plan_done_guest(session_id):
     if not accounts.valid_email(email):
         return page(wait)
     u = accounts.ensure_user(email)
-    if not accounts.is_pro(u):
-        try:
-            _apply_stripe_event("checkout.session.completed", sess)
-        except Exception as e:
-            print(f"[stripe] catch-up failed: {e}")
+    try:
+        # 同じ決済を二度は付けない（grant_pass）ので、Webhookが先に
+        # 届いていても、ここで呼んでよい。
+        _apply_stripe_event("checkout.session.completed", sess)
+    except Exception as e:
+        print(f"[stripe] catch-up failed: {e}")
     u = accounts.get_user(u["id"])
-    sub_id = _sv(sess, "subscription")
-    fresh = (not u.get("last_login_at") and sub_id
-             and u.get("stripe_subscription_id") == sub_id
+    sid = _sv(sess, "id")
+    fresh = (not u.get("last_login_at") and sid
+             and sid in (u.get("plan_pass_sessions") or "").split()
              and not _sv(sess, "client_reference_id"))
     if fresh:
         session.clear()
@@ -10025,12 +9971,16 @@ def plan_done():
     u = current_user()
     if not u:
         return _plan_done_guest(request.args.get("session_id"))
-    if not accounts.is_pro(u):
-        _catch_up_from_checkout(u, request.args.get("session_id"))
-        u = accounts.get_user(u["id"])
+    # 延長のときは、払う前からPRO。PROかどうかでは判断できないので毎回聞く。
+    _catch_up_from_checkout(u, request.args.get("session_id"))
+    u = accounts.get_user(u["id"])
     pro = accounts.is_pro(u)
+    until = _until_ja(u.get("plan_expires_at"))
     body = ('<div class="card"><h1>お申込みありがとうございます</h1>'
-            + ('<p class="lead">PROをご利用いただけます。</p>'
+            + (f'<p class="lead">PROをご利用いただけます。<b>{until}まで</b>です。'
+               '自動更新はありません。</p>'
+               if pro and until else
+               '<p class="lead">PROをご利用いただけます。</p>'
                if pro else
                '<p class="lead">決済の確認をしています。反映まで少し時間が'
                'かかることがあります。数分たっても切り替わらない場合は、'
@@ -10042,11 +9992,7 @@ def plan_done():
 
 @app.route("/plan/billing", methods=["POST"])
 def plan_billing():
-    """支払い方法の変更と請求履歴（Stripeの画面へ）。
-
-    解約はここではなく /plan/cancel で受ける。Portal 側の解約は
-    ダッシュボードで無効にしておくこと。
-    """
+    """支払いの履歴と領収書（Stripeの画面へ）。"""
     r = _require_login()
     if r is not None:
         return r
@@ -10103,6 +10049,35 @@ def _sv(obj, key, default=None):
     return getattr(obj, key, default)
 
 
+def _apply_pass(sess):
+    """90日パスの支払いを、会員のプランに落とす。
+
+    Webhookと戻り画面の両方から呼ばれる。同じ決済で二度延ばさないのは
+    accounts.grant_pass が受け持つ。
+    """
+    if _sv(sess, "payment_status") != "paid":
+        return
+    uid = _sv(sess, "client_reference_id")
+    if not uid:
+        # ログインせずに申し込んだ人。決済の画面で入れたメールアドレスで
+        # 会員を引く。居なければ作る。
+        email = _checkout_email(sess)
+        if not accounts.valid_email(email):
+            print("[stripe] checkout without client_reference_id or email")
+            return
+        u = accounts.ensure_user(email)
+        if u.get("_is_new"):
+            _bump("signup")
+        uid = u["id"]
+    before = accounts.get_user(uid)
+    if _sv(sess, "customer"):
+        accounts.set_stripe_ids(uid, _sv(sess, "customer"))
+    if accounts.grant_pass(uid, _sv(sess, "id"), PASS_DAYS):
+        _bump("pro_start")
+        if accounts.bought_before(before):
+            _bump("pro_again")
+
+
 def _catch_up_from_checkout(user, session_id):
     """Webhookがまだ届いていないときの保険。
 
@@ -10135,7 +10110,12 @@ def _catch_up_from_checkout(user, session_id):
 
 def _apply_stripe_event(kind, obj):
     """イベントを会員のプランに落とす。知らないイベントは何もしない。"""
+    if kind == "checkout.session.completed" and _sv(obj, "mode") == "payment":
+        _apply_pass(obj)
+        return
+
     if kind == "checkout.session.completed":
+        # 月額のころのCheckout。新しくは作らない（2026-11-03）。
         uid = _sv(obj, "client_reference_id")
         cust = _sv(obj, "customer")
         sub_id = _sv(obj, "subscription")
@@ -10188,76 +10168,6 @@ def _apply_stripe_event(kind, obj):
         accounts.set_cancel_at(u["id"], None)
         accounts.set_stripe_ids(u["id"], subscription_id="")
         return
-
-
-@app.route("/plan/cancel", methods=["GET", "POST"])
-def plan_cancel():
-    """解約。GETで確認画面、POSTで確定する。"""
-    r = _require_login()
-    if r is not None:
-        return r
-    u = current_user()
-    if not accounts.is_pro(u) or accounts.is_comped(u):
-        return redirect("/plan")
-    if u.get("plan_cancel_at"):
-        return redirect("/plan")      # すでに解約済み。二重に受けない
-    if request.method == "GET":
-        body = render_template_string(
-            PLAN_CANCEL, expires=u.get("plan_expires_at"),
-            free_limit=saved.FREE_LIMIT)
-        return _account_page("解約の確認", body, chip="プラン")
-
-    # 期間末での解約。日割り返金はしない代わりに、支払い済みの期間は
-    # 最後まで使える。画面と規約もその前提で書いてある。
-    expires = u.get("plan_expires_at")
-    sub_id = u.get("stripe_subscription_id")
-    if sub_id and billing.enabled():
-        try:
-            expires = billing.cancel_at_period_end(sub_id) or expires
-        except Exception as e:
-            # 決済側を止められないまま「解約しました」と出すのが一番まずい。
-            print(f"[stripe] cancel failed: {e}")
-            body = ('<div class="card"><h1>解約を受け付けられませんでした</h1>'
-                    '<p class="lead">決済サービスに接続できませんでした。'
-                    '<b>まだ解約されていません。</b>'
-                    'お手数ですが、時間をおいてもう一度お試しください。'
-                    '続くようでしたらお問い合わせください。</p>'
-                    '<a class="btn ghost" href="/plan">プランへもどる</a></div>')
-            return _account_page("解約できませんでした", body, chip="プラン"), 503
-    # PROのまま、期限だけ決める。
-    #
-    # ここを free に落とすと、is_pro が plan を先に見るため、その場で
-    # 使えなくなる。解約画面も特商法の表記も規約も「お支払い済みの期間の
-    # 末日までご利用いただけます」と書いてあるので、それでは払った分を
-    # 渡していないことになる。無料に戻すのは、期間末に Stripe から
-    # customer.subscription.deleted が届いたとき。
-    if expires:
-        accounts.set_plan(u["id"], accounts.PLAN_PRO, expires)
-        accounts.set_cancel_at(u["id"], expires)
-    else:
-        # 期間末が分からないときは、残すべき期間も無い（手動付与など、
-        # 決済を伴わないPRO）。ここでPROのまま期限なしにすると、解約
-        # した人が永久にPROになる。
-        accounts.set_plan(u["id"], accounts.PLAN_FREE, None)
-    _bump("pro_cancel")
-    body = render_template_string(PLAN_CANCELED, expires=expires,
-                                  reasons=CANCEL_REASONS)
-    return _account_page("解約しました", body, chip="プラン")
-
-
-@app.route("/plan/cancel/why", methods=["POST"])
-def plan_cancel_why():
-    """解約理由の任意アンケート。答えても答えなくても結果は変わらない。"""
-    r = _require_login()
-    if r is not None:
-        return r
-    why = (request.form.get("why") or "").strip()
-    if why:
-        # いまは記録先を持たないのでログに残すだけ。
-        # 集計が要るようになったら列を足す。
-        print(f"[cancel-reason] {why}")
-    return redirect("/mypage")
-
 
 
 # ---- コピーの仕方 ----------------------------------------------------

@@ -188,7 +188,7 @@ def billing(monkeypatch):
                  ("OPERATOR_TEL", "0465-00-0000"),
                  ("CONTACT_EMAIL", "support@example.jp"),
                  ("STRIPE_SECRET_KEY", "sk_test_dummy"),
-                 ("STRIPE_PRICE_ID", "price_normal"),
+                 ("STRIPE_PASS_PRICE_ID", "price_pass"),
                  ("STRIPE_WEBHOOK_SECRET", "whsec_dummy"),
                  ("SHINDAN_MOCK", "1")):
         monkeypatch.setenv(k, v)
@@ -227,8 +227,8 @@ def test_the_price_is_shown_before_the_button_is_pressed(billing):
         "/diagnose", data=FREE_INPUT).get_data(as_text=True)
     i = h.index("契約の前に、つぶしておくこと")
     j = h.index("この物件を詳しく診断する（PRO）")
-    assert "月額" in h[i:j], "ボタンより前に金額が出ていない"
-    assert "いつでも解約できます" in h[i:j]
+    assert "90日パス" in h[i:j], "ボタンより前に金額が出ていない"
+    assert "自動更新はありません" in h[i:j]
 
 
 def test_no_price_is_claimed_while_billing_is_off():
@@ -236,7 +236,7 @@ def test_no_price_is_claimed_while_billing_is_off():
     h = _client().post("/diagnose", data=FREE_INPUT).get_data(as_text=True)
     i = h.index("契約の前に、つぶしておくこと")
     j = h.index("この物件を詳しく診断する（PRO）")
-    assert "月額" not in h[i:j]
+    assert "90日パス" not in h[i:j] and "円（税込）" not in h[i:j]
 
 
 def test_the_card_does_not_promise_a_softer_score():
@@ -263,7 +263,7 @@ def test_the_price_comes_before_the_long_explanation(billing):
     という並びだった。2,000字スクロールしないと金額が出てこない。
     """
     s = _visible(billing.app.test_client().get("/plan").get_data(as_text=True))
-    price = s.index("月額")
+    price = s.index("90日パス")
     button = s.index("PROに申し込む")
     table = s.index("購入診断（戸建・マンション・土地）")
     land = s.index("土地（注文住宅）で、PROが足すもの")
@@ -285,7 +285,7 @@ def test_the_trial_notice_also_comes_first():
     s = _visible(webapp.app.test_client().get("/plan").get_data(as_text=True))
     notice = s.index("PROは試験公開中です")
     assert notice < s.index("購入診断（戸建・マンション・土地）")
-    assert "月額" not in s[:notice + 50]
+    assert "円（税込）" not in s[:notice + 50]
 
 
 # ---- この物件で何が出るかを、払う前に見せる（2026-10-18）-------------------
@@ -309,14 +309,14 @@ def test_the_card_counts_what_pro_would_list_for_this_property():
 
 def test_the_plan_page_says_who_it_is_for_and_what_comes_out(billing):
     s = _visible(billing.app.test_client().get("/plan").get_data(as_text=True))
-    price = s.index("月額")
+    price = s.index("90日パス")
     fit = s.index("PROが役に立つのは、こういうとき")
     give = s.index("物件ごとに出てくるもの")
     assert price < fit < give, "値段を先に、そのあとで誰向けか・何が出るか"
     assert "まだ探し始めたばかりなら、無料の診断で十分です" in s
-    assert "いつでも解約できます" in s
-    assert "お支払い済みの期間の最後まで使えます" in s
-    assert "退会" not in s, "退会の手続きは無い。解約と書く"
+    assert "自動更新はありません" in s
+    assert "解約の手続きも、追加の請求もありません" in s
+    assert "退会" not in s
 
 
 

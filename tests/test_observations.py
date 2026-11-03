@@ -228,7 +228,7 @@ def test_the_funnel_is_shown_as_steps(env):
     text = re.sub(r"<[^>]+>", " ", h)
     assert "診断から決済まで" in text
     for label in ("診断が出た", "プランの画面を見た", "PROの壁に当たった",
-                  "申込の最終確認へ", "決済画面へ進んだ", "契約が始まった"):
+                  "申込の最終確認へ", "決済画面へ進んだ", "パスを買った"):
         assert label in text, label
     assert "40%" in text, "プラン画面への率（4/10）が出ていない"
     assert "50%" in text, "壁に当たった率（2/4）が出ていない"
