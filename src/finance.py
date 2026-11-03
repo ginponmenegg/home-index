@@ -656,7 +656,7 @@ def loan_deduction(principal: int, annual_rate: float, years: int,
                    category: str = "その他",
                    is_resale: bool = False,
                    is_kosodate: bool = False,
-                   annual_income: Optional[int] = None,
+                   self_income: Optional[int] = None,
                    floor_area_m2: Optional[float] = None,
                    build_year: Optional[int] = None,
                    cfg: dict = None) -> LoanDeduction:
@@ -664,6 +664,11 @@ def loan_deduction(principal: int, annual_rate: float, years: int,
 
     実際の控除額はその人の所得税・住民税の範囲内に限られるため、ここで出るのは
     「制度上の上限」。個別の税額計算には踏み込まない（§8-6）。
+
+    self_income は借りる本人の年収（給与収入）。所得の要件は、控除を受ける
+    人ごとの合計所得金額で判定されるので、世帯の合計を渡さないこと。
+    共働きの世帯の合計年収2,200万円を上限2,000万円と比べると、ひとりずつなら
+    使える人を「対象外」と出してしまう。
     """
     c = (cfg or FCONFIG).get("loan_deduction", {})
     rate = c.get("rate")
@@ -677,10 +682,18 @@ def loan_deduction(principal: int, annual_rate: float, years: int,
                              "控除率または区分が未設定", src)
 
     # 要件チェック（満たさない場合は算出しない）
+    # 合計所得金額は、給与だけの人なら年収から給与所得控除を引いた額。
+    # 給与以外の所得はここでは分からないので、そのことを但し書きで伝える。
+    from .household import employment_income   # household が finance を読むため、ここで
+    total = employment_income(self_income) if self_income is not None else None
+    income_note = c.get("income_basis_note" if total is not None
+                        else "income_unknown_note", "")
     income_limit = c.get("income_limit")
-    if annual_income is not None and income_limit and annual_income > income_limit:
+    if total is not None and income_limit and total > income_limit:
         return LoanDeduction(category, None, None, [], 0, UNKNOWN,
-                             f"合計所得金額が{man_yen(income_limit)}を超えるため対象外", src)
+                             f"合計所得金額（{man_yen(total)}）が"
+                             f"{man_yen(income_limit)}を超えるため対象外", src,
+                             notes=[income_note])
 
     # 床面積の要件は50㎡以上。令和8年以降に住み始める中古住宅（買取再販を
     # 含む）は、40㎡以上50㎡未満でも対象になる。ただし合計所得金額が
@@ -706,16 +719,14 @@ def loan_deduction(principal: int, annual_rate: float, years: int,
                              f"床面積が{floor}㎡未満のため対象外", src,
                              notes=area_notes)
     if small:
-        # 入力は年収で、合計所得金額（人ごと・給与所得控除の後）ではない。
-        # 超えていたら対象外として出し、対象になり得ることを書き添える。
-        # 控除を多く見せる側には倒さない。
-        if annual_income is not None and s_income and annual_income > s_income:
+        if total is not None and s_income and total > s_income:
             return LoanDeduction(category, None, None, [], 0, UNKNOWN,
-                                 f"床面積が{fmin}㎡未満で、年収が"
-                                 f"{man_yen(s_income)}を超えるため対象外として試算",
-                                 src, notes=[c.get("small_income_note", "")] + area_notes)
+                                 f"床面積が{fmin}㎡未満で、合計所得金額（{man_yen(total)}）が"
+                                 f"{man_yen(s_income)}を超えるため対象外",
+                                 src, notes=[income_note] + area_notes)
         notes.append(c.get("small_note", ""))
 
+    notes.append(income_note)
     notes.extend(area_notes)
 
     cert_before = _ymd(c.get("quake_cert_required_before"))

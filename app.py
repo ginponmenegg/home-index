@@ -11081,7 +11081,8 @@ def _pro_compute(f):
     d = loan_deduction(principal, rate, years,
                        category=f.get("deduction_cat") or "その他",
                        is_resale=v["resale"], is_kosodate=v["kosodate"],
-                       annual_income=income,
+                       # 所得の要件は人ごと。世帯の合計ではなく本人の年収で見る
+                       self_income=to_yen(f.get("income_self")),
                        floor_area_m2=to_float(f.get("floor_area")),
                        build_year=to_int(f.get("byear")))
     dctx = dict(ok=(d.total > 0), basis=d.basis, total=man_yen(d.total),

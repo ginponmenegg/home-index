@@ -44,7 +44,7 @@ def test_basis_uses_man_yen():
     reg = registration_tax(land_price=20_000_000, loan_amount=30_000_000)
     assert "1,400万円" in reg[0].basis
     d = loan_deduction(30_000_000, 0.0125, 35, category="その他",
-                       annual_income=8_000_000, floor_area_m2=90.0)
+                       self_income=8_000_000, floor_area_m2=90.0)
     assert "2,000万円" in d.basis
 
 
@@ -256,7 +256,7 @@ def test_acquisition_tax_land_reduction():
 
 def test_loan_deduction_categories():
     """区分ごとの借入限度額と控除期間が正しく効くこと。"""
-    kw = dict(annual_income=8_000_000, floor_area_m2=90.0, build_year=2005)
+    kw = dict(self_income=8_000_000, floor_area_m2=90.0, build_year=2005)
     other = loan_deduction(30_000_000, 0.0125, 35, category="その他", **kw)
     assert other.years == 10 and other.limit == 20_000_000
     # 残高が限度額を上回るので毎年 2,000万×0.7%
@@ -270,12 +270,12 @@ def test_loan_deduction_categories():
     assert re.limit > ex.limit
     # 所得要件を超えたら対象外
     ng = loan_deduction(30_000_000, 0.0125, 35, category="その他",
-                        annual_income=25_000_000, floor_area_m2=90.0)
+                        self_income=25_000_000, floor_area_m2=90.0)
     assert ng.status == UNKNOWN and ng.total == 0
 
 
 def test_loan_deduction_kosodate_and_area():
-    kw = dict(annual_income=6_000_000, floor_area_m2=90.0, build_year=2005)
+    kw = dict(self_income=6_000_000, floor_area_m2=90.0, build_year=2005)
     base = loan_deduction(40_000_000, 0.0125, 35, category="省エネ基準適合", **kw)
     kos = loan_deduction(40_000_000, 0.0125, 35, category="省エネ基準適合",
                          is_kosodate=True, **kw)
@@ -287,7 +287,7 @@ def test_loan_deduction_kosodate_and_area():
     assert other.limit == 20_000_000
     # 床面積が足りなければ対象外
     small = loan_deduction(30_000_000, 0.0125, 35, category="その他",
-                           annual_income=6_000_000, floor_area_m2=35.0)
+                           self_income=6_000_000, floor_area_m2=35.0)
     assert small.status == UNKNOWN
 
 
@@ -309,9 +309,9 @@ def test_the_config_follows_the_tax_answer_for_small_flats():
 
 def test_a_flat_in_the_forties_gets_the_deduction():
     d = loan_deduction(20_000_000, 0.0125, 35, category="その他",
-                       annual_income=6_000_000, floor_area_m2=45.0)
+                       self_income=6_000_000, floor_area_m2=45.0)
     full = loan_deduction(20_000_000, 0.0125, 35, category="その他",
-                          annual_income=6_000_000, floor_area_m2=60.0)
+                          self_income=6_000_000, floor_area_m2=60.0)
     assert d.status == full.status and d.total == full.total > 0
     assert "40㎡台" in d.basis
     assert any("1,000万円以下" in n for n in d.notes), "所得の条件を書く"
@@ -319,12 +319,12 @@ def test_a_flat_in_the_forties_gets_the_deduction():
 
 def test_a_resale_flat_in_the_forties_gets_it_too():
     d = loan_deduction(30_000_000, 0.0125, 35, category="長期優良・低炭素",
-                       is_resale=True, annual_income=6_000_000, floor_area_m2=45.0)
+                       is_resale=True, self_income=6_000_000, floor_area_m2=45.0)
     assert d.total > 0 and d.limit == 45_000_000
 
 
 def test_no_family_uplift_under_fifty():
-    kw = dict(category="長期優良・低炭素", is_kosodate=True, annual_income=6_000_000)
+    kw = dict(category="長期優良・低炭素", is_kosodate=True, self_income=6_000_000)
     small = loan_deduction(50_000_000, 0.0125, 35, floor_area_m2=45.0, **kw)
     big = loan_deduction(50_000_000, 0.0125, 35, floor_area_m2=60.0, **kw)
     assert small.limit == 35_000_000 and big.limit == 45_000_000
@@ -333,31 +333,64 @@ def test_no_family_uplift_under_fifty():
 
 
 def test_income_over_ten_million_is_shown_as_out_but_explained():
-    """年収と合計所得金額は違う。対象外として出し、対象になり得ると書く。"""
+    """判定するのは合計所得金額。年収1,250万円なら給与所得控除195万円を引いて1,055万円。"""
     d = loan_deduction(20_000_000, 0.0125, 35, category="その他",
-                       annual_income=11_000_000, floor_area_m2=45.0)
+                       self_income=12_500_000, floor_area_m2=45.0)
     assert d.status == UNKNOWN and d.total == 0
-    assert "対象外" in d.basis
+    assert "対象外" in d.basis and "1,055万円" in d.basis
     joined = "".join(d.notes)
-    assert "給与所得控除" in joined and "税務署または税理士" in joined
+    assert "給与所得控除" in joined and "確定申告" in joined
     # 50㎡以上なら同じ年収でも対象
     ok = loan_deduction(20_000_000, 0.0125, 35, category="その他",
-                        annual_income=11_000_000, floor_area_m2=60.0)
+                        self_income=12_500_000, floor_area_m2=60.0)
     assert ok.total > 0
+
+
+def test_a_salary_just_over_ten_million_still_counts_in_the_forties():
+    """年収1,100万円の合計所得金額は905万円。1,000万円の線の内側。"""
+    d = loan_deduction(20_000_000, 0.0125, 35, category="その他",
+                       self_income=11_000_000, floor_area_m2=45.0)
+    assert d.total > 0
+
+
+def test_the_household_total_is_not_compared_with_the_limit():
+    """共働きの合計2,200万円でも、本人1,100万円なら対象。人ごとに見る。"""
+    from src.finance import FCONFIG
+    c = FCONFIG["loan_deduction"]
+    assert 22_000_000 > c["income_limit"]
+    d = loan_deduction(30_000_000, 0.0125, 35, category="その他",
+                       self_income=11_000_000, floor_area_m2=80.0)
+    assert d.total > 0
+    assert any("本人の年収" in n for n in d.notes), "前提を書く"
+
+
+def test_an_unknown_income_is_not_judged_but_said():
+    d = loan_deduction(30_000_000, 0.0125, 35, category="その他",
+                       floor_area_m2=80.0)
+    assert d.total > 0
+    assert any("確かめていません" in n for n in d.notes)
+
+
+def test_a_salary_over_the_line_is_out_with_the_reason():
+    """年収2,300万円の合計所得金額は2,105万円。2,000万円を超える。"""
+    d = loan_deduction(30_000_000, 0.0125, 35, category="その他",
+                       self_income=23_000_000, floor_area_m2=80.0)
+    assert d.status == UNKNOWN and d.total == 0
+    assert "2,105万円" in d.basis
 
 
 def test_under_forty_is_out():
     d = loan_deduction(20_000_000, 0.0125, 35, category="その他",
-                       annual_income=6_000_000, floor_area_m2=39.9)
+                       self_income=6_000_000, floor_area_m2=39.9)
     assert d.status == UNKNOWN and d.total == 0
     assert "40㎡未満" in d.basis
 
 
 def test_the_area_note_names_both_lines():
     d = loan_deduction(20_000_000, 0.0125, 35, category="その他",
-                       annual_income=6_000_000, floor_area_m2=75.0)
-    first = d.notes[0]
-    assert "50㎡以上" in first and "40㎡以上" in first and "登記事項証明書" in first
+                       self_income=6_000_000, floor_area_m2=75.0)
+    first = [n for n in d.notes if "登記事項証明書" in n][0]
+    assert "50㎡以上" in first and "40㎡以上" in first
 
 
 def test_fire_insurance_and_scrivener():
