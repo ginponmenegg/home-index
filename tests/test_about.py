@@ -90,7 +90,9 @@ def test_the_landing_page_names_the_author():
         h = webapp.app.test_client().get("/").get_data(as_text=True)
         assert "宅地建物取引士" in h
         assert "物件の仲介は行いません" in h
-        assert "6年" not in h, "年数は出さない"
+        # 「2026年」のような日付は年数ではない。数字が前に付かない「6年」だけを見る
+        import re
+        assert not re.search(r"(?<![0-9０-９])6年", h), "年数は出さない"
         assert 'href="/about"' in h
     finally:
         _restore(keep)
