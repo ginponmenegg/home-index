@@ -146,8 +146,9 @@ def test_the_edit_button_brings_the_answers_back(client):
 
 def test_the_form_links_to_both_other_diagnoses(client):
     h = client.get("/land").get_data(as_text=True)
-    assert "戸建の診断はこちら" in h
-    assert "マンションの診断はこちら" in h
+    # 2026-11-08 から、文中のリンクではなく冒頭の種類のタブで切り替える
+    assert '<nav class="kinds"' in h
+    assert 'href="/buy">' in h and 'href="/mansion">' in h
     assert "建売" not in h          # 土地から見たら戸建は戸建
 
 

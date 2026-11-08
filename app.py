@@ -24,6 +24,7 @@ from flask import (Flask, request, render_template_string,  # noqa: E402
 from src import db, accounts, saved, mailer, billing  # noqa: E402
 from src import metrics  # noqa: E402
 from src import icons  # noqa: E402
+from markupsafe import Markup  # noqa: E402
 from src import observations  # noqa: E402
 
 _w = mailer.warn_if_shared_sender()
@@ -262,6 +263,91 @@ def symbol_small(cls="hi-sym"):
 
 WORDMARK = '<span class="hi-wm"><b>HOME</b> <i>INDEX</i></span>'
 
+# ---- 診断ページの冒頭（2026-11-08）---------------------------------------
+# 説明の文が2段落ずらっと並び、別の診断へのリンクも文中に埋もれていた。
+# 種類の切り替えはタブに、迷いどころは3つの要点に、必須項目は小札に分ける。
+# 書いてあることは前の文と同じで、足したことは無い。
+_INTRO = {
+    "buy": dict(
+        tag="戸建の購入診断", title="戸建を100点で採点",
+        sub="住まい選びで迷う点を公的データから集め、ルール計算で100点に換算します。",
+        feats=[("yen", "価格", "この価格は妥当か"),
+               ("shield", "災害", "災害リスクはないか"),
+               ("wallet", "返済", "無理なく返せるか")],
+        need=[("pin", "必須は所在地と売出価格だけ"), ("yen", "金額は万円"),
+              ("check", "足すほど点が確かに")]),
+    "mansion": dict(
+        tag="マンションの購入診断", title="マンションを100点で採点",
+        sub="近隣のマンションの成約事例から、専有面積あたりの単価を出して100点に換算します。",
+        feats=[("yen", "価格", "この価格は妥当か"),
+               ("trend", "資産性", "資産価値は保てるか"),
+               ("wallet", "返済", "無理なく返せるか")],
+        need=[("pin", "所在地・売出価格・専有面積の3つで診断できます"),
+              ("yen", "金額は万円（管理費・修繕積立金は円）"),
+              ("check", "足すほど点が確かに")]),
+    "land": dict(
+        tag="土地の診断（注文住宅）", title="この土地に、どんな家が建つか",
+        sub="注文住宅を建てる土地を100点で採点します。",
+        feats=[("ruler", "建てられる家", "建ぺい率・容積率・前面道路から延床の上限"),
+               ("yen", "価格", "近隣の土地の成約事例から㎡単価の分布"),
+               ("wallet", "総額", "建物の予算を足すと月々の返済まで")],
+        need=[("pin", "所在地・価格・敷地面積の3つで診断できます"), ("yen", "金額は万円"),
+              ("check", "足すほど点が確かに")]),
+}
+_KINDS = [("buy", "/buy", "house", "戸建"), ("mansion", "/mansion", "building", "マンション"),
+          ("land", "/land", "land", "土地")]
+
+INTRO_CSS = (
+    '.kinds{display:flex;gap:4px;padding:4px;background:#fff;border-radius:14px;'
+    'border:1px solid rgba(15,23,42,.06);margin:2px 0 20px;'
+    'box-shadow:0 8px 24px -18px rgba(15,23,42,.2)}'
+    '.kinds a{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;'
+    'padding:7px 4px;border-radius:10px;font-size:13.5px;font-weight:700;color:#5f6773;'
+    'text-decoration:none;white-space:nowrap}'
+    '.kinds a .icb{width:1.75em;height:1.75em;color:#14395C}'
+    '.kinds a.on{background:#14395C;color:#fff}'
+    '.kinds a.on .icb{color:#fff;background:rgba(255,255,255,.16)}'
+    '.dhero .tag{display:inline-flex;align-items:center;padding:4px 11px;border-radius:999px;'
+    'font-size:11.5px;font-weight:700;letter-spacing:.06em;color:#14395C;'
+    'border:1px solid rgba(20,57,92,.22);background:rgba(20,57,92,.05)}'
+    '.dhero h1{font-size:23px;line-height:1.35;margin:12px 0 6px;letter-spacing:.01em}'
+    '.dhero .dsub{color:#5f6773;font-size:14.5px;line-height:1.75;margin:0 0 16px}'
+    '.dfeat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}'
+    '.dfeat div{background:#fff;border:1px solid rgba(15,23,42,.06);border-radius:14px;'
+    'padding:12px 10px;display:flex;flex-direction:column;gap:6px;'
+    'box-shadow:0 8px 24px -18px rgba(15,23,42,.2)}'
+    '.dfeat .icb{color:#14395C;width:2.1em;height:2.1em}'
+    '.dfeat b{font-size:14px;line-height:1.3}'
+    '.dfeat span{font-size:11.5px;color:#6b7480;line-height:1.55}'
+    '.dneed{display:flex;flex-wrap:wrap;gap:6px;list-style:none;padding:0;margin:14px 0 4px}'
+    '.dneed li{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#374151;'
+    'background:#fff;border:1px solid #e3e7ec;border-radius:999px;padding:4px 11px 4px 5px}'
+    '.dneed .icb{width:1.6em;height:1.6em;color:#14395C}'
+    '.dneed a{color:inherit}')
+
+
+def diag_intro(kind: str, extra=None):
+    """診断ページの冒頭。種類のタブ・見出し・3つの要点・必須項目の小札。"""
+    c = _INTRO[kind]
+    on = ' class="on" aria-current="page"'
+    tabs = "".join(
+        f'<a href="{href}"{on if k == kind else ""}>{icons.icon(ic)}{label}</a>'
+        for k, href, ic, label in _KINDS)
+    feats = "".join(f'<div>{icons.icon(ic)}<b>{t}</b><span>{d}</span></div>'
+                    for ic, t, d in c["feats"])
+    need = "".join(f'<li>{icons.icon(ic)}{t}</li>' for ic, t in c["need"])
+    if extra:
+        need += f'<li>{icons.icon("arrow")}{extra}</li>'
+    return Markup(
+        f'<nav class="kinds" aria-label="診断の種類">{tabs}</nav>'
+        f'<header class="dhero"><span class="tag">{c["tag"]}</span>'
+        f'<h1>{c["title"]}</h1><p class="dsub">{c["sub"]}</p>'
+        f'<div class="dfeat">{feats}</div><ul class="dneed">{need}</ul></header>')
+
+
+app.jinja_env.globals["diag_intro"] = diag_intro
+
+
 BRAND_CSS = (
     # --- ワードマーク ---
     '.hi-wm{font-family:Jost,"Century Gothic",Futura,"Avenir Next",'
@@ -296,7 +382,7 @@ BRAND_CSS = (
     '.hi-menu a{display:flex;align-items:center;gap:11px;padding:11px 2px;'
     'font-size:14px;color:#111;text-decoration:none;border-bottom:1px solid #f0f0f0}'
     '.hi-menu a .icb{color:#14395C}'
-    + icons.CSS +
+    + icons.CSS + INTRO_CSS +
     '.hi-menu a:last-child{border-bottom:0}'
     '.hi-menu a:hover{color:#5f6773}'
     # --- 結果画像用の小ロックアップ ---
@@ -1379,10 +1465,7 @@ CARD_CSS_PLACEHOLDER
 </style></head><body>
 BRAND_BAR
 <div class="wrap">
- <h1>住まいを100点で採点します</h1>
- <p class="aim">「この価格は妥当か」「災害リスクはないか」「無理なく返せるか」。住まい選びで迷う点を<b>公的データ</b>から集め、ルール計算で100点に換算します。</p>
- <p class="lead"><b>住所と売出価格だけで診断できます。</b>分かる項目を足すほど、点の
-  確からしさ（情報充足度）が上がります。金額は<b>万円</b>。<br><a href="/mansion">マンションの診断はこちら</a>　<a href="/land">土地（注文住宅）の診断はこちら</a></p>
+ {{ diag_intro("buy") }}
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
 
@@ -2465,6 +2548,17 @@ section .sub{color:var(--sub); font-size:14px; margin:0 0 26px; max-width:36em}
   font-family:"IBM Plex Mono",ui-monospace,monospace; margin:0;
   font-size:10.5px; letter-spacing:.14em; color:var(--spark);
 }
+/* 見出しの小さなラベルは、枠で囲んだ札にする（2026-11-08）。地と枠は
+   文字の色を薄めたもの。濃紺の帯の上では、文字の色に合わせて明るくなる。 */
+.eyebrow,.rowitem .tagline,.sources .k{
+  display:inline-flex; align-items:center; align-self:flex-start; width:max-content;
+  max-width:100%; padding:5px 12px; border-radius:999px; line-height:1.3;
+  border:1px solid rgba(20,57,92,.22); background:rgba(20,57,92,.05);
+  border-color:color-mix(in srgb,currentColor 32%,transparent);
+  background:color-mix(in srgb,currentColor 9%,transparent);
+}
+.eyebrow{color:var(--accent); font-weight:500}
+.rowitem .tagline{padding:4px 10px; margin-bottom:4px}
 
 /* ---------- 結果サンプル ---------- */
 .sample{background:var(--surface); border:2px solid var(--ink);
@@ -5088,13 +5182,7 @@ MANSION_CSS_PLACEHOLDER
 </style></head><body>
 BRAND_BAR
 <div class="wrap">
- <h1>マンションを100点で採点します</h1>
- <p class="aim">「この価格は妥当か」「資産価値は保てるか」「無理なく返せるか」。
-  近隣の<b>マンションの成約事例</b>から専有面積あたりの単価を出して、100点に換算します。</p>
- <p class="lead"><b>所在地・売出価格・専有面積の3つで診断できます。</b>分かる項目を
-  足すほど、点の確からしさ（情報充足度）が上がります。
-  金額は<b>万円</b>（管理費・修繕積立金は<b>円</b>）。
-  <a href="/buy">戸建の診断はこちら</a>　<a href="/land">土地の診断はこちら</a></p>
+ {{ diag_intro("mansion") }}
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
 
@@ -5500,14 +5588,7 @@ LAND_CSS_PLACEHOLDER
 </style></head><body>
 BRAND_BAR
 <div class="wrap">
- <h1>この土地に、どんな家が建つか</h1>
- <p class="aim">注文住宅を建てる土地を100点で採点します。
-  <b>建ぺい率・容積率・前面道路</b>から延床の上限を計算し、
-  近隣の<b>土地の成約事例</b>から㎡単価の分布を出します。</p>
- <p class="lead"><b>所在地・価格・敷地面積</b>の3つで診断できます。
-  <b>建物の予算</b>を足すと、総額と月々の返済まで出ます。
-  分かる項目を足すほど、点の確からしさ（情報充足度）が上がります。
-  金額は<b>万円</b>。<a href="/sample/land">見本の結果を見る</a>　<a href="/buy">戸建の診断はこちら</a>　<a href="/mansion">マンションの診断はこちら</a></p>
+ {{ diag_intro("land", '<a href="/sample/land">見本の結果を見る</a>') }}
 
  {% if banner %}<div class="banner">{{banner|safe}}</div>{% endif %}
 
