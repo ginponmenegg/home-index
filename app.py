@@ -594,16 +594,20 @@ else:
                  '<a href="/sample/finance" style="color:#111">資金計画の見本</a>')
 
 CARD_CSS = """
- :root{--bg:#f1f4f7;--card:#fff;--ink:#1f2937;--sub:#6b7480;--acc:#111111;
-  --line:#e8ebef}
+ :root{--bg:#f5f7fa;--card:#fff;--ink:#1f2937;--sub:#6b7480;--acc:#111111;
+  --line:#e8ebef;--link:#1d3f6e}
  *{box-sizing:border-box}
  body{margin:0;background:var(--bg);color:var(--ink);
   font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
  .wrap{max-width:720px;margin:0 auto;padding:28px 16px}
- /* 枠と影を両方かけると輪郭が二重になって重く見える。影だけにする。 */
- .card{background:var(--card);border:0;border-radius:18px;padding:24px;
-  box-shadow:0 1px 2px rgba(16,24,40,.04),0 10px 26px -14px rgba(16,24,40,.22);
-  margin-top:14px}
+ /* 濃い影は面を重く見せる（2026-11-08）。ごく薄い枠で輪郭を出し、影は淡く広く。
+    枠は6%の濃さなので、影と重なっても線が二重には見えない。 */
+ .card{background:var(--card);border:1px solid rgba(15,23,42,.06);
+  border-radius:18px;padding:24px;
+  box-shadow:0 1px 2px rgba(15,23,42,.03),0 12px 32px -18px rgba(15,23,42,.16);
+  margin-top:16px}
+ /* 色を付けていないリンクが、ブラウザ既定の青（#0000EE）で出ていた */
+ a{color:var(--link);text-underline-offset:.22em;text-decoration-thickness:1px}
  h1{font-size:21px;margin:10px 0 2px;letter-spacing:.01em}
  /* 見出しの左に色のついた細い棒。◎△⚠ のような記号を重ねない。 */
  h2{font-size:15px;font-weight:700;letter-spacing:.04em;margin:0 0 14px;
@@ -632,7 +636,7 @@ CARD_CSS = """
  ul.strong li{color:#0ea5e9}ul.weak li{color:#dc2626}
  @media (max-width:560px){
   .wrap{padding:18px 12px} h1{font-size:19px}
-  .card{padding:18px 16px;border-radius:16px;margin-top:12px}
+  .card{padding:20px 18px;border-radius:16px;margin-top:14px}
   table{font-size:13px} th,td{padding:7px 5px}
  }
 """
