@@ -364,7 +364,31 @@ INTRO_CSS = (
     '.dneed li{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#374151;'
     'background:#fff;border:1px solid #e3e7ec;border-radius:999px;padding:4px 11px 4px 5px}'
     '.dneed .icb{width:1.6em;height:1.6em;color:#14395C}'
-    '.dneed a{color:inherit}')
+    '.dneed a{color:inherit}'
+    # 機能のカード（/pro・/plan）。アイコンの枠＋見出し＋本文＋丸い札のリンク
+    '.fcards{display:grid;gap:10px;margin:14px 0}'
+    '@media (min-width:640px){.fcards.c2{grid-template-columns:1fr 1fr}}'
+    '.fcard{background:#fff;border:1px solid rgba(15,23,42,.07);border-radius:16px;'
+    'padding:16px;box-shadow:0 8px 24px -18px rgba(15,23,42,.2)}'
+    '.fcard .fh{display:flex;align-items:center;gap:10px;margin:0 0 6px;'
+    'font-weight:700;font-size:15.5px;line-height:1.4;color:#14395C}'
+    '.fcard .fh .icb{font-size:15px}'
+    '.fcard p{margin:0;font-size:14px;line-height:1.8;color:#374151}'
+    '.fcard p+p{margin-top:6px}'
+    '.facts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}'
+    '.facts a{display:inline-flex;align-items:center;gap:4px;font-size:13px;'
+    'font-weight:700;color:#14395C;background:rgba(20,57,92,.06);'
+    'border:1px solid rgba(20,57,92,.18);border-radius:999px;padding:6px 12px;'
+    'text-decoration:none}'
+    # 料金の箱（/plan）
+    '.pricebox{background:#fff;border:1px solid rgba(20,57,92,.18);border-radius:18px;'
+    'padding:18px;margin-top:14px;box-shadow:0 10px 28px -20px rgba(20,57,92,.35)}'
+    '.pricebox .pl{display:inline-flex;font-size:11.5px;font-weight:700;color:#14395C;'
+    'letter-spacing:.08em;border:1px solid rgba(20,57,92,.22);background:rgba(20,57,92,.05);'
+    'border-radius:999px;padding:3px 10px}'
+    '.pricebox .pv{font-size:24px;font-weight:800;margin:8px 0 4px;letter-spacing:.01em}'
+    '.pricebox .pt{margin:10px 0 0;font-size:13.5px;line-height:1.85;color:#4b5563}'
+    '.pricebox .btn{margin-top:14px}')
 
 
 def diag_intro(kind: str, extra=None):
@@ -1167,6 +1191,7 @@ def _legal_page(title, body, desc=None, path=None):
             + 'h1{font-size:21px;margin:0 0 6px;letter-spacing:0}'
             'h2{display:block;font-size:16px;font-weight:700;margin:26px 0 6px;'
             'color:#111;letter-spacing:0}h2::before{content:none}'
+            '.fcard p,.fcard li{font-size:14px;line-height:1.8}'
             'p,li{font-size:15px;line-height:1.9}a{color:#111}'
             '.sub{color:var(--sub);font-size:13px}'
             '.logo-img{height:64px;width:auto;max-width:100%;display:block}'
@@ -9817,32 +9842,40 @@ PLAN_PAGE = """
 {% elif pro %}
  <div class="note ok" style="margin-top:14px">PROをご利用中です。</div>
 {% else %}
- <div class="note" style="margin-top:14px">
-  <p style="margin:0 0 6px"><b>PRO　{{ price_label }}</b></p>
-  <p style="margin:0"><b>1回払いで、お支払いの完了から90日間使えます。
+ <div class="pricebox">
+  <span class="pl">PRO</span>
+  <p class="pv">{{ price_label }}</p>
+  <ul class="dneed">
+   <li>{{ icon("check") }}1回払い</li>
+   <li>{{ icon("clock") }}90日間使える</li>
+   <li>{{ icon("check") }}自動更新なし</li>
+   <li>{{ icon("house") }}物件はいくつでも同じ料金</li>
+  </ul>
+  <p class="pt"><b>1回払いで、お支払いの完了から90日間使えます。
    自動更新はありません。</b>90日が過ぎると無料プランに戻るだけで、
-   解約の手続きも、追加の請求もありません。<br>
-   期間中は、物件をいくつ診断しても同じ料金です。
+   解約の手続きも、追加の請求もありません。
    期間が終わっても、保存した診断はそのままご覧いただけます。</p>
+  <a class="btn" href="/plan/confirm">PROに申し込む</a>
  </div>
- <p style="margin-top:14px">
-  <a class="btn" href="/plan/confirm">PROに申し込む</a></p>
  <p class="sub" style="margin-top:10px">
   <a href="/tokushoho">特定商取引法に基づく表記</a>　・
   <a href="/terms">利用規約</a>　・
   <a href="/privacy">プライバシーポリシー</a></p>
  <!-- 2026-10-18。プランの画面は67回開かれたが、PROを開こうとしたのは3回、
       申し込みは0。値段のすぐ後に、誰のためのものか、何が出てくるかを見せる。 -->
- <h2 style="margin:20px 0 6px">PROが役に立つのは、こういうとき</h2>
- <ul style="margin:0;padding-left:1.2em;line-height:1.9">
-  <li>内見の予約をした。何を見て、何を聞けばいいかを決めておきたい</li>
-  <li>申込みや契約が近い。重要事項説明書を、渡される前に読んでおきたい</li>
-  <li>候補を2〜3件に絞った。諸費用まで含めて、お金の面で比べたい</li>
- </ul>
+ <h2 style="margin:22px 0 4px">{{ icon("help") }}PROが役に立つのは、こういうとき</h2>
+ <div class="fcards">
+  <div class="fcard"><p class="fh">{{ icon("clock") }}内見の予約をした</p>
+   <p>何を見て、何を聞けばいいかを決めておきたい</p></div>
+  <div class="fcard"><p class="fh">{{ icon("doc") }}申込みや契約が近い</p>
+   <p>重要事項説明書を、渡される前に読んでおきたい</p></div>
+  <div class="fcard"><p class="fh">{{ icon("compare") }}候補を2〜3件に絞った</p>
+   <p>諸費用まで含めて、お金の面で比べたい</p></div>
+ </div>
  <p class="sub" style="margin-top:8px">まだ探し始めたばかりなら、無料の診断で十分です。
   物件が絞れてきたら、そのときに使ってください。</p>
 
- <h2 style="margin:20px 0 6px">重要事項説明の日に持っていく1冊</h2>
+ <h2 style="margin:22px 0 6px">{{ icon("doc") }}重要事項説明の日に持っていく1冊</h2>
  <p style="margin:0;line-height:1.9">物件ごとに「契約前チェック」をPDFで作ります。
   この物件の点数と注意すること、仲介業者に聞くこと（回答を書き込む欄つき）、
   重要事項説明書で読む欄、諸費用まで含めた資金計画を、1冊にまとめたものです。
@@ -9850,24 +9883,30 @@ PLAN_PAGE = """
  <p class="sub" style="margin-top:8px">会員登録（メールアドレスだけ）をすると、
   1物件だけ無料で試せます。お申し込みに、ログインは要りません。</p>
 
- <h2 style="margin:20px 0 6px">物件ごとに出てくるもの</h2>
- <table class="give">
-  <tr><th>聞く</th><td>仲介業者に聞くことの一覧。その物件の築年と、まだ分かっていない
-   項目から組み立てます。たとえば「物件状況報告書（告知書）と設備表を見せて
-   いただけますか」。<a href="/guide/nakai-gyousha-ni-kiku-koto">どんな質問が並ぶか</a></td></tr>
-  <tr><th>読む</th><td>重要事項説明書で、その物件で効く欄。区域やハザードに当たった欄を
-   足し、根拠の条文をつけて並べます。<a href="#juyo">並ぶ欄の一覧</a></td></tr>
-  <tr><th>計算する</th><td>諸費用・金利が上がった場合・住宅ローン控除まで入れた資金計画。
-   契約前チェック（PDF）に入ります。
-   <a href="/sample/finance">3,180万円の中古戸建の見本</a></td></tr>
-  <tr><th>直す</th><td>内見や書類で分かったことを入れると、点数に反映されます。
-   採点の仕方は無料と同じで、甘くなることはありません。</td></tr>
- </table>
+ <h2 style="margin:22px 0 4px">{{ icon("sparkle") }}物件ごとに出てくるもの</h2>
+ <div class="fcards c2">
+  <div class="fcard"><p class="fh">{{ icon("people") }}聞く</p>
+   <p>仲介業者に聞くことの一覧。その物件の築年と、まだ分かっていない項目から
+    組み立てます。たとえば「物件状況報告書（告知書）と設備表を見せて
+    いただけますか」。</p>
+   <div class="facts"><a href="/guide/nakai-gyousha-ni-kiku-koto">どんな質問が並ぶか</a></div></div>
+  <div class="fcard"><p class="fh">{{ icon("doc") }}読む</p>
+   <p>重要事項説明書で、その物件で効く欄。区域やハザードに当たった欄を足し、
+    根拠の条文をつけて並べます。</p>
+   <div class="facts"><a href="#juyo">並ぶ欄の一覧</a></div></div>
+  <div class="fcard"><p class="fh">{{ icon("wallet") }}計算する</p>
+   <p>諸費用・金利が上がった場合・住宅ローン控除まで入れた資金計画。
+    契約前チェック（PDF）に入ります。</p>
+   <div class="facts"><a href="/sample/finance">3,180万円の中古戸建の見本</a></div></div>
+  <div class="fcard"><p class="fh">{{ icon("check") }}直す</p>
+   <p>内見や書類で分かったことを入れると、点数に反映されます。
+    採点の仕方は無料と同じで、甘くなることはありません。</p></div>
+ </div>
  <p style="margin-top:16px">
   <a class="btn" href="/plan/confirm">PROに申し込む</a></p>
 {% endif %}
 
- <h2 style="margin:22px 0 0">無料とPROのちがい</h2>
+ <h2 style="margin:22px 0 0">{{ icon("compare") }}無料とPROのちがい</h2>
 
  <div class="tablewrap"><table class="cmp">
   <thead><tr><th class="rowlbl">できること</th><th>無料</th><th>PRO</th></tr></thead>
@@ -9900,7 +9939,7 @@ PLAN_PAGE = """
  </table></div>
 
  <div class="card" id="tochi" style="margin-top:14px">
-  <h2 style="margin-top:0">土地（注文住宅）で、PROが足すもの</h2>
+  <h2 style="margin-top:0">{{ icon("land") }}土地（注文住宅）で、PROが足すもの</h2>
   <p class="lead">建売やマンションは、決済の日に住宅ローンが実行されて
    その日に終わります。<b>注文住宅は終わりません。</b>土地の決済から
    建物の完成まで半年〜1年あり、その間は住宅ローンが実行されないので、
@@ -9935,7 +9974,7 @@ PLAN_PAGE = """
  </div>
 
  <div class="card" id="juyo" style="margin-top:14px">
-  <h2 style="margin-top:0">「重要事項説明書で確認すること」の中身</h2>
+  <h2 style="margin-top:0">{{ icon("doc") }}「重要事項説明書で確認すること」の中身</h2>
   <p class="lead">重要事項説明書は契約の直前に渡され、その場で読み上げられます。
    30ページ近いものを初めて見て、聞きながら判断するのは無理があります。
    <b>診断で分かったことから、この物件で効く欄を、根拠の条文つきで先に並べます。</b></p>
@@ -10838,6 +10877,13 @@ CARD_CSS_PLACEHOLDER
  .kv{display:flex;justify-content:space-between;padding:9px 0;
   border-bottom:1px solid #f0f2f5;font-size:15px}
  .kv:last-child{border-bottom:0}
+ /* 全体像の金額はタイルに並べる（2026-11-08） */
+ .kvgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 12px}
+ .kvgrid .kv{flex-direction:column;align-items:flex-start;justify-content:flex-start;
+  gap:2px;border:1px solid #eef1f4;border-radius:12px;padding:10px 12px;background:#fafbfc}
+ .kvgrid .kv:last-child{border-bottom:1px solid #eef1f4}
+ .kvgrid .kv span{font-size:12px;color:var(--sub)}
+ .kvgrid .kv b{font-size:16px}
  .kv b{font-weight:700}
  th,td{vertical-align:top}
  th{white-space:nowrap}
@@ -10867,16 +10913,18 @@ CARD_CSS_PLACEHOLDER
 BRAND_BAR
 <div class="wrap">
  {% if sample %}
- <div class="card" style="border-color:#111;background:#fffbea">
-  <h1 style="margin:0 0 4px">詳細な資金計画（見本）</h1>
-  <p class="sub" style="margin:0 0 10px">PROの「詳細な資金計画」が、どんな内容で
-   出るかをそのままご覧いただくものです。<b>中身は隠していません。</b>
-   実在の売り出し物件ではなく、{{sample_note}}を例にした試算です。
-   前提に置いた数字は、このページの下にすべて書いています。</p>
-  <p style="margin:0">
-   <a href="/sample/finance.pdf">この内容をPDFで見る</a>　・　
-   <a href="/buy">自分の物件を無料で診断する</a>SAMPLE_PLAN_LINK</p>
- </div>
+ <header class="dhero" style="margin-top:6px">
+  <span class="tag">見本　PRO 詳細な資金計画</span>
+  <h1>詳細な資金計画（見本）</h1>
+  <p class="dsub">PROの「詳細な資金計画」が、どんな内容で出るかをそのままご覧いただく
+   ものです。<b>中身は隠していません。</b>実在の売り出し物件ではなく、
+   {{sample_note}}を例にした試算です。前提に置いた数字は、このページの下に
+   すべて書いています。</p>
+  <div class="facts">
+   <a href="/sample/finance.pdf">{{ icon("doc") }}この内容をPDFで見る</a>
+   <a href="/buy">{{ icon("search") }}自分の物件を無料で診断する</a>SAMPLE_PLAN_LINK
+  </div>
+ </header>
  {% else %}
  <form method="post" action="/pro/finance_start" class="backform">
   {% for k, val in form.items() %}<input type="hidden" name="{{k}}" value="{{val}}">{% endfor %}
@@ -10895,12 +10943,14 @@ BRAND_BAR
 
  <div class="card">
   <h2>{{ icon("wallet") }}資金の全体像</h2>
-  <div class="kv"><span>物件価格</span><b>{{s.price}}</b></div>
-  <div class="kv"><span>諸費用（判明分）</span><b>{{s.costs}}</b></div>
-  <div class="kv"><span>必要総額</span><b>{{s.total}}</b></div>
-  <div class="kv"><span>頭金</span><b>{{s.down}}</b></div>
-  <div class="kv"><span>借入額</span><b>{{s.principal}}</b></div>
   <p class="big">月々 約 {{s.monthly}}{% if s.burden %}<span class="sub">返済負担率 {{s.burden}}%</span>{% endif %}</p>
+  <div class="kvgrid">
+   <div class="kv"><span>物件価格</span><b>{{s.price}}</b></div>
+   <div class="kv"><span>諸費用（判明分）</span><b>{{s.costs}}</b></div>
+   <div class="kv"><span>必要総額</span><b>{{s.total}}</b></div>
+   <div class="kv"><span>頭金</span><b>{{s.down}}</b></div>
+   <div class="kv"><span>借入額</span><b>{{s.principal}}</b></div>
+  </div>
   <p class="sub">金利 {{s.rate}}％ ／ {{s.years}}年 ／ 元利均等返済</p>
   <div class="warn">借入額は<b>必要総額から頭金を差し引いた額</b>です（諸費用を借入に含める前提）。
    保証料と抵当権設定の登録免許税は借入額に比例するため、借入額と諸費用が釣り合うまで計算を繰り返しています。
@@ -10908,7 +10958,7 @@ BRAND_BAR
  </div>
 
  <div class="card">
-  <h2>諸費用の内訳</h2>
+  <h2>{{ icon("yen") }}諸費用の内訳</h2>
   <div class="tablewrap">
   <table><tr><th>項目</th><th style="text-align:right">金額</th><th>区分</th></tr>
   {% for c in costs %}
@@ -10924,7 +10974,7 @@ BRAND_BAR
  </div>
 
  <div class="card">
-  <h2>金利が上がったら</h2>
+  <h2>{{ icon("trend") }}金利が上がったら</h2>
   <p class="sub">将来の予測ではなく、その金利になった場合の返済額です。</p>
   <div class="tablewrap">
   <table><tr><th>金利</th><th style="text-align:right">月々</th><th style="text-align:right">現在との差</th><th style="text-align:right">総返済額</th></tr>
@@ -10935,7 +10985,7 @@ BRAND_BAR
 
  {% if prepay %}
  <div class="card">
-  <h2>繰上返済の効果</h2>
+  <h2>{{ icon("arrow") }}繰上返済の効果</h2>
   <p class="sub">{{prepay.after}}年後に {{prepay.amount}} を繰上返済した場合（{{prepay.kind}}）</p>
   {% if prepay.months_saved %}<div class="kv"><span>返済期間の短縮</span><b>{{prepay.months_saved}}</b></div>{% endif %}
   <div class="kv"><span>軽減される利息</span><b>{{prepay.interest_saved}}</b></div>
@@ -10961,7 +11011,7 @@ BRAND_BAR
 
  {% if proration %}
  <div class="card">
-  <h2>引渡日の精算</h2>
+  <h2>{{ icon("clock") }}引渡日の精算</h2>
   <p class="sub">{{proration.handover}}に引き渡す場合。起算日は{{proration.start}}です。
    <b>諸費用とは別に、決済当日に売主へ払います。</b></p>
   <div class="tablewrap">
@@ -10984,14 +11034,14 @@ BRAND_BAR
 
  {% if hh %}
  <div class="card">
-  <h2>手取りで見た返済{% if hh.edu %}と教育費{% endif %}</h2>
+  <h2>{{ icon("wallet") }}手取りで見た返済{% if hh.edu %}と教育費{% endif %}</h2>
 HH_RESULT_PLACEHOLDER
  </div>
  {% endif %}
 
  {% if afford %}
  <div class="card">
-  <h2>年収からみた借入の目安</h2>
+  <h2>{{ icon("user") }}年収からみた借入の目安</h2>
   <div class="kv"><span>返済負担率の上限</span><b>{{afford.limit}}％</b></div>
   <div class="kv"><span>毎月の住居費の上限</span><b>{{afford.monthly}}</b></div>
   {% if afford.extra %}
@@ -11006,7 +11056,7 @@ HH_RESULT_PLACEHOLDER
 
  {% if sample %}
  <div class="card" style="border-color:#111">
-  <h2>この見本の前提</h2>
+  <h2>{{ icon("help") }}この見本の前提</h2>
   <p class="sub">実在の物件ではありません。上の金額は、すべて次の数字から
    計算しています。ご自身の物件では、これらを入力していただきます。</p>
   <div class="tablewrap"><table>
@@ -11019,7 +11069,7 @@ HH_RESULT_PLACEHOLDER
  {% endif %}
 
  <div class="card">
-  <h2>この試算の根拠</h2>
+  <h2>{{ icon("doc") }}この試算の根拠</h2>
   {% for s in sources %}<p class="foot">・{{s}}</p>{% endfor %}
   <div class="warn" style="margin-top:10px">
    税率・料率は取得時点の公的資料にもとづきます。法改正で変わること、また不動産取得税の税率は
@@ -11043,7 +11093,8 @@ PRO_FINANCE_RESULT = (PRO_FINANCE_RESULT
                       .replace("HH_RESULT_PLACEHOLDER", HH_RESULT)
                       .replace("CARD_CSS_PLACEHOLDER", CARD_CSS)
                       .replace("SAMPLE_PLAN_LINK",
-                               '　・　<a href="/plan">無料とPROのちがい</a>'
+                               '<a href="/plan">' + str(icons.icon("compare"))
+                               + '無料とPROのちがい</a>'
                                if accounts_on() else '')
                       .replace("BRAND_CSS_PLACEHOLDER", BRAND_CSS)
                       .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
@@ -11082,48 +11133,57 @@ def _pro_defaults():
 _PRO_HUB_TRIAL = ('' if billing_on() else
                   '<b>試験公開中で、いまは無料で使えます。</b>')
 
-_PRO_HUB_BODY = ("""
-<p class="sub">PROは、無料診断が「未確認」として点数に入れていない項目を、
-ご自身の回答で埋めるためのものです。""" + _PRO_HUB_TRIAL + """</p>
+def _fcard(ic, title, body, links=(), note=""):
+    """機能のカード1枚（/pro）。links は (行き先, 文言) の組。"""
+    acts = "".join(f'<a href="{h}">{t}</a>' for h, t in links)
+    return (f'<div class="fcard"><p class="fh">{icons.icon(ic)}{title}</p>'
+            f'<p>{body}</p>'
+            + (f'<p class="sub">{note}</p>' if note else '')
+            + (f'<div class="facts">{acts}</div>' if acts else '') + '</div>')
 
-<h2>1. 購入診断（PRO）</h2>
-<p>建物内部の状態、設備の更新時期、リフォームした箇所、接道と再建築の可否、
-マンションなら大規模修繕の履歴や管理形態。無料診断では未確認としていた項目に
-答えると、その分だけ評価に反映され、情報充足度が上がります。</p>
-<p>答えられなかった項目は消えるのではなく、
-<b>「仲介業者に確認すること」の一覧</b>になって出てきます。</p>
-<p>あわせて、<b>「重要事項説明書の、どこを見るか」</b>が出ます。重要事項説明書は
-契約の直前に渡され、その場で読み上げられます。30ページ近いものを初めて見て、
-聞きながら判断するのは無理があります。診断で分かったこと（市街化調整区域か、
-ハザードの区域に入るか、旧耐震か、区分所有か）から、<b>この物件で特に効く欄</b>を
-根拠の条文つきで先に並べます。読む場所を絞っておくためのものです。</p>
-<p class="sub">良し悪しは書きません。どこに何が書かれるかまでです。</p>
-<p><a href="/pro/diagnose">戸建で始める</a>　/
- <a href="/pro/mansion">マンションで始める</a></p>
 
-<h2>2. 詳細な資金計画</h2>
-<p>仲介手数料・印紙税・登録免許税・不動産取得税・司法書士報酬・火災保険を
-積み上げ、金利が上がったときの返済額、繰上返済の効果、住宅ローン控除の
-見込みまで試算します。引渡日の精算金（決済当日に売主へ払う現金）も出します。
-結果はPDFで保存できます。</p>
-<p><b><a href="/sample/finance">どんな内容になるか、見本をそのまま見る</a></b>
- — 中古戸建3,180万円を例に、諸費用の内訳から根拠まで全部載せています。</p>
-<p><a href="/pro/finance">資金計画を試算する</a></p>
-<p class="sub">購入診断の結果画面から進むと、価格・面積・築年・借入の条件は
-そのまま引き継がれます。入力し直す必要はありません。</p>
-""" + ("""
-<h2>3. 保存と比較</h2>
-<p>診断の結果を保存しておくと、あとから見返せます。複数の物件を保存すれば、
-点数・カテゴリ別の評価・リスクを横並びで比べられます。物件ごとにメモを
-残すこともできます。</p>
-<p><a href="/mypage">保存した診断</a>　/　<a href="/compare">物件を比べる</a></p>
-""" if db.enabled() else "") + """
-<h2>推定価格の計算は、無料版と同じです</h2>
-<p>PROで入力していただく内容は、<b>物件の評価とリスクにだけ</b>反映します。
-推定価格レンジの計算には渡していません。PROは点数の確からしさを上げるもので、
-価格を動かすものではありません。同じ物件なら、無料でもPROでも推定価格は
-同じ数字になります。</p>
-""")
+# 2026-11-08。見出しと段落が続くだけだったので、機能ごとのカードにした。
+# 文面は前の段落から取っている。
+_PRO_HUB_BODY = (
+    '<p class="sub" style="font-size:14px">PROは、無料診断が「未確認」として点数に'
+    '入れていない項目を、ご自身の回答で埋めるためのものです。' + _PRO_HUB_TRIAL + '</p>'
+    '<div class="fcards">'
+    + _fcard("house", "購入診断（PRO）",
+             "建物内部の状態、設備の更新時期、リフォームした箇所、接道と再建築の可否、"
+             "マンションなら大規模修繕の履歴や管理形態。無料診断では未確認としていた"
+             "項目に答えると、その分だけ評価に反映され、情報充足度が上がります。",
+             [("/pro/diagnose", "戸建で始める"), ("/pro/mansion", "マンションで始める"),
+              ("/pro/land", "土地で始める")])
+    + _fcard("people", "仲介業者に聞くことの一覧",
+             "答えられなかった項目は消えるのではなく、<b>仲介業者に確認すること</b>の"
+             "一覧になって出てきます。",
+             [("/guide/nakai-gyousha-ni-kiku-koto", "どんな質問が並ぶか")])
+    + _fcard("doc", "重要事項説明書の、どこを見るか",
+             "重要事項説明書は契約の直前に渡され、その場で読み上げられます。診断で"
+             "分かったこと（市街化調整区域か、ハザードの区域に入るか、旧耐震か、"
+             "区分所有か）から、<b>この物件で特に効く欄</b>を根拠の条文つきで先に"
+             "並べます。",
+             note="良し悪しは書きません。どこに何が書かれるかまでです。")
+    + _fcard("wallet", "詳細な資金計画",
+             "仲介手数料・印紙税・登録免許税・不動産取得税・司法書士報酬・火災保険を"
+             "積み上げ、金利が上がったときの返済額、繰上返済の効果、住宅ローン控除の"
+             "見込みまで試算します。引渡日の精算金（決済当日に売主へ払う現金）も"
+             "出します。結果はPDFで保存できます。",
+             [("/sample/finance", "見本をそのまま見る"), ("/pro/finance", "資金計画を試算する")],
+             note="購入診断の結果画面から進むと、価格・面積・築年・借入の条件は"
+                  "そのまま引き継がれます。入力し直す必要はありません。")
+    + (_fcard("bookmark", "保存と比較",
+              "診断の結果を保存しておくと、あとから見返せます。複数の物件を保存すれば、"
+              "点数・カテゴリ別の評価・リスクを横並びで比べられます。物件ごとにメモを"
+              "残すこともできます。",
+              [("/mypage", "保存した診断"), ("/compare", "物件を比べる")])
+       if db.enabled() else "")
+    + '</div>'
+    + _fcard("yen", "推定価格の計算は、無料版と同じです",
+             "PROで入力していただく内容は、<b>物件の評価とリスクにだけ</b>反映します。"
+             "推定価格レンジの計算には渡していません。同じ物件なら、無料でもPROでも"
+             "推定価格は同じ数字になります。")
+)
 
 
 @app.route("/pro")
