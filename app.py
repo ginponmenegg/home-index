@@ -294,6 +294,44 @@ _INTRO = {
         need=[("pin", "所在地・価格・敷地面積の3つで診断できます"), ("yen", "金額は万円"),
               ("check", "足すほど点が確かに")]),
 }
+# PROの4画面。文面は各画面の前の説明文から取った。
+_INTRO.update({
+    "pro_buy": dict(
+        tag="PRO　戸建の詳細診断", title="戸建を、詳しく採点",
+        sub="無料診断で「未確認」として点数に入れていなかったことを、あなたの回答で埋めます。",
+        feats=[("help", "未確認を埋める", "建物の状態やリフォームを回答"),
+               ("shield", "評価とリスク", "回答は物件評価とリスクにだけ反映"),
+               ("doc", "契約の前に", "仲介業者に聞くこと・重説の見る欄")],
+        need=[("check", "分からない項目は「未確認」のままで可"),
+              ("yen", "価格の推定は無料診断と同じ計算")]),
+    "pro_mansion": dict(
+        tag="PRO　マンションの詳細診断", title="マンションを、詳しく採点",
+        sub="分かる範囲で答えるほど、診断の確かさが上がります。",
+        feats=[("people", "管理", "修繕・積立金・滞納などを回答"),
+               ("trend", "資産性とリスク", "回答は管理・資産性・リスクにだけ反映"),
+               ("doc", "契約の前に", "仲介業者に聞くこと・重説の見る欄")],
+        need=[("check", "分からない項目は「未確認」のままで可"),
+              ("yen", "価格の推定は無料診断と同じ計算")]),
+    "pro_land": dict(
+        tag="PRO　土地診断（注文住宅）", title="注文住宅の、お金の流れまで",
+        sub="無料診断に、注文住宅の資金の流れを足します。",
+        feats=[("wallet", "つなぎ融資", "土地の決済から完成までの利息"),
+               ("clock", "いつ・いくら", "手元から出ていく時系列"),
+               ("yen", "総額", "土地と建物の積み上げ")],
+        need=[("clock", "決済日と完成予定日から計算"),
+              ("check", "手付金など、融資の前に払う現金も並べる")]),
+    "pro_finance": dict(
+        tag="PRO　詳細な資金計画", title="買うときのお金を試算",
+        sub="公的な税率と料率にもとづいて試算します。物件の価格を評価するものではありません。",
+        feats=[("yen", "諸費用", "購入にかかる費用の内訳"),
+               ("trend", "金利が上がったら", "そのときの返済額"),
+               ("wallet", "繰上返済・控除", "繰上返済の効果と住宅ローン控除の見込み")],
+        need=[("yen", "金額はすべて万円"), ("doc", "結果はPDFで持ち出せる")]),
+})
+_PRO_KINDS = [("pro_buy", "/pro/diagnose", "house", "戸建"),
+              ("pro_mansion", "/pro/mansion", "building", "マンション"),
+              ("pro_land", "/pro/land", "land", "土地"),
+              ("pro_finance", "/pro/finance", "wallet", "資金計画")]
 _KINDS = [("buy", "/buy", "house", "戸建"), ("mansion", "/mansion", "building", "マンション"),
           ("land", "/land", "land", "土地")]
 
@@ -307,10 +345,13 @@ INTRO_CSS = (
     '.kinds a .icb{width:1.75em;height:1.75em;color:#14395C}'
     '.kinds a.on{background:#14395C;color:#fff}'
     '.kinds a.on .icb{color:#fff;background:rgba(255,255,255,.16)}'
+    '.kinds.k4 a{flex-direction:column;gap:3px;padding:7px 2px;font-size:11.5px}'
+    '.kinds.k4 a .icb{width:1.9em;height:1.9em;font-size:12px}'
     '.dhero .tag{display:inline-flex;align-items:center;padding:4px 11px;border-radius:999px;'
     'font-size:11.5px;font-weight:700;letter-spacing:.06em;color:#14395C;'
     'border:1px solid rgba(20,57,92,.22);background:rgba(20,57,92,.05)}'
-    '.dhero h1{font-size:23px;line-height:1.35;margin:12px 0 6px;letter-spacing:.01em}'
+    '.dhero h1{font-size:23px;line-height:1.35;margin:12px 0 6px;letter-spacing:.01em;'
+    'text-wrap:balance}'
     '.dhero .dsub{color:#5f6773;font-size:14.5px;line-height:1.75;margin:0 0 16px}'
     '.dfeat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}'
     '.dfeat div{background:#fff;border:1px solid rgba(15,23,42,.06);border-radius:14px;'
@@ -330,16 +371,18 @@ def diag_intro(kind: str, extra=None):
     """診断ページの冒頭。種類のタブ・見出し・3つの要点・必須項目の小札。"""
     c = _INTRO[kind]
     on = ' class="on" aria-current="page"'
+    kinds = _PRO_KINDS if kind.startswith("pro_") else _KINDS
     tabs = "".join(
         f'<a href="{href}"{on if k == kind else ""}>{icons.icon(ic)}{label}</a>'
-        for k, href, ic, label in _KINDS)
+        for k, href, ic, label in kinds)
     feats = "".join(f'<div>{icons.icon(ic)}<b>{t}</b><span>{d}</span></div>'
                     for ic, t, d in c["feats"])
     need = "".join(f'<li>{icons.icon(ic)}{t}</li>' for ic, t in c["need"])
     if extra:
         need += f'<li>{icons.icon("arrow")}{extra}</li>'
     return Markup(
-        f'<nav class="kinds" aria-label="診断の種類">{tabs}</nav>'
+        f'<nav class="kinds{" k4" if len(kinds) == 4 else ""}" aria-label="診断の種類">'
+        f'{tabs}</nav>'
         f'<header class="dhero"><span class="tag">{c["tag"]}</span>'
         f'<h1>{c["title"]}</h1><p class="dsub">{c["sub"]}</p>'
         f'<div class="dfeat">{feats}</div><ul class="dneed">{need}</ul></header>')
@@ -395,7 +438,8 @@ BRAND_CSS = (
     '.hi-lock{display:flex;align-items:center;gap:9px;text-decoration:none;color:#111}'
     '.hi-sym{width:28px;height:28px;flex:0 0 auto}'
     '.chip{font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#111;'
-    'background:#e5e5e5;border-radius:999px;padding:3px 9px;white-space:nowrap}'
+    'background:#e5e5e5;border-radius:999px;padding:3px 9px;white-space:nowrap;'
+    'max-width:42vw;overflow:hidden;text-overflow:ellipsis}'
     # --- 三本線メニュー ---
     '.hi-right{display:flex;align-items:center;gap:10px}'
     # 各ページの汎用 button 指定（min-height:50px 等）を打ち消してから組み立てる
@@ -7021,10 +7065,7 @@ LAND_PRO_CSS_PLACEHOLDER
 </style></head><body>
 BRAND_BAR
 <div class="wrap">
- <h1>PRO　土地診断（注文住宅）</h1>
- <p class="aim">無料診断に、<b>注文住宅の資金の流れ</b>を足します。
-  土地の決済から建物の完成までの<b>つなぎ融資の利息</b>と、
-  いつ・いくら手元から出ていくかの時系列を出します。</p>
+ {{ diag_intro("pro_land") }}
  <p class="lead">建売やマンションは、決済の日に住宅ローンが実行されて
   その日に終わります。<b>注文住宅は終わりません。</b>住宅ローンは建物が
   完成しないと実行されないので、土地代金と工事の前払い金を、その間ずっと
@@ -7271,7 +7312,7 @@ LAND_PRO_FORM = (LAND_PRO_FORM
                  .replace("HH_FIELDS_PLACEHOLDER", HH_FIELDS)
                  .replace("LAND_PRO_CSS_PLACEHOLDER", _FORM_CSS)
                  .replace("FONT_LINK_PLACEHOLDER", FONT_LINK)
-                 .replace("BRAND_BAR", brand_bar("PRO 土地診断"))
+                 .replace("BRAND_BAR", brand_bar("PRO"))
                  .replace("</div></body></html>",
                           FOOTER + "</div></body></html>"))
 
@@ -7738,9 +7779,7 @@ MANSION_CSS_PLACEHOLDER
 </style></head><body>
 BRAND_BAR
 <div class="wrap">
- <h1>購入診断(戸建)(PRO)</h1>
- <p class="aim">無料診断で「未確認」として点数に入れていなかったことを、あなたの回答で埋めます。
-  情報が増えるぶん、同じ物件でも点数は変わります。</p>
+ {{ diag_intro("pro_buy") }}
  TRIAL_BANNER_PLACEHOLDER
  <div class="banner">
   <b>推定価格レンジは無料診断と同じ計算です。</b>ここで入力していただく建物の状態や
@@ -7866,7 +7905,7 @@ PRO_DIAGNOSE_FORM = (PRO_DIAGNOSE_FORM
                      .replace("MANSION_CSS_PLACEHOLDER", _FORM_CSS)
                      .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
                      .replace("TRIAL_BANNER_PLACEHOLDER", TRIAL_BANNER + TRIAL_JINJA)
-                     .replace("BRAND_BAR", brand_bar("購入診断(戸建)(PRO)"))
+                     .replace("BRAND_BAR", brand_bar("PRO"))
                      .replace("</div></body></html>",
                               FOOTER + "</div></body></html>"))
 
@@ -8153,11 +8192,7 @@ MANSION_CSS_PLACEHOLDER
 </style></head><body>
 BRAND_BAR
 <div class="wrap">
- <h1>購入診断(マンション)(PRO)</h1>
- <p class="aim">分かる範囲で答えるほど、診断の確かさが上がります。
-  <b>分からない項目は「未確認」のままで構いません。</b>
-  答えられなかったことは、最後に「仲介業者に聞くこと」としてまとめてお渡しします。
-  あわせて「重要事項説明書の、どこを見るか」も出ます。</p>
+ {{ diag_intro("pro_mansion") }}
  TRIAL_BANNER_PLACEHOLDER
  <div class="banner">
   <b>推定価格レンジは無料診断と同じ計算です。</b>ここで入力していただく内容は、
@@ -8247,7 +8282,7 @@ MANSION_PRO_FORM = (MANSION_PRO_FORM
                     .replace("MANSION_CSS_PLACEHOLDER", _FORM_CSS)
                     .replace("FONT_LINK_PLACEHOLDER", FONT_LINK + ICON_LINKS)
                     .replace("TRIAL_BANNER_PLACEHOLDER", TRIAL_BANNER + TRIAL_JINJA)
-                    .replace("BRAND_BAR", brand_bar("購入診断(マンション)(PRO)"))
+                    .replace("BRAND_BAR", brand_bar("PRO"))
                     .replace("</div></body></html>",
                              FOOTER + "</div></body></html>"))
 
@@ -10566,10 +10601,8 @@ FONT_LINK_PLACEHOLDER
 </style></head><body>
 BRAND_BAR
 <div class="wrap">
- <h1>詳細な資金計画<span class="tag">PRO</span></h1>
+ {{ diag_intro("pro_finance") }}
  TRIAL_NOTE_PLACEHOLDER
- <p class="lead">購入にかかる諸費用、金利が上がったときの返済額、繰上返済の効果、住宅ローン控除の見込みを、
-  公的な税率と料率にもとづいて試算します。<b>物件の価格を評価するものではありません。</b></p>
  {% if banner %}<p style="background:#eef4fa;border:1px solid #cddcea;border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.8;margin:12px 0">{{banner|safe}}</p>{% endif %}
 
  <form method="post" action="/pro/finance">
