@@ -348,6 +348,39 @@ def diag_intro(kind: str, extra=None):
 app.jinja_env.globals["diag_intro"] = diag_intro
 
 
+# ---- スマホの下のタブバー（2026-11-08）----------------------------------
+# どこにいても、次に行ける場所が画面の下に見えているようにする。PCでは
+# 出さない（上のバーとメニューで足りる）。結果画面のように下に専用の
+# ボタン（.dock）がある画面では、そちらを優先して隠す。
+# どのタブにいるかは、URLの先頭で決める。テンプレートは起動時に焼くので、
+# 印は画面側のスクリプトで付ける。
+TABS = [("/", "home", "ホーム", "^/$"),
+        ("/buy", "search", "診断",
+         "^/(buy|mansion|land|diagnose|mansion_diagnose|land_diagnose|sample|copy-guide)"),
+        ("/guide", "book", "解説", "^/guide"),
+        ("/mypage", "bookmark", "保存", "^/(mypage|saved|compare|login)"),
+        ("/pro", "sparkle", "PRO", "^/(pro|plan)")]
+
+TABBAR_CSS = (
+    '.tabbar{display:none}'
+    '@media (max-width:760px){'
+    '.tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;'
+    'background:rgba(255,255,255,.96);-webkit-backdrop-filter:saturate(1.6) blur(12px);'
+    'backdrop-filter:saturate(1.6) blur(12px);border-top:1px solid #e6e9ee;'
+    'padding:6px 4px calc(6px + env(safe-area-inset-bottom))}'
+    '.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;'
+    'font-size:10.5px;font-weight:700;color:#6b7480;text-decoration:none;'
+    'letter-spacing:.02em;font-family:inherit}'
+    '.tabbar .icb{font-size:13px;width:2.3em;height:2.1em;border-radius:.7em;'
+    'color:#6b7480;background:transparent}'
+    '.tabbar a.on{color:#14395C}'
+    '.tabbar a.on .icb{color:#14395C;background:rgba(20,57,92,.1)}'
+    'body{padding-bottom:calc(72px + env(safe-area-inset-bottom))}'
+    'body:has(.dock) .tabbar{display:none}'
+    '}'
+    '@media print{.tabbar{display:none}}')
+
+
 BRAND_CSS = (
     # --- ワードマーク ---
     '.hi-wm{font-family:Jost,"Century Gothic",Futura,"Avenir Next",'
@@ -382,7 +415,7 @@ BRAND_CSS = (
     '.hi-menu a{display:flex;align-items:center;gap:11px;padding:11px 2px;'
     'font-size:14px;color:#111;text-decoration:none;border-bottom:1px solid #f0f0f0}'
     '.hi-menu a .icb{color:#14395C}'
-    + icons.CSS + INTRO_CSS +
+    + icons.CSS + INTRO_CSS + TABBAR_CSS +
     '.hi-menu a:last-child{border-bottom:0}'
     '.hi-menu a:hover{color:#5f6773}'
     # --- 結果画像用の小ロックアップ ---
@@ -472,6 +505,17 @@ def lp_menu_links():
                    f'{labels.get(href, label)}</a>')
     return "\n".join(out)
 
+def tab_bar() -> str:
+    links = "".join(
+        f'<a href="{href}" data-m="{m}">{icons.icon(ic)}<span>{label}</span></a>'
+        for href, ic, label, m in TABS)
+    return ('<nav class="tabbar" aria-label="主な画面">' + links + '</nav>'
+            '<script>(function(){var p=location.pathname;'
+            'Array.prototype.forEach.call(document.querySelectorAll(".tabbar a"),function(a){'
+            'if(new RegExp(a.getAttribute("data-m")).test(p)){a.classList.add("on");'
+            'a.setAttribute("aria-current","page");}});})();</script>')
+
+
 def brand_bar(chip="購入診断"):
     """ページ最上部の固定ヘッダーバー（全ページ共通）。
 
@@ -506,7 +550,7 @@ def brand_bar(chip="購入診断"):
             'if(!m.hidden&&!m.contains(e.target)&&!b.contains(e.target))set(false);});'
             'document.addEventListener("keydown",function(e){'
             'if(e.key==="Escape"&&!m.hidden)set(false);});'
-            '})();</script>')
+            '})();</script>' + tab_bar())
 
 
 def brand_lockup(uid="lock"):
@@ -708,6 +752,9 @@ CARD_CSS = """
   display:flex;align-items:center;gap:9px}
  h2::before{content:"";width:3px;height:16px;border-radius:2px;
   background:currentColor;opacity:.85;flex:0 0 auto}
+ /* アイコンのある見出しは、棒の代わりにアイコンの枠で始める（2026-11-08） */
+ h2:has(.icb)::before{display:none}
+ h2 .icb{font-size:14px}
  .muted{color:var(--sub);font-size:14px}
  /* URLのような切れ目の無い文字列が入っても、横スクロールを出さない */
  .foot{color:var(--sub);font-size:13px;margin-top:8px;overflow-wrap:anywhere}
@@ -1798,7 +1845,7 @@ BRAND_BAR
 
  {% if sample %}
  <div class="card no-print" style="border-color:#111;background:#fffbea">
-  <h2 style="margin-top:0">これは見本の物件です</h2>
+  <h2 style="margin-top:0">{{ icon("help") }}これは見本の物件です</h2>
   <p class="muted" style="margin:6px 0 10px">
    実在の住所（丁目まで）で公的データを引いていますが、<b>価格・面積・築年は
    説明のための数字</b>で、実際に売られている物件ではありません。
@@ -1857,11 +1904,11 @@ BRAND_BAR
 
  <div class="card" id="todo">
   {% if d.risks %}
- <h2 style="color:#9a3412">重大リスク</h2>
+ <h2 style="color:#9a3412">{{ icon("alert") }}重大リスク</h2>
   {% for r in d.risks %}<span class="rsk"><b>［{{r.sev}}］{{r.type}}</b>{% if r.status %}（{{r.status}}）{% endif %}：{{r.ev}}</span>{% endfor %}{% endif %}
-  {% if d.strengths %}<h2 style="color:#0ea5e9">強み</h2><ul class="strong">{% for x in d.strengths %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
-  {% if d.weaknesses %}<h2 style="margin-top:20px;color:#dc2626">弱み</h2><ul class="weak">{% for x in d.weaknesses %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
-  {% if d.confirm %}<h2 style="margin-top:20px">要確認（情報が足りない項目）</h2><ul>{% for x in d.confirm %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
+  {% if d.strengths %}<h2 style="color:#0ea5e9">{{ icon("check") }}強み</h2><ul class="strong">{% for x in d.strengths %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
+  {% if d.weaknesses %}<h2 style="margin-top:20px;color:#dc2626">{{ icon("alert") }}弱み</h2><ul class="weak">{% for x in d.weaknesses %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
+  {% if d.confirm %}<h2 style="margin-top:20px">{{ icon("help") }}要確認（情報が足りない項目）</h2><ul>{% for x in d.confirm %}<li>{{x}}</li>{% endfor %}</ul>{% endif %}
   <p class="foot">{{d.comment}}</p>
  </div>
  RECENT_CARD_PLACEHOLDER
@@ -1918,14 +1965,14 @@ BRAND_BAR
  </div>
  {% endif %}
  <div class="rows">
-  <h2 class="rowsttl">スコア内訳</h2>
+  <h2 class="rowsttl">{{ icon("trend") }}スコア内訳</h2>
   {% for cat in cats %}
   {% if cat.fold %}
   <details class="row">
    <summary class="rowgrid">{{ rowhead(cat) }}</summary>
    <div class="rbody">
     {% if cat.name == "価格" %}
-  <h2>価格評価</h2>
+  <h2>{{ icon("yen") }}価格評価</h2>
   {% if p.has %}
    <p style="margin:4px 0"><span class="verdict {{p.vclass}}">{{p.verdict}}</span>
      <span class="muted">（中央値比 {{p.dev}}%）</span></p>
@@ -1959,14 +2006,14 @@ BRAND_BAR
   {% endif %}
     {% endif %}
     {% if cat.name == "立地" and enr %}
-  <h2>立地・防災・人口</h2>
+  <h2>{{ icon("pin") }}立地・防災・人口</h2>
   <p class="muted" style="margin:2px 0 4px">用途地域：{{enr.use_district}}　／　人口：{{enr.population}}（動向 {{enr.trend}}）</p>
   {% if enr.districts %}<p class="muted" style="margin:2px 0 0">学区：{{enr.districts}}</p>{% endif %}
   {% if enr.facilities %}<p class="muted" style="margin:2px 0 8px">周辺施設：{{enr.facilities}}</p>{% endif %}
   {% for label,val,kind in enr.hazard_items %}<span class="hz hz-{{kind}}">{{label}}：{{val}}</span>{% endfor %}
     {% endif %}
     {% if cat.name == "資金" %}
-  <h2>住宅ローン（無料版：月々返済額まで）</h2>
+  <h2>{{ icon("wallet") }}住宅ローン（無料版：月々返済額まで）</h2>
   <p style="margin:4px 0">借入額 {{loan.principal}}（頭金 {{loan.down}}） 金利{{loan.rate}}% {{loan.years}}年</p>
   <p style="font-size:20px;font-weight:700;margin:6px 0">月々 約 {{loan.monthly}}
     {% if loan.extra %}<span class="muted" style="font-size:14px">＋ 管理費・修繕積立金 {{loan.extra}}</span>{% endif %}</p>
@@ -1986,7 +2033,7 @@ HH_RESULT_PLACEHOLDER
 
   {% if handover %}
   <div class="card" data-html2canvas-ignore id="pro" style="border-color:#111">
-   <h2 style="margin-top:0">無料でここまで／PROでここまで</h2>
+   <h2 style="margin-top:0">{{ icon("sparkle") }}無料でここまで／PROでここまで</h2>
    <div class="tablewrap">
     <table class="pc">
      <thead><tr><th></th><th>無料</th><th>PRO</th></tr></thead>
@@ -2028,7 +2075,7 @@ HH_RESULT_PLACEHOLDER
   </div>
 
   <div class="card" data-html2canvas-ignore style="border-color:#111">
-   <h2 style="margin-top:0">契約の前に、つぶしておくこと</h2>
+   <h2 style="margin-top:0">{{ icon("check") }}契約の前に、つぶしておくこと</h2>
    <p style="margin:6px 0 10px">この物件は、<b>{{handover_unknowns}}</b>が
     未確認のままです。PROでは、<b>この物件について</b>ここまで出します。</p>
    <ul class="seen" style="margin:0">
@@ -2064,7 +2111,7 @@ HH_RESULT_PLACEHOLDER
   {% if finance_carry %}
   <div class="card" data-html2canvas-ignore id="finance" style="border-color:#111">
    {% if pro %}
-   <h2 style="margin-top:0">契約前チェック（PDF）</h2>
+   <h2 style="margin-top:0">{{ icon("doc") }}契約前チェック（PDF）</h2>
    <p class="muted" style="margin:6px 0 10px">
     重要事項説明と契約の前に、手元に置いておく1冊です。この物件の点数と
     注意すること、<b>仲介業者に聞くこと（回答を書き込む欄つき）</b>、重要事項
@@ -2078,7 +2125,7 @@ HH_RESULT_PLACEHOLDER
    <p class="muted" style="margin:10px 0 0">頭金や金利、土地と建物の内訳を変えて
     から作るときは、下の資金計画から作ってください。</p>
    {% else %}
-   <h2 style="margin-top:0">契約前チェック（PRO）</h2>
+   <h2 style="margin-top:0">{{ icon("doc") }}契約前チェック（PRO）</h2>
    <p class="muted" style="margin:6px 0 10px">
     重要事項説明と契約の前に、手元に置いておく1冊（PDF）を、この物件について
     作ります。仲介業者に聞くこと（回答を書き込む欄つき）、重要事項説明書で
@@ -2121,7 +2168,7 @@ HH_RESULT_PLACEHOLDER
 
   {% if disc %}
   <div class="card" id="juyo">
-   <h2 style="margin-top:0">重要事項説明書の、どこを見るか（{{disc|length}}件）</h2>
+   <h2 style="margin-top:0">{{ icon("doc") }}重要事項説明書の、どこを見るか（{{disc|length}}件）</h2>
    <p class="only-print">{{s.address}}　{{s.ptype}}　{{price_man}}</p>
    <p class="muted no-print" style="margin:6px 0 10px">
     重要事項説明書は契約の直前に渡され、その場で読み上げられます。
@@ -2147,7 +2194,7 @@ HH_RESULT_PLACEHOLDER
 
   {% if questions %}
   <div class="card" id="ask">
-   <h2 style="margin-top:0">仲介業者に聞くこと（{{questions|length}}件）</h2>
+   <h2 style="margin-top:0">{{ icon("people") }}仲介業者に聞くこと（{{questions|length}}件）</h2>
    <p class="only-print">{{s.address}}　{{s.ptype}}　{{price_man}}</p>
    <p class="muted no-print" style="margin:6px 0 10px">
     {{questions_note}}
@@ -2811,7 +2858,7 @@ LP_MENU_PLACEHOLDER
         <div class="rowitem">
           <p class="tagline">PRICE</p>
           <p class="q">この価格、高いのか安いのか分からない</p>
-          <p class="a">周辺で実際にいくらで売買されたのか。近隣・同規模・同築年の成約事例から適正レンジを復元し、提示価格がその中のどこに位置するかを示します。</p>
+          <p class="a">周辺で実際にいくらで売買されたのか。近隣・同規模・同築年の成約事例から価格の幅を出し、提示価格がその中のどこに位置するかを示します。</p>
         </div>
         <div class="rowitem">
           <p class="tagline">RISK</p>
@@ -3053,7 +3100,7 @@ LP_MENU_PLACEHOLDER
         </div>
         <div class="card">
           <h3>推定であることを隠さない</h3>
-          <p>適正価格は推定であって絶対値ではありません。建物内部の劣化や液状化など、まだ取得していない要素は「未取得」と表示し、埋めた振りをしません。</p>
+          <p>価格の幅は推定であって絶対値ではありません。建物内部の劣化や液状化など、まだ取得していない要素は「未取得」と表示し、埋めた振りをしません。</p>
         </div>
       </div>
     </div>
@@ -3257,6 +3304,7 @@ LP_MENU_PLACEHOLDER
    開かれた回数と、取りに来られただけの回数を分けて見られる。 */
 (function(){ try { new Image().src = "/_h.gif?" + Date.now(); } catch (e) {} })();
 </script>
+TABBAR_PLACEHOLDER
 </body></html>
 """
 
@@ -3277,6 +3325,8 @@ _LP_GUIDE_LINKS = "".join(
     for title, _note, items in guides.by_topic())
 
 LP = (LP.replace("ICON_USER", icons.icon("user"))
+        .replace("TABBAR_PLACEHOLDER",
+                 "<style>" + TABBAR_CSS + "</style>" + tab_bar())
         # 戸建・マンション・土地のボタンに、種類のアイコンを付ける
         # icon() は Markup を返す。str と + でつなぐと str の側がエスケープされ、
         # href の引用符が &quot; になって壊れる。str() にしてからつなぐ。
@@ -5888,7 +5938,7 @@ BRAND_BAR
 
  {% if sample %}
  <div class="card no-print" style="border-color:#111;background:#fffbea">
-  <h2 style="margin-top:0">これは見本の土地です</h2>
+  <h2 style="margin-top:0">{{ icon("help") }}これは見本の土地です</h2>
   <p class="muted" style="margin:6px 0 10px">
    実在の住所（丁目まで）で公的データを引いていますが、<b>価格・面積・
    接道の条件は説明のための数字</b>で、実際に売られている土地では
@@ -5979,7 +6029,7 @@ BRAND_BAR
 
  {% if capped %}
  <div class="stop">
-  <h2>この土地は、家を建てられない可能性があります</h2>
+  <h2>{{ icon("alert") }}この土地は、家を建てられない可能性があります</h2>
   <ul>{% for r in capped.reasons %}<li>{{r}}</li>{% endfor %}</ul>
   <p style="margin:8px 0 0;font-size:14px">
    総合点は<b>{{capped.limit}}点を上限</b>としています。減点ではなく頭打ちに
@@ -5992,7 +6042,7 @@ BRAND_BAR
 
  {% if s.condition_attached %}
  <div class="card" style="border-color:#f59e0b;background:#fffbeb">
-  <h2 style="margin-top:0;color:#92400e">この土地は建築条件付きです</h2>
+  <h2 style="margin-top:0;color:#92400e">{{ icon("alert") }}この土地は建築条件付きです</h2>
   <p style="margin:6px 0;font-size:14px">売主の指定する会社と、一定期間内に
    建築請負契約を結ぶ条件が付いています。<b>設計事務所や他の工務店では
    建てられません。</b>気に入った会社がすでにあるなら、この土地は
@@ -6007,7 +6057,7 @@ BRAND_BAR
 
  {% if procedures %}
  <div class="card" style="border-color:#f59e0b;background:#fffbeb">
-  <h2 style="margin-top:0;color:#92400e">着工までに要る手続き</h2>
+  <h2 style="margin-top:0;color:#92400e">{{ icon("clock") }}着工までに要る手続き</h2>
   {% for p in procedures %}<p style="margin:8px 0;font-size:14px">{{p}}</p>{% endfor %}
   <div class="foot">どちらも、いつ着工できるかに直接効きます。
    引渡しの時期や、つなぎ融資の期間を決める前に確かめてください。</div>
@@ -6015,7 +6065,7 @@ BRAND_BAR
  {% endif %}
 
  <div class="card">
-  <h2>この土地に建てられる家</h2>
+  <h2>{{ icon("ruler") }}この土地に建てられる家</h2>
   {% if fig %}
   <svg class="fig" viewBox="0 0 {{fig.width}} {{fig.height}}" role="img"
     aria-label="{% if fig.pole %}竿の幅{{fig.frontage_m}}m・長さ{{fig.pole_length_m}}mの旗竿地として描いた敷地の模式図。{% else %}間口{{fig.frontage_m}}m・奥行き{{fig.depth_m}}mの長方形として描いた敷地の模式図。{% endif %}{% if fig.footprint %}建築面積の上限{{cap.footprint_m2}}平方メートルを重ねている。{% endif %}{% if fig.road_width_m %}前面道路の幅は{{fig.road_width_m}}m。{% endif %}{% if fig.setback %}道路が4m未満のため、およそ{{cap.setback_m2}}平方メートルが敷地として使えない。{% endif %}縮尺は合わせてあるが、土地の形は分かっていない。">
@@ -6105,7 +6155,7 @@ BRAND_BAR
 
  {% if mk.count %}
  <div class="card">
-  <h2>近隣の土地取引</h2>
+  <h2>{{ icon("yen") }}近隣の土地取引</h2>
   {% if mk.has %}
    <p class="big">坪単価 {{mk.tlow}} 〜 {{mk.thigh}}<span class="muted"
      style="font-size:15px;font-weight:400">（中央値 {{mk.tmid}}）</span></p>
@@ -6161,9 +6211,9 @@ BRAND_BAR
 
  {% if d.strengths or d.weaknesses %}
  <div class="card">
-  {% if d.strengths %}<h2 style="color:#0ea5e9">強み</h2><ul class="strong">
+  {% if d.strengths %}<h2 style="color:#0ea5e9">{{ icon("check") }}強み</h2><ul class="strong">
    {% for t in d.strengths %}<li>{{t}}</li>{% endfor %}</ul>{% endif %}
-  {% if d.weaknesses %}<h2 style="margin-top:20px;color:#dc2626">弱み</h2>
+  {% if d.weaknesses %}<h2 style="margin-top:20px;color:#dc2626">{{ icon("alert") }}弱み</h2>
    <ul class="weak">
    {% for t in d.weaknesses %}<li>{{t}}</li>{% endfor %}</ul>{% endif %}
  </div>
@@ -6177,15 +6227,15 @@ BRAND_BAR
    <span class="rwhy">{{cat.reason}}</span>
 {% endmacro %}
  <div class="rows">
-  <h2 class="rowsttl">スコア内訳</h2>
+  <h2 class="rowsttl">{{ icon("trend") }}スコア内訳</h2>
   {% for cat in cats %}
   {% if cat.fold %}
   <details class="row">
    <summary class="rowgrid">{{ rowhead(cat) }}</summary>
    <div class="rbody">
     {% if cat.name == "資金" %}
-  <h2>{% if fin %}住宅ローン本体{% else %}資金{% endif %}</h2>
-  <h2>{% if fin %}住宅ローン本体{% else %}資金{% endif %}</h2>
+  <h2>{{ icon("wallet") }}{% if fin %}住宅ローン本体{% else %}資金{% endif %}</h2>
+  <h2>{{ icon("wallet") }}{% if fin %}住宅ローン本体{% else %}資金{% endif %}</h2>
   <p class="big">総額 {{loan.total}}</p>
   <p class="muted">土地 {{s.price}} ＋ 建物予算 {{s.budget or "未入力"}}</p>
   <div class="kv">
@@ -6213,7 +6263,7 @@ HH_RESULT_PLACEHOLDER
 
  {% if d.risks %}
  <div class="card">
-  <h2>注意すること</h2>
+  <h2>{{ icon("alert") }}注意すること</h2>
   {% for r in d.risks %}
   <span class="rsk"><b>{{r.type}}</b>（{{r.sevja}}）　{{r.ev}}</span>
   {% endfor %}
@@ -6222,7 +6272,7 @@ HH_RESULT_PLACEHOLDER
 
  {% if fin %}
  <div class="card">
-  <h2>つなぎ融資</h2>
+  <h2>{{ icon("wallet") }}つなぎ融資</h2>
   {% if fin.has_interest %}
    <p class="big">利息 {{fin.interest}}</p>
    <p class="muted">土地の決済から建物の完成まで{{fin.days}}日。
@@ -6251,7 +6301,7 @@ HH_RESULT_PLACEHOLDER
 
  {% if fin.events %}
  <div class="card">
-  <h2>いつ、いくら要るか</h2>
+  <h2>{{ icon("clock") }}いつ、いくら要るか</h2>
   <div class="tablewrap">
    <table><tr><th>いつ</th><th>何のお金</th><th style="text-align:right">金額</th>
     <th>どこから</th></tr>
@@ -6266,7 +6316,7 @@ HH_RESULT_PLACEHOLDER
  {% endif %}
 
  <div class="card">
-  <h2>総額の積み上げ</h2>
+  <h2>{{ icon("yen") }}総額の積み上げ</h2>
   <p class="big">{{fin.total}}<span class="muted"
     style="font-size:15px;font-weight:400">（金額の出ている項目の合計）</span></p>
   <div class="tablewrap">
@@ -6293,7 +6343,7 @@ HH_RESULT_PLACEHOLDER
 
  {% if disc %}
  <div class="card">
-  <h2>重要事項説明書の、どこを見るか（{{disc|length}}件）</h2>
+  <h2>{{ icon("doc") }}重要事項説明書の、どこを見るか（{{disc|length}}件）</h2>
   <p class="muted" style="margin:6px 0 10px">
    重要事項説明書は契約の直前に渡され、その場で読み上げられます。
    30ページ近いものを初めて見て、聞きながら判断するのは無理があります。
@@ -6316,7 +6366,7 @@ HH_RESULT_PLACEHOLDER
 
  {% if land_check %}
  <div class="card" data-html2canvas-ignore id="check" style="border-color:#111">
-  <h2>契約前チェック（PDF）</h2>
+  <h2>{{ icon("doc") }}契約前チェック（PDF）</h2>
   <p class="muted" style="margin:6px 0 10px">重要事項説明と契約の前に、手元に
    置いておく1冊です。この土地の点数と注意すること、<b>確認すること
    （回答を書き込む欄つき）</b>、重要事項説明書で読む欄、着工までの手続き、
@@ -6331,7 +6381,7 @@ HH_RESULT_PLACEHOLDER
 
  {% if d.confirm %}
  <div class="card" id="ask">
-  <h2 style="margin-top:0">確認すること（{{d.confirm|length}}件）</h2>
+  <h2 style="margin-top:0">{{ icon("help") }}確認すること（{{d.confirm|length}}件）</h2>
   <p class="only-print">{{s.address}}　土地　{{s.price}}</p>
   <p class="muted no-print" style="margin:6px 0 10px">
    役所・仲介業者・売主に確かめることの一覧です。
@@ -6352,7 +6402,7 @@ HH_RESULT_PLACEHOLDER
 
  {% if handover %}
  <div class="card" data-html2canvas-ignore style="border-color:#111">
-  <h2 style="margin-top:0">無料でここまで／PROでここまで</h2>
+  <h2 style="margin-top:0">{{ icon("sparkle") }}無料でここまで／PROでここまで</h2>
   <div class="tablewrap">
    <table class="pc">
     <thead><tr><th></th><th>無料</th><th>PRO</th></tr></thead>
@@ -6397,7 +6447,7 @@ HH_RESULT_PLACEHOLDER
  </div>
 
  <div class="card" data-html2canvas-ignore style="border-color:#111">
-  <h2 style="margin-top:0">つなぎ融資の利息は、この診断に入っていません</h2>
+  <h2 style="margin-top:0">{{ icon("wallet") }}つなぎ融資の利息は、この診断に入っていません</h2>
   <p style="font-size:14px;margin:6px 0">注文住宅は、土地の決済から建物の
    完成まで半年〜1年あります。その間は住宅ローンが実行されないので、
    土地代金と工事の前払い金を<b>つなぎ融資で立て替える</b>ことになります。
@@ -9149,7 +9199,7 @@ SAVED_DETAIL = """
 
 {% if p.enr %}
 <div class="card" style="margin-top:14px">
- <h2 style="margin-top:0">立地・防災・人口</h2>
+ <h2 style="margin-top:0">{{ icon("pin") }}立地・防災・人口</h2>
  <table class="cmp" style="width:100%"><tbody>
   <tr><th class="rowlbl">用途地域</th><td>{{ p.enr.use_district }}</td></tr>
   <tr><th class="rowlbl">人口</th><td>{{ p.enr.population }}（動向 {{ p.enr.trend }}）</td></tr>
@@ -9166,12 +9216,12 @@ SAVED_DETAIL = """
 
 {% if p.strengths or p.weaknesses or p.confirm %}
 <div class="card" style="margin-top:14px">
- {% if p.strengths %}<h2 style="margin-top:0;color:#0ea5e9">強み</h2>
+ {% if p.strengths %}<h2 style="margin-top:0;color:#0ea5e9">{{ icon("check") }}強み</h2>
   <ul class="strong">{% for x in p.strengths %}<li>{{ x }}</li>
   {% endfor %}</ul>{% endif %}
- {% if p.weaknesses %}<h2 style="margin-top:20px;color:#dc2626">弱み</h2>
+ {% if p.weaknesses %}<h2 style="margin-top:20px;color:#dc2626">{{ icon("alert") }}弱み</h2>
   <ul class="weak">{% for x in p.weaknesses %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
- {% if p.confirm %}<h2>要確認（情報不足）</h2>
+ {% if p.confirm %}<h2>{{ icon("help") }}要確認（情報不足）</h2>
   <ul>{% for x in p.confirm %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
 </div>
 {% endif %}
@@ -10630,7 +10680,7 @@ HH_FIELDS_PLACEHOLDER
   </div>
 
   <div class="card">
-   <h2>住宅ローン控除</h2>
+   <h2>{{ icon("wallet") }}住宅ローン控除</h2>
    <p class="h2sub">住宅の省エネ性能によって借入限度額と控除期間が変わります</p>
    <label>住宅の区分</label>
    <select name="deduction_cat">
@@ -10811,7 +10861,7 @@ BRAND_BAR
  {% endif %}
 
  <div class="card">
-  <h2>資金の全体像</h2>
+  <h2>{{ icon("wallet") }}資金の全体像</h2>
   <div class="kv"><span>物件価格</span><b>{{s.price}}</b></div>
   <div class="kv"><span>諸費用（判明分）</span><b>{{s.costs}}</b></div>
   <div class="kv"><span>必要総額</span><b>{{s.total}}</b></div>
@@ -10861,7 +10911,7 @@ BRAND_BAR
  {% endif %}
 
  <div class="card">
-  <h2>住宅ローン控除</h2>
+  <h2>{{ icon("wallet") }}住宅ローン控除</h2>
   {% if deduction.ok %}
    <p class="sub">{{deduction.basis}}</p>
    <p class="big">最大 {{deduction.total}}</p>

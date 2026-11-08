@@ -126,8 +126,10 @@ def test_the_saved_detail_does_not_print_english_keys(env):
 
 def test_the_saved_detail_keeps_the_same_colours(env):
     page = _saved_page(env)
-    assert 'color:#0ea5e9">強み' in page, "強みは青"
-    assert 'color:#dc2626">弱み' in page, "弱みは赤"
+    import re
+    icon = r'(<span class="icb">.*?</span>)?'          # 見出しの前のアイコン
+    assert re.search('color:#0ea5e9">' + icon + '強み', page), "強みは青"
+    assert re.search('color:#dc2626">' + icon + '弱み', page), "弱みは赤"
     # 見出しだけでなく、箇条書きの色も結果画面と合わせる
     assert '<ul class="strong">' in page and '<ul class="weak">' in page
 

@@ -48,9 +48,15 @@ def client():
     return webapp.app.test_client()
 
 
+def _noicon(h):
+    """見出しの前のアイコン（2026-11-08 から）を外して、見出しの文字だけで比べる。"""
+    import re
+    return re.sub(r'<span class="icb">.*?</span>', "", h)
+
+
 def _post(client, **kw):
-    return client.post("/pro/land",
-                       data=dict(PRO, **kw)).get_data(as_text=True)
+    return _noicon(client.post("/pro/land",
+                               data=dict(PRO, **kw)).get_data(as_text=True))
 
 
 # ---- 画面が出る ----
@@ -142,7 +148,7 @@ def test_leaving_the_site_questions_blank_does_not_dock_the_score(client):
         m = re.search(r">リスク</span>.*?<span class=\"rpts\">([\d.]+) / 25", h, re.S)
         return float(m.group(1))
     blank = risk(_post(client))
-    free = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
+    free = _noicon(client.post("/land_diagnose", data=PRO).get_data(as_text=True))
     assert risk(free) == blank
 
 
@@ -207,7 +213,7 @@ def test_the_handover_keeps_what_was_typed(client):
 
 
 def test_the_free_result_has_no_money_sections(client):
-    h = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
+    h = _noicon(client.post("/land_diagnose", data=PRO).get_data(as_text=True))
     assert "<h2>つなぎ融資</h2>" not in h
     assert "<h2>総額の積み上げ</h2>" not in h
 
@@ -227,7 +233,7 @@ def test_the_score_is_the_same_when_the_site_is_unanswered(client):
     def score(h):
         return int(re.search(r'<b style="color:[^"]+">(\d+)</b><small>点',
                              h).group(1))
-    free = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
+    free = _noicon(client.post("/land_diagnose", data=PRO).get_data(as_text=True))
     pro = _post(client)
     assert score(free) == score(pro)
 
@@ -280,7 +286,7 @@ def test_restrictions_lower_the_buildable_score(client):
 
 def test_leaving_the_planning_questions_blank_does_not_dock_the_score(client):
     assert _build(_post(client)) == _build(
-        client.post("/land_diagnose", data=PRO).get_data(as_text=True))
+        _noicon(client.post("/land_diagnose", data=PRO).get_data(as_text=True)))
 
 
 def test_the_floors_needed_to_use_the_far_are_spelled_out(client):
@@ -369,14 +375,14 @@ def test_a_surveyed_setback_replaces_the_estimate(client):
 
 def test_leaving_the_legal_questions_blank_does_not_dock_the_score(client):
     blank = _post(client)
-    free = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
+    free = _noicon(client.post("/land_diagnose", data=PRO).get_data(as_text=True))
     assert _asset(blank) == _asset(free)
 
 
 def test_the_matched_distribution_is_pro_only(client):
     """条件を揃えた分布はPROだけ。無料には出さない。"""
     pro = _post(client)
-    free = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
+    free = _noicon(client.post("/land_diagnose", data=PRO).get_data(as_text=True))
     assert "条件を揃えた分布" in pro
     assert "条件を揃えた分布" not in free
 
@@ -424,7 +430,7 @@ def test_the_pro_edit_button_goes_back_to_the_pro_form(client):
 
 
 def test_the_free_edit_button_still_goes_to_the_free_form(client):
-    h = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
+    h = _noicon(client.post("/land_diagnose", data=PRO).get_data(as_text=True))
     assert 'action="/land/edit"' in h
 
 
@@ -467,7 +473,7 @@ def test_the_land_sheet_covers_what_matters_on_a_plot(client):
 
 # ---- 比較表（無料だけ）----
 def test_the_free_result_shows_what_pro_adds(client):
-    free = client.post("/land_diagnose", data=PRO).get_data(as_text=True)
+    free = _noicon(client.post("/land_diagnose", data=PRO).get_data(as_text=True))
     assert "無料でここまで／PROでここまで" in free
     assert "つなぎ融資の利息と支払いの時系列" in free
     assert "条件を揃えた成約の分布" in free

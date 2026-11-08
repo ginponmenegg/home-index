@@ -66,7 +66,8 @@ def test_the_pitch_stays_out_of_the_shared_image():
     h = _client().post("/diagnose", data=FREE_INPUT).data.decode("utf-8")
     i = h.find("無料でここまで／PROでここまで")
     assert i > 0
-    assert "data-html2canvas-ignore" in h[i - 200:i]
+    # 見出しの前にアイコン（2026-11-08）が入った分、少し広く見る
+    assert "data-html2canvas-ignore" in h[i - 700:i]
 
 
 # ---- 資金計画の見本 -------------------------------------------------------
