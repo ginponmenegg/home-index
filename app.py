@@ -23,6 +23,7 @@ from flask import (Flask, request, render_template_string,  # noqa: E402
                    session, redirect, g)
 from src import db, accounts, saved, mailer, billing  # noqa: E402
 from src import metrics  # noqa: E402
+from src import icons  # noqa: E402
 from src import observations  # noqa: E402
 
 _w = mailer.warn_if_shared_sender()
@@ -132,6 +133,9 @@ if db.enabled():
 # 構造の選択肢は複数のフォームで使う。render_template_string の呼び出しは
 # 9か所あるので、その都度渡さずテンプレート全体から見えるようにしておく。
 app.jinja_env.globals["structures"] = structure_mod.CHOICES
+# 線画アイコン（src/icons.py）。採点の区分名や行き先から引く。
+app.jinja_env.globals["icon"] = icons.icon
+app.jinja_env.globals["cat_icon"] = icons.for_category
 
 
 # 正とするホスト名（例：home-index.jp）。未設定なら転送しない。
@@ -289,8 +293,10 @@ BRAND_CSS = (
     'display:flex;flex-direction:column;border-top:1px solid #e5e5e5}'
     # hidden属性を効かせる。指定しないと上の display:flex に負けて開いたままになる
     '.hi-menu[hidden]{display:none}'
-    '.hi-menu a{display:block;padding:11px 2px;font-size:14px;color:#111;'
-    'text-decoration:none;border-bottom:1px solid #f0f0f0}'
+    '.hi-menu a{display:flex;align-items:center;gap:11px;padding:11px 2px;'
+    'font-size:14px;color:#111;text-decoration:none;border-bottom:1px solid #f0f0f0}'
+    '.hi-menu a .ic{color:#5f6773}'
+    + icons.CSS +
     '.hi-menu a:last-child{border-bottom:0}'
     '.hi-menu a:hover{color:#5f6773}'
     # --- 結果画像用の小ロックアップ ---
@@ -333,11 +339,12 @@ if db.enabled():
 # 印は非会員のページにもHTMLコメントとして残るが、見えないし害もない。
 # 16か所のテンプレートを毎リクエスト組み立て直すより、こちらが安い。
 _PRO_MENU_MARK = "<!--HI_PRO_MENU-->"
-_PRO_MENU_HTML = (
-    '<a href="/pro/diagnose">PRO　購入診断（戸建）</a>'
-    '<a href="/pro/mansion">PRO　購入診断（マンション）</a>'
-    '<a href="/pro/land">PRO　土地診断（注文住宅）</a>'
-    '<a href="/pro/finance">PRO　詳細な資金計画</a>')
+_PRO_MENU_HTML = "".join(
+    f'<a href="{h}">{icons.for_path(h)}{t}</a>' for h, t in (
+        ("/pro/diagnose", "PRO　購入診断（戸建）"),
+        ("/pro/mansion", "PRO　購入診断（マンション）"),
+        ("/pro/land", "PRO　土地診断（注文住宅）"),
+        ("/pro/finance", "PRO　詳細な資金計画")))
 
 
 def _menu_links() -> str:
@@ -349,7 +356,7 @@ def _menu_links() -> str:
     last_diagnosis = DIAGNOSIS_ITEMS[-1][0] if DIAGNOSIS_ITEMS else None
     out = []
     for href, label in MENU_ITEMS:
-        out.append(f'<a href="{href}">{label}</a>')
+        out.append(f'<a href="{href}">{icons.for_path(href)}{label}</a>')
         if href == last_diagnosis:
             out.append(_PRO_MENU_MARK)
     if _PRO_MENU_MARK not in out:   # 診断を消しても印は必ず残す
@@ -375,7 +382,8 @@ def lp_menu_links():
         if href == "/":
             continue          # LP自身への導線は要らない
         cls = ' class="is-cta"' if href in labels else ""
-        out.append(f'    <a{cls} href="{href}">{labels.get(href, label)}</a>')
+        out.append(f'    <a{cls} href="{href}">{icons.for_path(href)}'
+                   f'{labels.get(href, label)}</a>')
     return "\n".join(out)
 
 def brand_bar(chip="購入診断"):
@@ -1641,9 +1649,10 @@ CARD_CSS_PLACEHOLDER
  .saying{margin:16px 0 0;font-size:16px;line-height:1.85}
  .saying p{margin:2px 0}
  .saying b{font-weight:700}
- .saying .good b{color:#0284c7}
- .saying .bad b{color:#dc2626}
- .saying .todo b{color:#9a3412}
+ .saying .good b,.saying .good .ic{color:#0284c7}
+ .saying .bad b,.saying .bad .ic{color:#dc2626}
+ .saying .todo b,.saying .todo .ic{color:#9a3412}
+ .saying .ic{margin-right:6px}
  .suffwrap{margin-top:14px}
  .suffwrap .lab{display:flex;justify-content:space-between;font-size:12px;
   color:var(--sub);margin-bottom:6px}
@@ -1668,7 +1677,9 @@ CARD_CSS_PLACEHOLDER
   -webkit-tap-highlight-color:transparent}
  details.row>summary::-webkit-details-marker{display:none}
  details.row>summary:active{background:#f7f9fb}
- .rname{font-weight:700;font-size:15px;min-width:3.6em}
+ .rname{font-weight:700;font-size:15px;min-width:3.6em;display:flex;
+  align-items:center;gap:6px;white-space:nowrap}
+ .rname .ic{color:#14395C}
  .rbar{height:7px;border-radius:99px;background:#eef1f4;overflow:hidden}
  .rbar span{display:block;height:100%;border-radius:99px}
  .rpts{font-size:13px;color:var(--sub);white-space:nowrap}
@@ -1744,9 +1755,9 @@ BRAND_BAR
   </div>
   {% if say.good or say.bad or say.todo %}
   <div class="saying">
-   {% if say.good %}<p class="good"><b>よかったのは</b>　{{say.good|join("・")}}</p>{% endif %}
-   {% if say.bad %}<p class="bad"><b>気をつけるのは</b>　{{say.bad|join("・")}}</p>{% endif %}
-   {% if say.todo %}<p class="todo"><b>まだ確かめていないこと</b>　{{say.todo}}件</p>{% endif %}
+   {% if say.good %}<p class="good">{{ icon("check") }}<b>よかったのは</b>　{{say.good|join("・")}}</p>{% endif %}
+   {% if say.bad %}<p class="bad">{{ icon("alert") }}<b>気をつけるのは</b>　{{say.bad|join("・")}}</p>{% endif %}
+   {% if say.todo %}<p class="todo">{{ icon("help") }}<b>まだ確かめていないこと</b>　{{say.todo}}件</p>{% endif %}
   </div>
   {% endif %}
   <div class="suffwrap">
@@ -1807,7 +1818,7 @@ BRAND_BAR
 
 
 {% macro rowhead(cat) %}
-   <span class="rname">{{cat.name}}</span>
+   <span class="rname">{{ cat_icon(cat.name) }}{{cat.name}}</span>
    <span class="rbar"><span style="width:{{cat.pct}}%;background:{{cat.color}}"></span></span>
    <span class="rpts">{{cat.points}} / {{cat.weight}}</span>
    {% if cat.fold %}<span class="more"><span class="lbl">詳しく</span><i class="chev"></i></span>
@@ -2099,8 +2110,8 @@ HH_RESULT_PLACEHOLDER
 </div>
 <div class="dock no-print" data-html2canvas-ignore>
  {% if dock.share %}
- <button onclick="saveReport()" type="button">📷 画像</button>
- <button onclick="shareReport()" type="button">🔗 共有</button>
+ <button onclick="saveReport()" type="button">{{ icon("image") }} 画像</button>
+ <button onclick="shareReport()" type="button">{{ icon("share") }} 共有</button>
  {% endif %}
  {% if dock.cta %}<a class="pri" href="{{dock.cta}}">{{dock.cta_text}}</a>{% endif %}
 </div>
@@ -2302,7 +2313,15 @@ a{color:inherit}
 .burger.is-open span:nth-child(3){transform:translateY(-6px) rotate(-45deg)}
 .menu{max-width:780px; margin:0 auto; padding:2px 20px 10px; display:flex; flex-direction:column; border-top:1px solid var(--line)}
 .menu[hidden]{display:none}
-.menu a{padding:11px 2px; font-size:14px; text-decoration:none; border-bottom:1px solid var(--line)}
+.menu a{display:flex; align-items:center; gap:11px; padding:11px 2px; font-size:14px; text-decoration:none; border-bottom:1px solid var(--line)}
+.menu a .ic{color:var(--sub)}
+.menu a.is-cta .ic{color:var(--accent)}
+.ic{width:1.15em; height:1.15em; flex:0 0 auto; vertical-align:-.2em; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
+/* 安心できる点は、文字の列ではなく小札で並べる（2026-11-08） */
+.pills{display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 0; padding:0; list-style:none}
+.pills li{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; line-height:1;
+  color:var(--paper); border:1px solid rgba(240,238,233,.28); border-radius:999px; padding:7px 12px}
+.pills li .ic{color:var(--pin)}
 .menu a:last-child{border-bottom:0}
 .menu a.is-cta{color:var(--accent); font-weight:700}
 
@@ -2638,7 +2657,11 @@ LP_MENU_PLACEHOLDER
     </div>
     <!-- 営業をしない旨の一語は、わざわざ言うことでかえって構えさせるので外した
          （2026-10-05）。中立性は、結果サンプル直後の帯が担っている。 -->
-    <p class="micro">会員登録なし ／ 料金なし ／ 入力は約1分</p>
+    <ul class="pills">
+     <li>ICON_USER会員登録なし</li>
+     <li>ICON_TAG料金なし</li>
+     <li>ICON_CLOCK入力は約1分</li>
+    </ul>
     <!-- 物件がまだ無い人の入口。小さな文字では見落とされるので、
          ボタンより一段弱い枠つきの導線にしている。 -->
     <a class="sample-link" href="/sample">物件がまだ無い方は、見本の結果を見る
@@ -3152,7 +3175,10 @@ _LP_GUIDE_LINKS = "".join(
     + '</ul>'
     for title, _note, items in guides.by_topic())
 
-LP = (LP.replace("GUIDE_LINKS_PLACEHOLDER", _LP_GUIDE_LINKS)
+LP = (LP.replace("ICON_USER", icons.icon("user"))
+        .replace("ICON_TAG", icons.icon("tag"))
+        .replace("ICON_CLOCK", icons.icon("clock"))
+        .replace("GUIDE_LINKS_PLACEHOLDER", _LP_GUIDE_LINKS)
       .replace("LP_FONT_LINK_PLACEHOLDER", LP_FONT_LINK)
       .replace("ICON_LINKS_PLACEHOLDER", ICON_LINKS)
       .replace("HI_SYMBOL_PLACEHOLDER", symbol_small())
@@ -5807,9 +5833,9 @@ BRAND_BAR
   </div>
   {% if say.good or say.bad or say.todo %}
   <div class="saying">
-   {% if say.good %}<p class="good"><b>よかったのは</b>　{{say.good|join("・")}}</p>{% endif %}
-   {% if say.bad %}<p class="bad"><b>気をつけるのは</b>　{{say.bad|join("・")}}</p>{% endif %}
-   {% if say.todo %}<p class="todo"><b>まだ確かめていないこと</b>　{{say.todo}}件</p>{% endif %}
+   {% if say.good %}<p class="good">{{ icon("check") }}<b>よかったのは</b>　{{say.good|join("・")}}</p>{% endif %}
+   {% if say.bad %}<p class="bad">{{ icon("alert") }}<b>気をつけるのは</b>　{{say.bad|join("・")}}</p>{% endif %}
+   {% if say.todo %}<p class="todo">{{ icon("help") }}<b>まだ確かめていないこと</b>　{{say.todo}}件</p>{% endif %}
   </div>
   {% endif %}
   <div class="suffwrap">
@@ -6047,7 +6073,7 @@ BRAND_BAR
  </div>
  {% endif %}
 {% macro rowhead(cat) %}
-   <span class="rname">{{cat.name}}</span>
+   <span class="rname">{{ cat_icon(cat.name) }}{{cat.name}}</span>
    <span class="rbar"><span style="width:{{cat.pct}}%;background:{{cat.color}}"></span></span>
    <span class="rpts">{{cat.points}} / {{cat.weight}}</span>
    {% if cat.fold %}<span class="more"><span class="lbl">詳しく</span><i class="chev"></i></span>
@@ -6325,8 +6351,8 @@ HH_RESULT_PLACEHOLDER
 </div>
 <div class="dock no-print" data-html2canvas-ignore>
  {% if dock.share %}
- <button onclick="saveReport()" type="button">📷 画像</button>
- <button onclick="shareReport()" type="button">🔗 共有</button>
+ <button onclick="saveReport()" type="button">{{ icon("image") }} 画像</button>
+ <button onclick="shareReport()" type="button">{{ icon("share") }} 共有</button>
  {% endif %}
  {% if dock.cta %}<a class="pri" href="{{dock.cta}}">{{dock.cta_text}}</a>{% endif %}
 </div>

@@ -254,7 +254,8 @@ def test_the_result_can_be_saved_as_an_image(client):
     assert "saveReport" in h
     assert "html2canvas.min.js" in h
     assert '<div class="dock no-print"' in h
-    assert "🔗 共有" in h
+    assert "共有</button>" in h
+    assert "🔗" not in h, "絵文字ではなく線画のアイコンにした（2026-11-08）"
 
 
 def test_the_image_opens_the_folded_rows_before_it_is_taken():
