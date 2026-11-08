@@ -67,18 +67,32 @@ MENU = {
     "/pro/finance": "wallet",
 }
 
+# アイコンは角の丸い四角い枠（.icb）に入れる（2026-11-08）。枠の色は、
+# アイコンと同じ色（currentColor）をごく薄くしたもの。color-mix が使えない
+# ブラウザでは、紺を薄くした色になる。
 CSS = (".ic{width:1.15em;height:1.15em;flex:0 0 auto;vertical-align:-.2em;"
        "fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;"
-       "stroke-linejoin:round}")
+       "stroke-linejoin:round}"
+       ".icb{display:inline-flex;align-items:center;justify-content:center;"
+       "width:1.9em;height:1.9em;border-radius:.55em;flex:0 0 auto;"
+       "vertical-align:middle;background:rgba(20,57,92,.08);"
+       "background:color-mix(in srgb,currentColor 12%,transparent)}"
+       ".icb .ic{width:1.1em;height:1.1em;vertical-align:0}"
+       # 下の固定バーのボタンは文字が小さく、枠の分だけ高くならないよう小さめに
+       ".dock .icb{width:1.6em;height:1.6em;margin-right:2px}")
 
 
-def icon(name: str, cls: str = "ic") -> Markup:
-    """アイコン1つ。知らない名前なら何も出さない（文字だけで読めるようにしておく）。"""
+def icon(name: str, box: bool = True) -> Markup:
+    """アイコン1つ。知らない名前なら何も出さない（文字だけで読めるようにしておく）。
+
+    box=False で枠なしの線だけを返す。
+    """
     d = _PATHS.get(name)
     if not d:
         return Markup("")
-    return Markup(f'<svg class="{cls}" viewBox="0 0 24 24" aria-hidden="true">'
-                  f'<path d="{d}"/></svg>')
+    svg = (f'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">'
+           f'<path d="{d}"/></svg>')
+    return Markup(f'<span class="icb">{svg}</span>' if box else svg)
 
 
 def for_category(name: str) -> Markup:

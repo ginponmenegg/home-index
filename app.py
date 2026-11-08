@@ -295,7 +295,7 @@ BRAND_CSS = (
     '.hi-menu[hidden]{display:none}'
     '.hi-menu a{display:flex;align-items:center;gap:11px;padding:11px 2px;'
     'font-size:14px;color:#111;text-decoration:none;border-bottom:1px solid #f0f0f0}'
-    '.hi-menu a .ic{color:#5f6773}'
+    '.hi-menu a .icb{color:#14395C}'
     + icons.CSS +
     '.hi-menu a:last-child{border-bottom:0}'
     '.hi-menu a:hover{color:#5f6773}'
@@ -1649,10 +1649,10 @@ CARD_CSS_PLACEHOLDER
  .saying{margin:16px 0 0;font-size:16px;line-height:1.85}
  .saying p{margin:2px 0}
  .saying b{font-weight:700}
- .saying .good b,.saying .good .ic{color:#0284c7}
- .saying .bad b,.saying .bad .ic{color:#dc2626}
- .saying .todo b,.saying .todo .ic{color:#9a3412}
- .saying .ic{margin-right:6px}
+ .saying .good b,.saying .good .icb{color:#0284c7}
+ .saying .bad b,.saying .bad .icb{color:#dc2626}
+ .saying .todo b,.saying .todo .icb{color:#9a3412}
+ .saying .icb{margin-right:8px;vertical-align:-.45em}
  .suffwrap{margin-top:14px}
  .suffwrap .lab{display:flex;justify-content:space-between;font-size:12px;
   color:var(--sub);margin-bottom:6px}
@@ -1679,7 +1679,7 @@ CARD_CSS_PLACEHOLDER
  details.row>summary:active{background:#f7f9fb}
  .rname{font-weight:700;font-size:15px;min-width:3.6em;display:flex;
   align-items:center;gap:6px;white-space:nowrap}
- .rname .ic{color:#14395C}
+ .rname .icb{color:#14395C}
  .rbar{height:7px;border-radius:99px;background:#eef1f4;overflow:hidden}
  .rbar span{display:block;height:100%;border-radius:99px}
  .rpts{font-size:13px;color:var(--sub);white-space:nowrap}
@@ -2314,14 +2314,18 @@ a{color:inherit}
 .menu{max-width:780px; margin:0 auto; padding:2px 20px 10px; display:flex; flex-direction:column; border-top:1px solid var(--line)}
 .menu[hidden]{display:none}
 .menu a{display:flex; align-items:center; gap:11px; padding:11px 2px; font-size:14px; text-decoration:none; border-bottom:1px solid var(--line)}
-.menu a .ic{color:var(--sub)}
-.menu a.is-cta .ic{color:var(--accent)}
+.menu a .icb{color:var(--accent)}
 .ic{width:1.15em; height:1.15em; flex:0 0 auto; vertical-align:-.2em; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
+/* アイコンは角の丸い四角い枠に入れる（src/icons.py と同じ指定） */
+.icb{display:inline-flex; align-items:center; justify-content:center; width:1.9em; height:1.9em; border-radius:.55em; flex:0 0 auto; vertical-align:middle;
+  background:rgba(20,57,92,.08); background:color-mix(in srgb,currentColor 12%,transparent)}
+.icb .ic{width:1.1em; height:1.1em; vertical-align:0}
 /* 安心できる点は、文字の列ではなく小札で並べる（2026-11-08） */
 .pills{display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 0; padding:0; list-style:none}
 .pills li{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; line-height:1;
   color:var(--paper); border:1px solid rgba(240,238,233,.28); border-radius:999px; padding:7px 12px}
-.pills li .ic{color:var(--pin)}
+.pills li{padding:5px 12px 5px 6px}
+.pills li .icb{color:var(--pin); width:1.75em; height:1.75em}
 .menu a:last-child{border-bottom:0}
 .menu a.is-cta{color:var(--accent); font-weight:700}
 
@@ -2388,7 +2392,8 @@ a{color:inherit}
 }
 .btn svg{width:15px; height:15px; flex:0 0 auto}
 /* 診断の種類のアイコン（家・ビル・地図）。矢印より一回り大きく */
-.btn .ic{width:20px; height:20px}
+.btn .icb{width:32px; height:32px; border-radius:9px}
+.btn .icb .ic{width:19px; height:19px}
 .hero .btn-primary{background:var(--paper); color:var(--hero-bg); box-shadow:0 12px 28px -16px rgba(0,0,0,.9)}
 .hero .btn-primary:hover{transform:translateY(-2px)}
 .hero .btn-ghost{color:var(--paper); border-color:rgba(240,238,233,.38); background:rgba(240,238,233,.04)}
