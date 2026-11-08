@@ -2387,6 +2387,8 @@ a{color:inherit}
   transition:transform .14s ease, background .18s ease, box-shadow .18s ease;
 }
 .btn svg{width:15px; height:15px; flex:0 0 auto}
+/* 診断の種類のアイコン（家・ビル・地図）。矢印より一回り大きく */
+.btn .ic{width:20px; height:20px}
 .hero .btn-primary{background:var(--paper); color:var(--hero-bg); box-shadow:0 12px 28px -16px rgba(0,0,0,.9)}
 .hero .btn-primary:hover{transform:translateY(-2px)}
 .hero .btn-ghost{color:var(--paper); border-color:rgba(240,238,233,.38); background:rgba(240,238,233,.04)}
@@ -3176,6 +3178,14 @@ _LP_GUIDE_LINKS = "".join(
     for title, _note, items in guides.by_topic())
 
 LP = (LP.replace("ICON_USER", icons.icon("user"))
+        # 戸建・マンション・土地のボタンに、種類のアイコンを付ける
+        # icon() は Markup を返す。str と + でつなぐと str の側がエスケープされ、
+        # href の引用符が &quot; になって壊れる。str() にしてからつなぐ。
+        .replace("無料で診断する（戸建）\n", str(icons.icon("house")) + "無料で診断する（戸建）\n")
+        .replace('href="/mansion">マンションを診断する',
+                 'href="/mansion">' + str(icons.icon("building")) + "マンションを診断する")
+        .replace('href="/land">土地を診断する',
+                 'href="/land">' + str(icons.icon("land")) + "土地を診断する")
         .replace("ICON_TAG", icons.icon("tag"))
         .replace("ICON_CLOCK", icons.icon("clock"))
         .replace("GUIDE_LINKS_PLACEHOLDER", _LP_GUIDE_LINKS)
