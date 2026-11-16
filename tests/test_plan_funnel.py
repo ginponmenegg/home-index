@@ -227,7 +227,7 @@ def test_the_price_is_shown_before_the_button_is_pressed(billing):
     h = billing.app.test_client().post(
         "/diagnose", data=FREE_INPUT).get_data(as_text=True)
     i = h.index("契約の前に、つぶしておくこと")
-    j = h.index("この物件を詳しく診断する（PRO）")
+    j = h.index("この物件の契約前チェックを作る（PRO）")
     assert "90日パス" in h[i:j], "ボタンより前に金額が出ていない"
     assert "自動更新はありません" in h[i:j]
 
@@ -236,7 +236,7 @@ def test_no_price_is_claimed_while_billing_is_off():
     """試験公開のあいだは無料。金額を出すと嘘になる。"""
     h = _client().post("/diagnose", data=FREE_INPUT).get_data(as_text=True)
     i = h.index("契約の前に、つぶしておくこと")
-    j = h.index("この物件を詳しく診断する（PRO）")
+    j = h.index("この物件の契約前チェックを作る（PRO）")
     assert "90日パス" not in h[i:j] and "円（税込）" not in h[i:j]
 
 
@@ -298,7 +298,7 @@ def test_the_card_counts_what_pro_would_list_for_this_property():
     from src.models import ProDetail
     h = _client().post("/diagnose", data=FREE_INPUT).get_data(as_text=True)
     i = h.index("契約の前に、つぶしておくこと")
-    j = h.index("この物件を詳しく診断する（PRO）")
+    j = h.index("この物件の契約前チェックを作る（PRO）")
     card = h[i:j]
     import re
     m = re.search(r"この物件では\s*<b>(\d+)問</b>", card)

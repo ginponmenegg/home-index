@@ -179,7 +179,7 @@ def _hidden_fields(html, action="/pro/start"):
 def test_free_result_offers_the_pro_diagnosis():
     html = _client().post("/diagnose", data=FREE_INPUT).data.decode("utf-8")
     assert "契約の前に、つぶしておくこと" in html
-    assert "この物件を詳しく診断する（PRO）" in html
+    assert "この物件の契約前チェックを作る（PRO）" in html
     carried = _hidden_fields(html)
     # 入力し直さずに済むこと
     for k in ("address", "price", "byear", "land", "building", "station",

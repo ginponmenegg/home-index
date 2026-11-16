@@ -365,6 +365,23 @@ INTRO_CSS = (
     'background:#fff;border:1px solid #e3e7ec;border-radius:999px;padding:4px 11px 4px 5px}'
     '.dneed .icb{width:1.6em;height:1.6em;color:#14395C}'
     '.dneed a{color:inherit}'
+    # 結果画面のPROの案内：この物件の未確認の項目と、料金の札（2026-11-16）
+    '.unk{list-style:none;padding:0;margin:8px 0 12px;display:grid;gap:6px}'
+    '.unk li{display:flex;justify-content:space-between;align-items:center;gap:8px;'
+    'background:#fafbfc;border:1px solid #eef1f4;border-radius:10px;padding:9px 12px;'
+    'font-size:14px;line-height:1.5}'
+    '.unk li span{flex:0 0 auto;font-size:11.5px;font-weight:700;color:#9a3412;'
+    'background:#fff1e6;border-radius:999px;padding:2px 9px}'
+    '.pbox{margin:14px 0 4px;padding:12px 14px;border-radius:14px;'
+    'background:rgba(20,57,92,.05);border:1px solid rgba(20,57,92,.15)}'
+    '.pbox .pl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}'
+    '.pbox .pl b{font-size:16px;margin-right:4px}'
+    '.pbox .pl span{font-size:12px;font-weight:700;color:#14395C;background:#fff;'
+    'border:1px solid rgba(20,57,92,.18);border-radius:999px;padding:3px 9px}'
+    '.pbox p{margin:8px 0 0;font-size:13px;line-height:1.7}'
+    '.ctab{display:block;width:100%;margin:12px 0 0;padding:14px 12px;border:0;'
+    'border-radius:999px;background:#14395C;color:#fff;font-size:15px;font-weight:700;'
+    'font-family:inherit;cursor:pointer;box-shadow:0 10px 24px -14px rgba(20,57,92,.6)}'
     # 機能のカード（/pro・/plan）。アイコンの枠＋見出し＋本文＋丸い札のリンク
     '.fcards{display:grid;gap:10px;margin:14px 0}'
     '@media (min-width:640px){.fcards.c2{grid-template-columns:1fr 1fr}}'
@@ -2145,8 +2162,9 @@ HH_RESULT_PLACEHOLDER
 
   <div class="card" data-html2canvas-ignore style="border-color:#111">
    <h2 style="margin-top:0">{{ icon("check") }}契約の前に、つぶしておくこと</h2>
-   <p style="margin:6px 0 10px">この物件は、<b>{{handover_unknowns}}</b>が
-    未確認のままです。PROでは、<b>この物件について</b>ここまで出します。</p>
+   <ul class="unk">{% for u in handover_unknowns.split("・") %}<li>{{u}}<span>未確認</span></li>{% endfor %}</ul>
+   <p style="margin:0 0 10px">この物件は、上の項目が未確認のままです。PROでは、
+    <b>この物件について</b>ここまで出します。</p>
    <ul class="seen" style="margin:0">
     <li><b>聞く</b><span><b>仲介業者に聞くことの一覧。</b>{% if preview and preview.q_count %}この物件では
      <b>{{preview.q_count}}問</b>です。1問目は「{{preview.q_first}}」。{% endif %}そのまま見せて
@@ -2163,16 +2181,16 @@ HH_RESULT_PLACEHOLDER
    <p class="foot">入力済みの内容はそのまま引き継がれます。
     点数の付け方は無料もPROも同じで、PROで採点が甘くなることはありません。</p>
    {% if plan_price %}
-   <p style="margin:12px 0 0"><b>{{plan_price}}</b>
-    <span class="muted">／ 1回払いで、自動更新はありません。お申し込みに
-    ログインは要りません。会員登録（メールアドレスだけ）をすると、1物件だけ
-    無料で試せます。</span></p>
+   <div class="pbox"><div class="pl"><b>{{plan_price}}</b><span>90日間</span>
+    <span>物件はいくつでも</span><span>自動更新なし</span></div>
+    <p class="muted">1回払いで、自動更新はありません。お申し込みにログインは要りません。
+     会員登録（メールアドレスだけ）をすると、1物件だけ無料で試せます。</p></div>
    {% endif %}
    <form method="post" action="{{handover_action}}">
     {% for k, val in handover.items() %}
     <input type="hidden" name="{{k}}" value="{{val}}">
     {% endfor %}
-    <button type="submit">この物件を詳しく診断する（PRO）</button>
+    <button type="submit" class="ctab">この物件の契約前チェックを作る（PRO）</button>
    </form>
   </div>
   {% endif %}
@@ -4918,7 +4936,7 @@ def _dock(sample_href=None, pro=False, handover=None, finance_carry=None):
     if pro and finance_carry:
         cta, text = "#finance", "資金計画に進む"
     elif not pro and handover:
-        cta, text = "#pro", "PROで詳しく"
+        cta, text = "#pro", "契約前チェック"
     return dict(share=True, cta=cta, cta_text=text)
 
 
@@ -9528,7 +9546,7 @@ MYPAGE = """
   {% if limit %}保存できるのは{{ limit }}件までです。{% else %}保存できる件数に制限はありません。{% endif %}</p>
  {% if trial_state == 'unused' %}
  <div class="note ok" style="margin:0 0 12px">PROのお試しが<b>1物件ぶん</b>残っています。
-  使うまで減らないので、本命が決まったら、その物件の結果画面の「PROで詳しく」から
+  使うまで減らないので、本命が決まったら、その物件の結果画面の「契約前チェック」から
   始めてください。その物件の契約前チェック（PDF）も作れます。</div>
  {% endif %}
  <p><a class="btn ghost sm" href="/plan">プランを見る</a></p>
