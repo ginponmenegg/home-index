@@ -5,6 +5,9 @@
  "chikunensu-nannen-made": {
   "title": "中古住宅は築何年まで買えるか。分かれ目は年数ではなく日付です"
  },
+ "chukai-tesuryo-jougen": {
+  "title": "仲介手数料の上限は「3%＋6万円」。正体は告示の3段階の料率で、800万円以下には特例があります"
+ },
  "chuko-jutaku-katte-wa-ikenai": {
   "title": "中古住宅で避けるべきなのは、あとから直せないものがある家です"
  },
@@ -32,6 +35,9 @@
  "hensai-futanritsu-tedori": {
   "title": "住宅ローンは手取りの何%までか。公的な基準は、税込年収で割る式しかありません"
  },
+ "hito-no-shi-kokuchi-baibai": {
+  "title": "人の死の告知ガイドラインを、買う側から読む。「3年」は賃貸だけ、売買では聞けば答える決まり"
+ },
  "home-inspection-hitsuyou": {
   "title": "ホームインスペクションとデータの診断は、見ているものが違います"
  },
@@ -55,6 +61,9 @@
  },
  "jutaku-loan-koujo-1982": {
   "title": "中古の住宅ローン控除は、築年数ではなく1982年1月1日で分かれます"
+ },
+ "jutaku-loan-tokuyaku": {
+  "title": "住宅ローン特約（融資特約）とは。本審査に落ちたら手付は戻るか、期限と型で決まります"
  },
  "juyo-jiko-setsumeisho-doko-wo-miru": {
   "title": "重要事項説明書のどこを見るか。条文の号まで指して並べました"
@@ -98,6 +107,9 @@
  "kubun-shoyuho-kaisei-2026": {
   "title": "区分所有法の改正（2026年4月施行）で、中古マンションの何が変わったか。総会は出席者で決まります"
  },
+ "kyokai-ekkyo-kounyu": {
+  "title": "境界標がない・越境がある土地を買う前に。筆界と所有権の境は別、隣の枝は条件付きで切れる"
+ },
  "kyouikuhi-ichiban-omoi-toshi": {
   "title": "子ども2人の教育費がいちばん重いのは、2人が同時に大学に通う年です"
  },
@@ -124,6 +136,9 @@
  },
  "nakai-gyousha-ni-kiku-koto": {
   "title": "不動産屋に聞くことリスト。1枚の書類を頼むほうが、10個の質問より早い"
+ },
+ "setback-2kou-douro": {
+  "title": "セットバックとは。2項道路の家は、下がった部分が敷地面積から外れ、固定資産税は申告で非課税に"
  },
  "setsudou-2m-saikenchiku": {
   "title": "敷地は道路に2m以上。足りないと、建て替えができません"
@@ -172,6 +187,9 @@
  },
  "yokoku-koukoku-kakaku-mitei": {
   "title": "「価格未定」の予告広告で分かること。本広告までは申込みできません"
+ },
+ "youheki-gake-jourei": {
+  "title": "がけ条例と既存擁壁。高低差のある土地は、建てる位置と擁壁の書類の2つを確かめます"
  },
  "yousekiritsu-kaisuu": {
   "title": "容積率200%でも、2階建てなら150㎡止まりです"
