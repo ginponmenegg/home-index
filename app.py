@@ -2824,15 +2824,15 @@ footer{padding:30px 0 46px; text-align:center}
 footer p{margin:0 0 6px; font-size:12px; color:var(--sub); line-height:1.9}
 footer a{color:var(--ink)}
 
-.gtopic{display:flex; align-items:baseline; gap:10px; margin:26px 0 0}
-.gtopic h3{margin:0; font-size:13px; font-weight:700; letter-spacing:.08em}
-.gtopic span{font-size:12px; color:var(--sub)}
-.glist{list-style:none; padding:0; margin:8px 0 0;
-  display:grid; gap:2px}
+/* 記事はジャンルごとに畳む。開くまでは見出しと本数だけ。
+   リンクは閉じていてもHTMLにあるので、巡回からは全部見える。 */
+.gtopics{margin:22px 0 0}
+.gtopic summary{display:flex; align-items:baseline; gap:10px}
+.gtopic summary span{font-size:12px; font-weight:400; color:var(--sub)}
+.glist{list-style:none; padding:0; margin:0 0 14px}
 .glist li{border-top:1px solid var(--line, rgba(240,238,233,.14))}
-.glist li:last-child{border-bottom:1px solid var(--line, rgba(240,238,233,.14))}
-.glist a{display:block; padding:13px 2px; text-decoration:none; font-weight:700;
-  font-size:15px; line-height:1.55}
+.glist a{display:block; padding:11px 2px 11px 12px; text-decoration:none;
+  font-weight:700; font-size:14px; line-height:1.55}
 .lead-sm{font-size:14px; line-height:1.9; max-width:34em; margin:0}
 .reveal{opacity:0; transform:translateY(14px); transition:opacity .7s ease, transform .7s ease}
 .reveal.is-in{opacity:1; transform:none}
@@ -3419,14 +3419,20 @@ TABBAR_PLACEHOLDER
 # （点数の話を知りたい人と、災害の区域を調べたい人は別のものを探している）。
 # /guide と同じ分類で束ねる。分類は src/guides.py の TOPICS が持つので、
 # 片方だけ直して食い違う、ということが起きない。
-_LP_GUIDE_LINKS = "".join(
-    f'<div class="gtopic"><h3>{html.escape(title)}</h3>'
-    f'<span>{len(items)}本</span></div>'
-    f'<ul class="glist">'
-    + "".join(f'<li><a href="/guide/{g.slug}">{html.escape(g.title)}</a></li>'
-              for g in items)
-    + '</ul>'
-    for title, _note, items in guides.by_topic())
+#
+# 棚が7つ、記事が50本を超えて、トップが記事の一覧で埋まった。ジャンルの
+# 見出しと本数だけを出して、開くと記事が並ぶ（FAQと同じ ＋/− の作り）。
+_LP_GUIDE_LINKS = (
+    '<div class="gtopics">'
+    + "".join(
+        f'<details class="gtopic"><summary>{html.escape(title)}'
+        f'<span>{len(items)}本</span></summary>'
+        f'<ul class="glist">'
+        + "".join(f'<li><a href="/guide/{g.slug}">{html.escape(g.title)}</a></li>'
+                  for g in items)
+        + '</ul></details>'
+        for title, _note, items in guides.by_topic())
+    + '</div>')
 
 LP = (LP.replace("ICON_USER", icons.icon("user"))
         .replace("TABBAR_PLACEHOLDER",
