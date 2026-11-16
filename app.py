@@ -1057,6 +1057,16 @@ def _hazard_gap(res):
     return "hz_fetch"
 
 
+_TOWN_CUT = re.compile(r"[0-9０-９]|[一二三四五六七八九十]+丁目|[一二三四五六七八九十]+番")
+
+
+def _town_only(addr) -> str:
+    """住所を町名までで切る。番地・丁目から先はログに残さない。"""
+    s = (addr or "").strip()
+    m = _TOWN_CUT.search(s)
+    return (s[:m.start()] if m else s).rstrip("　 -ー－")[:40]
+
+
 def _observe(kind, subject, res) -> None:
     """診断された物件を1行残す。**利用者を結びつける鍵は渡さない。**
 
@@ -1068,6 +1078,13 @@ def _observe(kind, subject, res) -> None:
     gap = _hazard_gap(res)
     if gap:
         metrics.bump(gap)
+    if gap == "hz_other_town":
+        # 2026-11-16。郡・大字を直したあとも「別の町」が残る。どの町で
+        # 起きるかを調べるため、入力と国土地理院の答えを町名までで残す
+        # （番地は残さない）。Render のログで "[hz-other-town]" を探す。
+        gc = getattr(res, "geocode", None)
+        print(f"[hz-other-town] in={_town_only(getattr(subject, 'address', ''))} "
+              f"gsi={_town_only(getattr(gc, 'address_normalized', ''))}")
     observations.record(
         kind, subject, res.diagnosis,
         enrichment=getattr(res, "enrichment", None),

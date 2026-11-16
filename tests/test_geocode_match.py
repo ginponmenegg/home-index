@@ -199,3 +199,13 @@ def test_the_reason_a_hazard_was_not_checked():
     from src import metrics
     for name in metrics.HAZARD_GAPS:
         assert name in metrics.EVENTS
+
+
+def test_the_mismatch_log_keeps_only_the_town():
+    """「別の町」の調査用ログに、番地や丁目を残さない。"""
+    import app as webapp
+    f = webapp._town_only
+    assert f("神奈川県平塚市田村5丁目12-3") == "神奈川県平塚市田村"
+    assert f("神奈川県足柄下郡湯河原町宮上１２３") == "神奈川県足柄下郡湯河原町宮上"
+    assert f("東京都千代田区丸の内一丁目9番1号") == "東京都千代田区丸の内"
+    assert f("") == ""
