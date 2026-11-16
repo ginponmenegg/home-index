@@ -86,6 +86,9 @@
  "kodate-mansion-haiten": {
   "title": "戸建とマンションで、100点の配り方を変えています。価格は20点と30点です"
  },
+ "koteishisanzei-chuko-jutaku": {
+  "title": "中古住宅の固定資産税の計算。評価額×1.4%、土地は6分の1、築浅なら新築の減額が残る"
+ },
  "koteishisanzei-seisan": {
   "title": "固定資産税の精算金は、起算日が1月1日か4月1日かで大きく変わります"
  },
