@@ -55,6 +55,11 @@ EVENTS = {
     # 貼り付けたのに、価格も住所も面積も1つも読み取れなかった回数
     # （2026-11-01）。使われないのか、使っても失敗するのかを分ける。
     "paste_none":   "貼り付けたが何も読み取れなかった",
+    # 提携の不動産会社への相談窓口（2026-11-20）。窓口を見た、結果から
+    # 進んだ、申し込んだ、の3つ。誰が申し込んだかは数えない。
+    "view_soudan":  "相談の窓口を見た",
+    "soudan_from_result": "結果から相談の窓口へ進んだ",
+    "soudan_sent":  "提携先に相談を申し込んだ",
     "diag_kodate":  "戸建の診断が出た",
     "diag_mansion": "マンションの診断が出た",
     "diag_land":    "土地の診断が出た",
@@ -248,7 +253,7 @@ def landings(days: int = 30) -> list[tuple]:
 # 画面を返したときの件数（view_buy など）と並べて読む。差が巡回のぶん。
 HUMAN = {n: "h_" + n for n in (
     "view_buy", "view_mansion", "view_land", "view_guide", "view_sample",
-    "plan_view", "pro_cta", "login_view", "plan_confirm")}
+    "plan_view", "pro_cta", "login_view", "plan_confirm", "view_soudan")}
 HUMAN_SINCE = "2026-11-01"
 
 

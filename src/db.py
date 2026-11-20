@@ -204,6 +204,27 @@ def schema_sql() -> list[str]:
               n INTEGER NOT NULL DEFAULT 0,
               PRIMARY KEY (day, name)
             )""",
+        # 提携の不動産会社への相談の申込み（2026-11-20）。本人が同意して
+        # 送ったものだけ。1年で消す（src/referral.py の RETENTION_DAYS）。
+        # 診断の点数や家計の入力は入れない。
+        f"""CREATE TABLE IF NOT EXISTS referrals (
+              id {pk},
+              created_at TEXT NOT NULL,
+              partner_key TEXT NOT NULL,
+              pref TEXT,
+              address TEXT,
+              area TEXT,
+              kind TEXT,
+              stage TEXT,
+              other TEXT,
+              when_ TEXT,
+              name TEXT,
+              email TEXT,
+              tel TEXT,
+              note TEXT,
+              came_from TEXT,
+              status TEXT
+            )""",
         "CREATE INDEX IF NOT EXISTS ix_saved_user ON saved_diagnoses (user_id)",
         "CREATE INDEX IF NOT EXISTS ix_token_email ON login_tokens (email)",
     ]

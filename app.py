@@ -430,6 +430,11 @@ def diag_intro(kind: str, extra=None):
 
 
 app.jinja_env.globals["diag_intro"] = diag_intro
+# 提携の不動産会社への相談窓口（2026-11-20）。結果の点数の説明より下に出す。
+# 提携先が設定されていない、または対応地域の外なら空になる。
+from src import referral as referral_mod
+app.jinja_env.globals["referral_block"] = lambda a, k="buy": Markup(
+    referral_mod.result_block(a, k))
 
 
 # ---- スマホの下のタブバー（2026-11-08）----------------------------------
@@ -2331,6 +2336,7 @@ HH_RESULT_PLACEHOLDER
    取得できなかった項目は点数に反映せず、上の「要確認」に表示しています。</p>
  </div>
 
+ {% if not sample %}{{ referral_block(s.address, "mansion" if pc_kind == "mansion" else "buy") }}{% endif %}
  {% if warnings %}<p class="foot">{% for w in warnings %}・{{w}}<br>{% endfor %}</p>{% endif %}
  <div class="foot" style="background:#f9fafb;border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:8px">
   <b>免責</b>：本サービスはAIと公的データにもとづく<b>参考情報</b>であり、不動産の価値・適法性・
@@ -3117,9 +3123,7 @@ LP_MENU_PLACEHOLDER
       <p>運営者は宅地建物取引士として、住宅の売買仲介に従事しています。
        販売図面に記載される情報がいかに限られているかは、実務のなかで
        日々目にしてきました。<br>
-       HOME INDEX において、物件の仲介は行いません。仲介手数料および紹介料を
-       一切受け取らず、特定の物件・事業者へ誘導することもありません。
-       点数を上げる理由も、下げる理由もありません。
+       STANCE_LINE_PLACEHOLDER
        <a href="/about">運営者について</a>　/
        <a href="#shikumi">なぜ中立だと言えるのか</a></p>
     </div>
@@ -3190,10 +3194,7 @@ LP_MENU_PLACEHOLDER
       </figure>
 
       <div class="grid2">
-        <div class="card">
-          <h3>物件を売らない・紹介しない</h3>
-          <p>仲介手数料も紹介料も受け取りません。特定の物件や不動産会社へ誘導する仕組みを持ちません。</p>
-        </div>
+        PROMISE_CARD_PLACEHOLDER
         <div class="card">
           <h3>使うのは公的データ</h3>
           <p>国土交通省の成約価格・災害リスク・将来推計人口、国土地理院の住所検索。商業施設については公的データに無いためOpenStreetMapを使用しています。出典はすべて結果画面に明示します。</p>
@@ -3262,7 +3263,7 @@ LP_MENU_PLACEHOLDER
   </div>
 </section>
 
-<section id="guides">
+SOUDAN_SECTION_PLACEHOLDER<section id="guides">
   <div class="wrap reveal">
     <p class="eyebrow">解説</p>
     <h2>点数の根拠は、記事で解説しています。</h2>
@@ -3455,6 +3456,57 @@ LP = (LP.replace("ICON_USER", icons.icon("user"))
       .replace("LP_MENU_PLACEHOLDER", lp_menu_links())
       .replace("FOOTER_PLACEHOLDER", FOOTER))
 
+# 提携の不動産会社への相談窓口（2026-11-20）。提携先が設定されているときと、
+# いないときで、約束の書き方を変える。いないときは今までどおり「紹介しない」
+# と書く（それが事実なので）。設定されたら、窓口の入口と書き換えた約束を出す。
+_LP_REF_OFF = {
+    "PROMISE_CARD_PLACEHOLDER": (
+        '<div class="card">\n          <h3>物件を売らない・紹介しない</h3>\n'
+        '          <p>仲介手数料も紹介料も受け取りません。特定の物件や不動産会社へ'
+        '誘導する仕組みを持ちません。</p>\n        </div>'),
+    "SOUDAN_SECTION_PLACEHOLDER": "",
+    "STANCE_LINE_PLACEHOLDER": (
+        "HOME INDEX において、物件の仲介は行いません。仲介手数料および紹介料を\n"
+        "       一切受け取らず、特定の物件・事業者へ誘導することもありません。\n"
+        "       点数を上げる理由も、下げる理由もありません。"),
+}
+
+
+def _lp_ref_on() -> dict:
+    area = referral_mod.area_label()
+    fee = referral_mod.fee_line(referral_mod.partners())
+    return {
+        "PROMISE_CARD_PLACEHOLDER": (
+            '<div class="card">\n          <h3>診断は中立。物件は売らない</h3>\n'
+            '          <p>点数は、提携の有無と関係なく同じ計算で出します。仲介は'
+            'しません。物件探しや購入の相談を希望された方にだけ、ご本人の申込みで'
+            f'提携の不動産会社（{area}）をご案内します。</p>\n        </div>'),
+        "SOUDAN_SECTION_PLACEHOLDER": (
+            '<section id="soudan">\n  <div class="wrap reveal">\n'
+            '    <p class="eyebrow">相談</p>\n'
+            f'    <h2>物件探しから相談したい方へ（{area}）</h2>\n'
+            '    <p class="lead-sm">HOME INDEX は物件を売りません。物件探しや購入の'
+            f'相談を希望される方に、{area}の物件を扱う提携の不動産会社をご案内して'
+            f'います。点数は提携と関係なく、同じ計算で出します。{fee}</p>\n'
+            '    <p class="fine"><a href="/soudan?from=lp">相談の窓口を見る →</a></p>\n'
+            '  </div>\n</section>\n\n'),
+        "STANCE_LINE_PLACEHOLDER": (
+            "HOME INDEX において、物件の仲介は行いません。点数は、提携の有無と\n"
+            "       関係なく同じ計算で出します。物件探しや購入の相談を希望された方に\n"
+            f"       だけ、ご本人の申込みで提携の不動産会社をご案内します。{fee}"),
+    }
+
+
+def _fill(page: str, parts: dict) -> str:
+    for k, v in parts.items():
+        page = page.replace(k, v)
+    return page
+
+
+def _lp_now() -> str:
+    """いまの設定に合わせたトップページ。"""
+    return _fill(LP, _lp_ref_on() if referral_mod.enabled() else _LP_REF_OFF)
+
 GRADE_COLOR = {"A": "#15803d", "B": "#16a34a", "C": "#d97706",
                "D": "#dc2626", "E": "#b91c1c"}
 GRADE_COMMENT = {"A": "非常に検討価値が高い", "B": "検討価値あり",
@@ -3543,13 +3595,17 @@ PROの内容・料金・支払方法・提供時期は、申込みの最終確�
 _TAIL_N = 12 if billing_on() else 7
 
 _TERMS_BODY = ("""
-<p class="sub">最終改定日：2026年8月28日</p>
+<p class="sub">最終改定日：2026年11月20日</p>
 <h2>第1条（本サービス）</h2>
 <p>「HOME INDEX（購入診断）」（以下「本サービス」）は、利用者が入力・貼り付けした物件情報と、
 国土交通省 不動産情報ライブラリ・国土地理院等の公的データ、および OpenStreetMap に
 もとづき、
 住まいに関する<b>参考情報</b>を提供するものです。本サービスは不動産の売買・交換・貸借の
 媒介・代理・査定・鑑定を行うものではなく、宅地建物取引業法上の取引・査定に該当しません。</p>
+<p>本サービスは、物件探しや購入の相談を希望された利用者に、ご本人の申込みにより、
+提携の不動産会社をご案内することがあります。提携先との相談・媒介契約・売買契約は
+利用者と提携先との間のものであり、運営者はその当事者になりません。提携の有無は、
+診断の点数に影響しません。</p>
 <h2>第2条（参考情報であること・免責）</h2>
 <p>本サービスの診断結果（推定価格・スコア・防災/人口情報等）は、AIと公的データによる
 <b>目安・参考情報</b>であり、物件の価値・適法性・再建築可否・取引の可否・安全性を保証するものでは
@@ -3636,15 +3692,18 @@ _ACC_MAIL = ("""<h2>5-2. メールの送信</h2>
 （<b>所在地は書きません</b>）。広告・宣伝のメールはお送りしません。</p>""" if db.enabled() else "")
 
 _PRIVACY_BODY = ("""
-<p class="sub">最終改定日：2026年11月1日</p>
+<p class="sub">最終改定日：2026年11月20日</p>
 <h2>1. 取得する情報</h2>
 <p>本サービスは、診断のために利用者が入力・貼り付けした情報（物件の所在地・価格・面積・築年・
 駅距離・種別、任意入力の世帯年収・頭金等。PROでは本人と配偶者それぞれの年収、お子さまの年齢）を処理します。あわせて、アクセスに伴う技術情報
-（IPアドレス等）を、不正利用防止・レート制限の目的で一時的に参照する場合があります。"""
+（IPアドレス等）を、不正利用防止・レート制限の目的で一時的に参照する場合があります。
+提携の不動産会社への相談を申し込まれた場合は、申込みフォームに入力されたお名前・
+メールアドレス・電話番号・物件または探している地域・状況・時期・相談内容を取得します。"""
 + _ACC_COLLECT + """</p>
 <h2>2. 利用目的</h2>
 <p>取得した情報は、(1) 診断結果の生成・表示、(2) 本サービスの品質改善、
 (3) 不正・過度なアクセスの防止、(4) 地域ごとの傾向の把握（下記3の記録による）""" + _ACC_PURPOSE + """、
+(5) 相談を申し込まれた方の、提携の不動産会社への取り次ぎ
 の目的にのみ利用します。診断のために不要な情報は取得しません。</p>
 <h2>3. 保存・安全管理</h2>
 <p><b>入力されたものをそのまま保存することはありません。</b>丁目・番地を含む住所、
@@ -3657,8 +3716,13 @@ _PRIVACY_BODY = ("""
 直近の診断の要点（番地を除いた所在地・価格・点数）を、利用者のブラウザの中
 （localStorage）に残します。<b>この記録は当サービスには送信されません。</b>
 画面の「この端末の記録を消す」で、いつでも消せます。</p>""" + _ACC_STORE + """
+<p><b>提携の不動産会社への相談の申込み</b>は、取り次ぎの記録として、申込みから
+1年間保存し、その後削除します。</p>
 <h2>4. 第三者提供</h2>
 <p>法令に基づく場合を除き、利用者の同意なく個人情報を第三者に提供しません。
+提携の不動産会社への相談を申し込まれた場合に限り、申込みフォームで提供先の会社名と
+提供する項目を示して同意をいただいたうえで、その項目を提携先に提供します。
+診断の点数、年収・頭金などの家計に関する入力は、提携先に提供しません。
 診断に必要な範囲で公的データAPI等の外部サービスに対し、住所等の照会を行う場合があります。</p>
 <h2>5. 外部サービス</h2>
 <p>本サービスは、国土交通省 不動産情報ライブラリ・国土地理院のAPI、および
@@ -3704,8 +3768,7 @@ _ABOUT_BODY = ("""
 <h2>本サービスが行わないこと</h2>
 <ul>
 <li><b>不動産の仲介・媒介は行いません。</b></li>
-<li><b>仲介手数料・紹介料は一切受け取りません。</b>特定の物件、事業者、
- 金融機関へ誘導することもありません。</li>
+ABOUT_REF_PLACEHOLDER
 <li><b>採点に人の判断を介在させません。</b>配点は公開したルールのとおりであり、
  個別の診断に手を加えることはありません。</li>
 <li><b>事業者間の情報は使用しません。</b>利用しているのは、どなたでも
@@ -3747,10 +3810,296 @@ def about():
     if not operator_named():
         from flask import abort
         abort(404)
+    on = referral_mod.enabled()
     return _legal_page(
-        "運営者について", _ABOUT_BODY + _ABOUT_JSONLD, path="/about",
-        desc="HOME INDEX の運営者です。宅地建物取引士が個人で運営して"
-             "います。物件は売らず、仲介も紹介もしません。")
+        "運営者について",
+        _ABOUT_BODY.replace("ABOUT_REF_PLACEHOLDER",
+                            _about_ref_on() if on else _ABOUT_REF_OFF)
+        + _ABOUT_JSONLD, path="/about",
+        desc=("HOME INDEX の運営者です。宅地建物取引士が個人で運営して"
+              "います。物件は売らず、仲介もしません。診断は中立です。" if on else
+              "HOME INDEX の運営者です。宅地建物取引士が個人で運営して"
+              "います。物件は売らず、仲介も紹介もしません。"))
+
+
+# 提携先が無いときは今までどおり。あるときは、提携を点数に持ち込まない約束と、
+# 本人が申し込むまで渡さない約束に書き換える。
+_ABOUT_REF_OFF = ("<li><b>仲介手数料・紹介料は一切受け取りません。</b>特定の物件、事業者、\n"
+                  " 金融機関へ誘導することもありません。</li>")
+
+
+def _about_ref_on() -> str:
+    ps = referral_mod.partners()
+    rel = "".join(f"<br>{html.escape(x)}" for x in referral_mod.relation_lines(ps))
+    return ("<li><b>診断の点数に、提携を持ち込みません。</b>提携の不動産会社があっても、\n"
+            " 点数は同じ計算で出します。提携先の物件を加点することもありません。</li>\n"
+            "<li><b>ご本人が申し込むまで、情報を渡しません。</b>物件探しや購入の相談を\n"
+            " 希望された方にだけ、<a href=\"/soudan\">提携の不動産会社（"
+            + html.escape(referral_mod.area_label()) + "）</a>をご案内します。\n "
+            + html.escape(referral_mod.fee_line(ps)) + rel + "</li>")
+
+
+# ---- 提携の不動産会社への相談窓口（2026-11-20） ----------------------------
+# 中身の決まりごとは src/referral.py の冒頭に書いた。ここは画面だけ。
+_SOUDAN_CSS = (
+    ".sform label{display:block;font-size:14px;font-weight:700;margin:16px 0 6px}"
+    ".sform input[type=text],.sform input[type=email],.sform input[type=tel],"
+    ".sform select,.sform textarea{width:100%;box-sizing:border-box;font-size:16px;"
+    "padding:10px 12px;border:1px solid #ccc;border-radius:8px;background:#fff}"
+    ".sform .opt{display:block;font-weight:400;font-size:14px;margin:6px 0}"
+    ".sform .hint{font-size:12px;color:#666;font-weight:400;margin-left:6px}"
+    ".sform .stop{display:none;background:#fff6e5;border:1px solid #e0b25b;"
+    "border-radius:8px;padding:10px 12px;font-size:13px;margin:8px 0 0}"
+    ".sform .agree{background:#f6f6f4;border-radius:10px;padding:12px 14px;"
+    "margin:18px 0 0;font-size:13px;line-height:1.8}"
+    ".sform .agree label{margin:0;font-weight:400;font-size:13px}"
+    ".sform button{display:block;width:100%;margin:18px 0 0;background:#111;color:#fff;"
+    "border:0;border-radius:10px;padding:14px;font-size:16px;font-weight:700}"
+    ".sform button:disabled{background:#999}"
+    ".sform .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}"
+    ".errs{background:#fff1f0;border:1px solid #e3a6a1;border-radius:8px;"
+    "padding:10px 14px;margin:12px 0;font-size:14px}"
+    ".pcard{border:1px solid #111;border-radius:12px;padding:14px 16px;margin:12px 0}"
+    ".pcard dl{display:grid;grid-template-columns:7em 1fr;gap:6px 10px;margin:0;"
+    "font-size:14px}.pcard dt{color:#666}.pcard dd{margin:0}"
+    ".flow{counter-reset:f;list-style:none;padding:0;margin:8px 0}"
+    ".flow li{counter-increment:f;position:relative;padding:8px 0 8px 36px;"
+    "border-bottom:1px solid #eee;font-size:14px}"
+    ".flow li::before{content:counter(f);position:absolute;left:0;top:8px;width:24px;"
+    "height:24px;border-radius:50%;background:#111;color:#fff;font-size:12px;"
+    "display:flex;align-items:center;justify-content:center}"
+)
+
+_SOUDAN_RATE: dict = {}
+_SOUDAN_LIMIT = 5          # 1日・1IPあたりの申込み（いたずらで提携先を埋めないため）
+
+
+def _soudan_rate_ok(ip) -> bool:
+    now = time.time()
+    lst = [t for t in _SOUDAN_RATE.get(ip, []) if t > now - 86400]
+    if len(lst) >= _SOUDAN_LIMIT:
+        _SOUDAN_RATE[ip] = lst
+        return False
+    lst.append(now)
+    _SOUDAN_RATE[ip] = lst
+    return True
+
+
+_SOUDAN_JS = """
+<script>
+(function(){
+ var a=document.getElementById('agree'),b=document.getElementById('send'),
+     st=document.getElementById('stopOther'),out=OUT_OF_AREA;
+ function upd(){
+  var o=document.querySelector('input[name=other]:checked');
+  var applied=!!(o&&o.value==='applied');
+  st.style.display=applied?'block':'none';
+  b.disabled=!a.checked||applied||out;
+ }
+ a.addEventListener('change',upd);
+ document.querySelectorAll('input[name=other]').forEach(function(r){
+  r.addEventListener('change',upd);});
+ upd();
+})();
+</script>
+"""
+
+
+def _soudan_body(v=None, errs=None):
+    """相談の窓口。v はフォームの値（診断から来たときは address と kind）。"""
+    v = v or {}
+    esc = html.escape
+    ps = referral_mod.partners()
+    area = referral_mod.area_label()
+    address = (v.get("address") or "").strip()
+    has_addr = bool(address)
+    out_of_area = has_addr and not referral_mod.partners_for(address)
+
+    def pcard(p):
+        rel = (f'<dt>運営者との関係</dt><dd>{esc(p["relation"])}</dd>'
+               if (p.get("relation") or "").strip() else "")
+        return (f'<div class="pcard"><dl><dt>会社名</dt><dd>{esc(p["name"])}</dd>'
+                f'<dt>免許</dt><dd>{esc(p["license"])}</dd>'
+                f'<dt>対応地域</dt><dd>{esc("・".join(p["areas"]))}</dd>'
+                + (f'<dt>扱う物件</dt><dd>{esc(p["handles"])}</dd>'
+                   if p.get("handles") else "")
+                + rel + '</dl></div>')
+
+    def chk(name, val, default=False):
+        cur = v.get(name)
+        return " checked" if (cur == val or (cur is None and default)) else ""
+
+    def sel(name, val):
+        return " selected" if v.get(name) == val else ""
+
+    if has_addr:
+        where = ('<label>相談したい物件<span class="hint">診断から引き継ぎました</span></label>'
+                 f'<input type="text" name="address" value="{esc(address)}">'
+                 f'<input type="hidden" name="kind" value="{esc(v.get("kind", ""))}">')
+    else:
+        opts = "".join(f'<option value="{esc(p)}"{sel("pref", p)}>{esc(p)}</option>'
+                       for p in referral_mod.served_prefs())
+        where = ('<label>探している都県</label><select name="pref">'
+                 f'<option value="">選んでください</option>{opts}</select>'
+                 '<label>市区町村<span class="hint">任意</span></label>'
+                 f'<input type="text" name="area" value="{esc(v.get("area", ""))}"'
+                 ' placeholder="例：横浜市港北区、世田谷区">')
+    warn_area = ('<p class="stop" style="display:block">この物件は、提携先の対応地域'
+                 f'（{esc(area)}）の外です。今はご案内できません。</p>'
+                 if out_of_area else "")
+    choose = ""
+    if len(ps) > 1:
+        choose = ('<label>相談する会社<span class="hint">対応地域を確かめて選んでください</span></label>'
+                  + "".join(f'<span class="opt"><input type="radio" name="partner" '
+                            f'value="{esc(p["key"])}"{chk("partner", p["key"])}> '
+                            f'{esc(p["name"])}（{esc("・".join(p["areas"]))}）</span>'
+                            for p in ps))
+    names = "、".join(p["name"] for p in ps)
+    default_stage = "found" if has_addr else "search"
+    stage_html = "".join(
+        f'<span class="opt"><input type="radio" name="stage" value="{k}"'
+        f'{chk("stage", k, default=(k == default_stage))}> {esc(t)}</span>'
+        for k, t in referral_mod.STAGES.items())
+    other_html = "".join(
+        f'<span class="opt"><input type="radio" name="other" value="{k}"'
+        f'{chk("other", k, default=(k == "none"))}> {esc(t)}</span>'
+        for k, t in referral_mod.OTHERS.items())
+    when_html = "".join(f'<option{sel("when", w)}>{esc(w)}</option>'
+                        for w in referral_mod.WHENS)
+    err_html = ('<div class="errs">' + "<br>".join(esc(e) for e in errs) + "</div>"
+                if errs else "")
+    paid = any(p.get("referral_fee") for p in ps)
+    fee_more = "" if paid else ("受け取ることになった場合は、このページと窓口を"
+                                "出す場所に書きます。")
+    return f"""
+<p>HOME INDEX は物件を売りません。仲介もしません。物件探しや購入の相談を希望される方に、
+{esc(area)}の物件を扱う<b>提携の不動産会社</b>をご案内しています。相談は無料です。</p>
+
+<h2>提携の不動産会社</h2>
+{"".join(pcard(p) for p in ps)}
+<p class="sub">仲介は提携先が行います。契約に進んだ場合の仲介手数料は、提携先との
+取り決めになります（上限は<a href="/guide/chukai-tesuryo-jougen">法律と告示</a>で決まっています）。</p>
+
+<h2>HOME INDEX が約束すること</h2>
+<ul>
+<li><b>点数は同じ計算です。</b>提携しているかどうかで、診断の点数は変わりません。提携先の物件を加点することもありません。</li>
+<li><b>申し込むまで、情報は渡しません。</b>このフォームを送ったときにだけ、下に書いた項目を提携先に渡します。診断の点数や、入力した年収・頭金は渡しません。</li>
+<li><b>{esc(referral_mod.fee_line(ps))}</b>{fee_more}</li>
+</ul>
+
+<h2>流れ</h2>
+<ol class="flow">
+<li>このフォームを送る</li>
+<li>提携先から、メールか電話で連絡が来る</li>
+<li>提携先と相談する。物件探しや内見に進むかは、ご自身で決めてください</li>
+<li>購入を頼む場合は、提携先と媒介契約を結ぶ</li>
+</ol>
+
+<h2 id="form">申込み</h2>
+{err_html}
+<form class="sform" method="post" action="/soudan/send">
+<input type="hidden" name="from" value="{esc(v.get("from", ""))}">
+<div class="hp" aria-hidden="true"><label>ウェブサイト<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+{where}
+{warn_area}
+{choose}
+<label>いまの状況</label>
+{stage_html}
+<label>ほかの不動産会社とのやりとり</label>
+{other_html}
+<p class="stop" id="stopOther">ほかの会社で申込みや契約に進んでいる物件は、ご案内できません。
+進めている会社とのやりとりを、そのまま続けてください。</p>
+<label>時期</label>
+<select name="when">{when_html}</select>
+<label>お名前</label><input type="text" name="name" value="{esc(v.get("name", ""))}" autocomplete="name">
+<label>メールアドレス</label><input type="email" name="email" value="{esc(v.get("email", ""))}" autocomplete="email">
+<label>電話番号<span class="hint">任意</span></label><input type="tel" name="tel" value="{esc(v.get("tel", ""))}" autocomplete="tel">
+<label>相談したいこと<span class="hint">任意</span></label>
+<textarea name="note" rows="4" placeholder="予算、広さ、通勤先、気になっている点など">{esc(v.get("note", ""))}</textarea>
+<div class="agree"><label><input type="checkbox" name="agree" id="agree">
+ 上の項目（お名前・連絡先・物件または地域・状況・時期・相談したいこと）を、
+ <b>{esc(names)}</b>に提供することに同意します。診断の点数や入力した年収などは渡しません。
+ <a href="/privacy">プライバシーポリシー</a></label></div>
+<button type="submit" id="send" disabled>提携の不動産会社に相談を申し込む</button>
+</form>
+""" + _SOUDAN_JS.replace("OUT_OF_AREA", "true" if out_of_area else "false")
+
+
+def _soudan_page(body: str, done: bool = False):
+    area = referral_mod.area_label()
+    if done:
+        return _legal_page("お申込みを受け付けました",
+                           "<style>" + _SOUDAN_CSS + "</style>" + body)
+    return _legal_page(
+        f"物件探し・購入の相談（{area}）",
+        "<style>" + _SOUDAN_CSS + "</style>" + body, path="/soudan",
+        desc=(f"{area}で物件探しや購入の相談を希望される方に、提携の不動産会社を"
+              "ご案内します。HOME INDEX は物件を売らず、仲介もしません。診断の点数は"
+              "提携と関係なく同じ計算です。"))
+
+
+@app.route("/soudan", methods=["GET", "POST"])
+def soudan():
+    """相談の窓口。提携先が設定されていなければ、ページごと無い。
+
+    POST は診断の結果から来たとき（物件の住所を引き継ぐ）。住所をURLに
+    載せないために POST で受ける。
+    """
+    if not referral_mod.enabled():
+        from flask import abort
+        abort(404)
+    _seen("view_soudan")
+    if request.method == "POST":
+        f = request.form
+        v = {"address": (f.get("address") or "").strip()[:120],
+             "kind": f.get("kind", ""),
+             "from": "result" if f.get("from") == "result" else "page"}
+        if v["from"] == "result":
+            metrics.bump("soudan_from_result")
+    else:
+        v = {"from": "lp" if request.args.get("from") == "lp" else "page"}
+    return _soudan_page(_soudan_body(v))
+
+
+@app.route("/soudan/send", methods=["POST"])
+def soudan_send():
+    if not referral_mod.enabled():
+        from flask import abort
+        abort(404)
+    f = request.form
+    if not _soudan_rate_ok(_client_ip()):
+        return _soudan_page(_soudan_body(dict(f), [
+            "本日の受付の上限に達しました。明日以降にお申し込みください。"]))
+    r, errs = referral_mod.validate(f)
+    if errs:
+        return _soudan_page(_soudan_body(dict(f), errs))
+    p = r["partner"]
+    ok, why = mailer.send(referral_mod.notify_address(p), referral_mod.subject(r),
+                          referral_mod.mail_html(r), referral_mod.mail_text(r))
+    if not ok:
+        # 個人の情報はログに出さない。
+        print(f"[referral] 提携先 {p['key']} への送信に失敗: {why}")
+        return _soudan_page(_soudan_body(dict(f), [
+            "申込みを送れませんでした。時間をおいて、もう一度お試しください。"]))
+    # 運営者にも同じものを控えとして送る（届いたかを確かめるため）。
+    if "@" in CONTACT:
+        mailer.send(CONTACT, "［控え］" + referral_mod.subject(r),
+                    referral_mod.mail_html(r), referral_mod.mail_text(r))
+    referral_mod.store(r)
+    metrics.bump("soudan_sent")
+    esc = html.escape
+    rows = "".join(f"<tr><th>{esc(k)}</th><td>{esc(val)}</td></tr>"
+                   for k, val in referral_mod.shared_rows(r))
+    note = p.get("contact_note") or "提携先から、メールか電話でご連絡します。"
+    body = f"""
+<p><b>{esc(p["name"])}</b>にお申込みを送りました。{esc(note)}</p>
+<h2>提携先に渡した内容</h2>
+<table>{rows}</table>
+<p class="sub">診断の点数、入力した年収・頭金は渡していません。
+連絡が来ない場合や、申込みを取り消したい場合は、{esc(CONTACT)} までご連絡ください。</p>
+<p><a href="/">トップへ戻る</a></p>
+"""
+    return _soudan_page(body, done=True)
 
 
 @app.route("/terms")
@@ -3833,7 +4182,7 @@ def index():
     """トップページ。サービスの説明を置き、診断（/buy）へ送る。"""
     _seen("view_lp")
     base = request.url_root.rstrip("/")
-    return LP.replace("CANONICAL_URL", base + "/")
+    return _lp_now().replace("CANONICAL_URL", base + "/")
 
 
 @app.route("/buy")
@@ -6586,6 +6935,7 @@ HH_RESULT_PLACEHOLDER
  </div>
  {% endif %}
 
+ {{ referral_block(s.address, "land") }}
  {% if warnings %}
  <div class="card">
   <h2>データについて</h2>

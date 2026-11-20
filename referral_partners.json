@@ -1,0 +1,15 @@
+{
+  "_note": "提携の不動産会社。partners が空、または会社名・免許番号・通知先のどれかが欠けている提携先しか無いときは、窓口は一切出ない。通知先のメールアドレスはここに書かず、notify_env に書いた名前の環境変数（Renderの Environment）に入れる。relation は運営者との関係（勤務先など）があれば書く。画面にそのまま出る。referral_fee は紹介料を受け取るなら true にする。窓口に『紹介料を受け取ることがあります』と出る。",
+  "_example": {
+    "key": "partner_a",
+    "name": "株式会社〇〇不動産",
+    "license": "神奈川県知事（1）第00000号",
+    "areas": ["東京都", "神奈川県"],
+    "handles": "中古戸建・マンション・土地",
+    "contact_note": "お申込みから2営業日以内に、メールか電話でご連絡します",
+    "notify_env": "PARTNER_A_EMAIL",
+    "relation": "",
+    "referral_fee": false
+  },
+  "partners": []
+}
