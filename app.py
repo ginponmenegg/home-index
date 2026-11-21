@@ -1796,7 +1796,7 @@ RESULT = """
 <meta name="viewport" content="width=device-width,initial-scale=1">
 FONT_LINK_PLACEHOLDER
 {% if sample %}<title>見本の診断結果（中古戸建）｜HOME INDEX</title>
-<meta name="description" content="実在の住所で公的データを引いた見本の診断結果です。100点の内訳、推定価格レンジ、災害リスク、返済額の出し方と出典を、入力せずにそのまま見られます。">
+<meta name="description" content="実在の住所で公的データを引いた見本の診断結果です。100点の内訳、成約事例の価格帯、災害リスク、返済額の出し方と出典を、入力せずにそのまま見られます。">
 <link rel="canonical" href="{{ request.url_root.rstrip('/') }}/sample">
 {% else %}<title>HOME INDEX｜{{s.address}}</title>{% endif %}
 <style>
@@ -2068,7 +2068,7 @@ BRAND_BAR
   <div class="banner">
    <b>PRO診断：情報充足度 {{pro.free_suff}}% → {{pro.suff}}%</b>
    （総合 {{pro.free_total}}点 → {{pro.total}}点／{{"%+d"|format(pro.diff)}}点）<br>
-   <span class="muted">点数が動いたのは、無料診断では評価に入れていなかった項目に回答があったためです。推定価格レンジは無料診断と同じ計算です。</span>
+   <span class="muted">点数が動いたのは、無料診断では評価に入れていなかった項目に回答があったためです。成約事例の価格帯は無料診断と同じ計算です。</span>
   </div>
  </div>
  {% endif %}
@@ -2085,7 +2085,7 @@ BRAND_BAR
    <p style="margin:4px 0"><span class="verdict {{p.vclass}}">{{p.verdict}}</span>
      <span class="muted">（中央値比 {{p.dev}}%）</span></p>
    <p style="font-size:22px;font-weight:700;margin:8px 0">
-     推定 {{p.low}} 〜 {{p.high}}<span class="muted" style="font-size:14px">（中央値 {{p.mid}}）</span></p>
+     <span style="font-size:13px;font-weight:400">成約事例の価格帯</span> {{p.low}} 〜 {{p.high}}<span class="muted" style="font-size:14px">（中央値 {{p.mid}}）</span></p>
    <p class="muted">推定の確かさ <b>{{p.conf}}</b> ・ 参考にした成約 {{p.count}}件 ・ 価格のばらつき {{p.disp}}%<br>
      1㎡あたりの中央値　建物 {{p.ub}}　土地 {{p.ul}}</p>
    {% if p.same %}
@@ -2104,7 +2104,7 @@ BRAND_BAR
    {% endif %}
    {% if p.comps %}
    <div class="tablewrap">
-   <table><tr><th>町名</th><th>築年</th><th>土地/建物</th><th>成約</th><th>類似</th><th>→推定</th></tr>
+   <table><tr><th>町名</th><th>築年</th><th>土地/建物</th><th>成約</th><th>類似</th><th>→この物件に換算</th></tr>
     {% for c in p.comps %}<tr><td>{{c.d}}</td><td>{{c.y}}</td><td>{{c.l}}/{{c.b}}㎡</td>
      <td>{{c.price}}</td><td>{{c.sim}}</td><td>{{c.est}}</td></tr>{% endfor %}</table>
    </div>
@@ -2147,7 +2147,7 @@ HH_RESULT_PLACEHOLDER
      <thead><tr><th></th><th>無料</th><th>PRO</th></tr></thead>
      <tbody>
       {# 2026-10-23。PROで実際に出るものを並べる。行は短く、例は小さく添える。 #}
-      <tr><th>採点・推定価格レンジ<span class="pcs">計算は無料もPROも同じ</span></th>
+      <tr><th>採点・成約事例の価格帯<span class="pcs">計算は無料もPROも同じ</span></th>
        <td class="free">○</td><td>○</td></tr>
       <tr><th>内見・書類の答えを点数に反映<span class="pcs">{% if pc_kind == 'mansion' %}修繕の履歴・管理・滞納・専有部の状態など{% else %}雨漏り・シロアリ・設備・境界・越境など{% endif %}</span></th>
        <td class="free">—</td><td>○</td></tr>
@@ -2328,7 +2328,7 @@ HH_RESULT_PLACEHOLDER
  <div class="card">
   <h2>この診断が見ているもの</h2>
   <ul class="seen">
-   <li><b>価格</b><span>近隣の実際の取引価格から推定レンジを出し、割安・適正・割高を判定</span></li>
+   <li><b>価格</b><span>近隣の実際の取引価格から価格帯を出し、割安・適正・割高を判定</span></li>
    <li><b>防災</b><span>洪水・土砂災害・津波・高潮の指定区域と用途地域を確認</span></li>
    <li><b>資金</b><span>年収と頭金から月々の返済額と返済負担率を試算</span></li>
   </ul>
@@ -2340,7 +2340,7 @@ HH_RESULT_PLACEHOLDER
  {% if warnings %}<p class="foot">{% for w in warnings %}・{{w}}<br>{% endfor %}</p>{% endif %}
  <div class="foot" style="background:#f9fafb;border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:8px">
   <b>免責</b>：本サービスはAIと公的データにもとづく<b>参考情報</b>であり、不動産の価値・適法性・
-  再建築可否・取引の可否を保証するものではありません。推定価格は類似事例からの目安で、
+  再建築可否・取引の可否を保証するものではありません。成約事例の価格帯は類似事例からの目安で、
   実際の価格・契約条件・重要事項は、宅地建物取引士など有資格の専門家の確認を前提としてください。
   掲載データは取得時点のもので、最新性・正確性を保証しません。
  </div>
@@ -3013,7 +3013,7 @@ LP_MENU_PLACEHOLDER
           <p class="verdict">総合判定：条件を詰めれば買ってよい水準</p>
 
           <div class="rangefig">
-            <svg viewBox="0 0 620 92" role="img" aria-label="推定価格レンジ3,140万円から3,600万円に対し、提示価格3,500万円はレンジ内の上寄り。中央値は3,380万円。">
+            <svg viewBox="0 0 620 92" role="img" aria-label="成約事例の価格帯3,140万円から3,600万円に対し、提示価格3,500万円はレンジ内の上寄り。中央値は3,380万円。">
               <rect class="r-band" x="120" y="44" width="380" height="14" rx="7"/>
               <line class="r-axis" x1="30" y1="51" x2="590" y2="51" stroke-width="1"/>
               <line class="r-cap" x1="120" y1="38" x2="120" y2="64" stroke-width="1"/>
@@ -3039,7 +3039,7 @@ LP_MENU_PLACEHOLDER
 
           <div class="facts">
             <div class="fact">
-              <div class="k">推定価格レンジ</div>
+              <div class="k">成約事例の価格帯</div>
               <div class="v good">3,140–3,600<span class="u">万円</span></div>
               <div class="n">近隣の成約6件から復元</div>
             </div>
@@ -3617,7 +3617,7 @@ _TERMS_BODY = ("""
 利用者と提携先との間のものであり、運営者はその当事者になりません。提携の有無は、
 診断の点数に影響しません。</p>
 <h2>第2条（参考情報であること・免責）</h2>
-<p>本サービスの診断結果（推定価格・スコア・防災/人口情報等）は、AIと公的データによる
+<p>本サービスの診断結果（成約事例の価格帯・スコア・防災/人口情報等）は、AIと公的データによる
 <b>目安・参考情報</b>であり、物件の価値・適法性・再建築可否・取引の可否・安全性を保証するものでは
 ありません。掲載データは取得時点のもので、最新性・正確性・完全性を保証しません。
 実際の購入判断・契約・重要事項の確認は、宅地建物取引士など有資格の専門家および現地確認を
@@ -5806,7 +5806,7 @@ BRAND_BAR
       <option value="0" {{'selected' if not v.reno else ''}}>リフォームなし／不明</option>
       <option value="1" {{'selected' if v.reno else ''}}>リフォーム済み</option>
      </select>
-     <div class="hint">築15年以上のリフォーム済みは、推定価格と資産性を調整します（内容は見ていません）</div></div>
+     <div class="hint">築15年以上のリフォーム済みは、価格帯と資産性を調整します（内容は見ていません）</div></div>
     <div><label>頭金（万円・任意）</label>
      <input name="down" value="{{v.down}}" placeholder="例）500"></div>
    </div>
@@ -6148,7 +6148,7 @@ BRAND_BAR
 
  <div class="banner">
   <b>土地の価格は点数に入れていません。</b>土地の㎡単価はばらつきが大きく
-  （実測で中央値の±40〜55%）、推定価格を1本の数字で出せる精度がありません。
+  （実測で中央値の±40〜55%）、価格を1本の数字で出せる精度がありません。
   近隣でいくらで売買されているかの分布をそのままお見せします。
  </div>
 
@@ -8243,7 +8243,7 @@ BRAND_BAR
  {{ diag_intro("pro_buy") }}
  TRIAL_BANNER_PLACEHOLDER
  <div class="banner">
-  <b>推定価格レンジは無料診断と同じ計算です。</b>ここで入力していただく建物の状態や
+  <b>成約事例の価格帯は無料診断と同じ計算です。</b>ここで入力していただく建物の状態や
   リフォームの内容は、<b>物件評価とリスクにのみ</b>反映し、価格の推定には使いません。
  </div>
 
@@ -8656,7 +8656,7 @@ BRAND_BAR
  {{ diag_intro("pro_mansion") }}
  TRIAL_BANNER_PLACEHOLDER
  <div class="banner">
-  <b>推定価格レンジは無料診断と同じ計算です。</b>ここで入力していただく内容は、
+  <b>成約事例の価格帯は無料診断と同じ計算です。</b>ここで入力していただく内容は、
   <b>管理・資産性・リスクにのみ</b>反映し、価格の推定には使いません。
  </div>
 
@@ -9657,7 +9657,7 @@ SAVED_DETAIL = """
      （中央値比 {{ '%+.1f'|format(p.price.dev) if p.price.dev is not none else '—' }}%
       ・類似{{ p.price.count }}件）{% else %}判定不可（類似成約が不足）{% endif %}</td></tr>
    {% if p.price and p.price.mid %}
-   <tr><th class="rowlbl">推定価格の中央値</th><td>{{ man(p.price.mid) }}</td></tr>
+   <tr><th class="rowlbl">価格帯の中央値</th><td>{{ man(p.price.mid) }}</td></tr>
    {% endif %}
    {% if p.loan %}
    <tr><th class="rowlbl">月々の返済</th><td>{{ '{:,}'.format(p.loan.monthly) }}円</td></tr>
@@ -10058,7 +10058,7 @@ def compare_rows(items):
             dev = pr.get("dev")
             price.append((f'{pr["verdict"]}（{_fmt_pct(dev)}）', dev))
     rows.append(mk("価格の妥当性", price, "min",
-                   "推定価格に対する差。マイナスが割安。"))
+                   "価格帯の中央値に対する差。マイナスが割安。"))
 
     rows.append(mk("月々の返済", [
         ((f'{(p.get("loan") or {}).get("monthly"):,}円'
@@ -11615,10 +11615,10 @@ _PRO_HUB_BODY = (
               [("/mypage", "保存した診断"), ("/compare", "物件を比べる")])
        if db.enabled() else "")
     + '</div>'
-    + _fcard("yen", "推定価格の計算は、無料版と同じです",
+    + _fcard("yen", "価格帯の計算は、無料版と同じです",
              "PROで入力していただく内容は、<b>物件の評価とリスクにだけ</b>反映します。"
-             "推定価格レンジの計算には渡していません。同じ物件なら、無料でもPROでも"
-             "推定価格は同じ数字になります。")
+             "成約事例の価格帯の計算には渡していません。同じ物件なら、無料でもPROでも"
+             "価格帯は同じ数字になります。")
 )
 
 

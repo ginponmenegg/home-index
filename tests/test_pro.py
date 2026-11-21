@@ -145,7 +145,7 @@ def test_buyer_profile_is_optional():
 def test_comment_says_the_price_is_unchanged():
     """利用者に対しても、価格は無料と同じ計算だと明示する。"""
     pro = apply_pro(_free(), _clean(), _subject())
-    assert "推定価格レンジは無料診断と同じ計算" in pro.comment
+    assert "成約事例の価格帯は無料診断と同じ計算" in pro.comment
 
 
 # ---- 無料診断からPROへの引き継ぎ（画面をまたぐのでFlaskのテストクライアントで）----

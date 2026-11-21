@@ -32,7 +32,7 @@ def test_the_hub_exists_and_reaches_every_tool():
 def test_the_hub_repeats_that_pro_does_not_move_the_price():
     """PROの入力は物件評価とリスクにだけ渡す。ここを曖昧にしない。"""
     h = _client().get("/pro").get_data(as_text=True)
-    assert "推定価格" in h
+    assert "価格帯" in h
     assert "無料版と同じ" in h or "同じ数字" in h
 
 

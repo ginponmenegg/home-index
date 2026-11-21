@@ -194,9 +194,9 @@ def analyze_price(subj: SubjectProperty, comparables: List[Comparable],
 
     note = (f"類似成約 {n} 件（外れ値除外 {trimmed} 件）・平均類似度 {avg_sim:.2f}"
             f"・レンジ幅 {dispersion}%。"
-            "推定適正価格は絶対値ではなく、類似事例からの推定レンジです。")
+            "価格帯は絶対値ではなく、類似事例から見た目安です。")
     if reno_applied:
-        note += (f" リフォーム済みのため推定価格に+{int(RENO_PREMIUM*100)}%"
+        note += (f" リフォーム済みのため価格帯に+{int(RENO_PREMIUM*100)}%"
                  "を加味（無料版は有無のみ・内容は未評価）。")
     if n < min_count:
         note += f" 件数が少ない({n}<{min_count})ため参考値として扱ってください。"

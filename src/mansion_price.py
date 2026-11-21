@@ -268,13 +268,13 @@ def analyze_mansion_price(subj: MansionSubject, comparables: List[Comparable],
 
     note = (f"マンション成約 {n} 件（外れ値除外 {trimmed} 件）・平均類似度 {avg_sim:.2f}"
             f"・レンジ幅 {dispersion}%。専有面積㎡単価の中央値から推定しています。"
-            "推定適正価格は絶対値ではなく、類似事例からの推定レンジです。")
+            "価格帯は絶対値ではなく、類似事例から見た目安です。")
     if n < min_count:
         note += f" 件数が少ない({n}<{min_count})ため参考値として扱ってください。"
     if dispersion is not None and dispersion > 60:
         note += " レンジ幅が広く、階数・向き・管理状態などのばらつきが大きい可能性があります。"
     if reno_applied:
-        note += (f" リフォーム済みのため推定価格に+{int(RENO_PREMIUM * 100)}%"
+        note += (f" リフォーム済みのため価格帯に+{int(RENO_PREMIUM * 100)}%"
                  "を上乗せしています（内容は未評価）。")
 
     pa = PriceAnalysis(low, mid, high, verdict, deviation, conf, n, note,

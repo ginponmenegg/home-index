@@ -582,6 +582,25 @@ def test_the_control_area_article_uses_the_layer_the_diagnosis_reads():
         {"area_classification_ja": "市街化調整区域"}) == "市街化調整区域"
 
 
+def test_no_page_uses_appraisal_words():
+    """鑑定評価と紛れる言い方を、画面にも出さない（2026-11-21）。
+
+    記事だけでなく、結果・規約・PRO・トップでも「推定価格」「適正価格」は
+    使わず、「成約事例の価格帯」と書く。規約の「査定・鑑定を行うものでは
+    なく」は、しないことの宣言なので残す。
+    """
+    import app as webapp
+    c = webapp.app.test_client()
+    for url in ("/", "/pro", "/terms", "/privacy", "/about", "/buy", "/mansion",
+                "/land", "/guide"):
+        h = c.get(url).get_data(as_text=True)
+        for word in ("推定価格", "適正価格"):
+            assert word not in h, f"{url} に「{word}」が出ている"
+    for word in ("推定価格", "適正価格"):
+        assert word not in webapp.RESULT, word
+        assert word not in webapp.LAND_RESULT, word
+
+
 def test_no_guide_talks_about_the_price_estimate():
     """鑑定評価の法的な整理が済むまで、価格の根拠は記事にしない。"""
     for g in guides.GUIDES:

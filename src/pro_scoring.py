@@ -434,7 +434,7 @@ def apply_pro(diagnosis: Diagnosis, detail: ProDetail,
     comment = (f"総合 {total}点 / {grade_of(total)}。情報充足度 {suff}%"
                f"（無料診断では {diagnosis.data_sufficiency}%）。"
                "PROで追加された情報は物件評価とリスクにのみ反映しており、"
-               "推定価格レンジは無料診断と同じ計算です。"
+               "成約事例の価格帯は無料診断と同じ計算です。"
                "スコアはルール計算であり、未回答の項目は反映していません。"
                "最終判断は現地・専門家確認を前提としてください。")
 
