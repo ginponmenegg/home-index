@@ -92,12 +92,15 @@ def test_the_repository_partner_waits_for_its_notify_address(off):
     assert not referral.enabled()
 
 
-def test_the_partner_is_the_operators_employer_and_says_so():
-    """提携先が運営者の勤務先であることを、設定に書いてある。"""
+def test_the_partner_is_the_operators_company_and_about_says_so():
+    """提携先が運営者の所属する会社であることを、設定に書いてある。
+
+    窓口の枠と /soudan の会社情報には関係を出さない（relation は空）。
+    関係は /about の「相談の窓口について」で書く。"""
     p = [x for x in _repo_partners() if x["key"] == "citycreation"][0]
     assert p["name"] == "株式会社シティクリエイション"
     assert p["license"] == "神奈川県知事（2）第029987号"
-    assert p["operator_employer"] is True and p["relation"]
+    assert p["operator_employer"] is True and p["relation"] == ""
 
 
 def test_without_a_partner_the_promise_stays_as_it_was(off):
@@ -311,8 +314,8 @@ def test_about_says_the_partner_is_the_employer(on, monkeypatch):
     monkeypatch.setattr(webapp, "operator_named", lambda: True)
     h = _client().get("/about").get_data(as_text=True)
     assert "相談の窓口について" in h
-    assert "見本不動産株式会社に在籍しています" in h
-    assert "窓口の提携先は勤務先です" in h
+    assert "見本不動産株式会社に所属しています" in h
+    assert "窓口の提携先は所属する会社です" in h
     assert "勤務先とは関係のない" not in h
     assert "PLACEHOLDER" not in h
 

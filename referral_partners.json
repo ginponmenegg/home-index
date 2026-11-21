@@ -27,7 +27,7 @@
       "handles": "中古戸建・マンション・土地",
       "contact_note": "",
       "notify_env": "PARTNER_CITYC_EMAIL",
-      "relation": "運営者が在籍する会社です",
+      "relation": "",
       "operator_employer": true,
       "referral_fee": false,
       "_source": "https://www.city-c.net/company/（2026-11-21 確認。商号・免許番号）"
