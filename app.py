@@ -2459,8 +2459,8 @@ LP = """<!doctype html><html lang="ja"><head>
 <link rel="canonical" href="CANONICAL_URL">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="HOME INDEX">
-<meta property="og:title" content="この家、かっていい？｜中古戸建を無料で100点診断 HOME INDEX">
-<meta property="og:description" content="気になる中古戸建の価格・災害リスク・住宅ローン返済を、国土交通省の成約データなど公的データから100点で採点します。会員登録不要・無料。物件は売りません。">
+<meta property="og:title" content="この家、かっていい？｜戸建・マンション・土地を無料で100点診断 HOME INDEX">
+<meta property="og:description" content="気になる戸建・マンション・土地の価格・災害リスク・住宅ローン返済を、国土交通省の成約データなど公的データから100点で採点します。会員登録不要・無料。物件は売りません。">
 <meta property="og:url" content="CANONICAL_URL">
 <meta property="og:image" content="CANONICAL_URLstatic/ogp.png?v=1">
 <meta property="og:image:width" content="1200">
@@ -2469,8 +2469,12 @@ LP = """<!doctype html><html lang="ja"><head>
 <script type="application/ld+json">
 {"@context":"https://schema.org","@graph":[
 {"@type":"Organization","@id":"CANONICAL_URL#org","name":"HOME INDEX","url":"CANONICAL_URL",
- "logo":"CANONICAL_URLstatic/icon-180.png"},
+ "alternateName":["HOMEINDEX","ホームインデックス","ホーム インデックス"],
+ "logo":"CANONICAL_URLstatic/icon-180.png",
+ "sameAs":["https://www.instagram.com/home_index_/","https://www.tiktok.com/@home_index",
+           "https://www.threads.com/@home_index_"]},
 {"@type":"WebSite","@id":"CANONICAL_URL#site","name":"HOME INDEX","url":"CANONICAL_URL",
+ "alternateName":["HOMEINDEX","ホームインデックス","ホーム インデックス"],
  "inLanguage":"ja","publisher":{"@id":"CANONICAL_URL#org"}},
 {"@type":"WebApplication","name":"HOME INDEX 購入診断","url":"CANONICAL_URLbuy",
  "applicationCategory":"FinanceApplication","operatingSystem":"Web","inLanguage":"ja",
@@ -2591,6 +2595,10 @@ a{color:inherit}
   font-size:clamp(26px,7.9vw,58px); letter-spacing:-.02em; line-height:1.18;
   white-space:nowrap; margin:0 0 14px;
 }
+.hero h1 .h1-sub{display:block; margin-top:12px; white-space:normal;
+  font-size:clamp(12px,3.3vw,15px); font-weight:700; letter-spacing:.04em;
+  line-height:1.6; color:var(--paper-dim)}
+.hero h1 .h1-sub .nw{white-space:nowrap}
 .hero .tag{
   font-family:"Zen Old Mincho",serif; font-weight:600;
   font-size:clamp(16px,4.2vw,22px); letter-spacing:.02em;
@@ -2898,7 +2906,9 @@ LP_MENU_PLACEHOLDER
   <span class="pin-label" aria-hidden="true">検討中の物件</span>
   <div class="wrap">
     <p class="eyebrow">住宅購入 セカンドオピニオン</p>
-    <h1>この家、かっていい？</h1>
+    <!-- h1 にカテゴリ語とブランドの読みを入れる（2026-11-21）。キャッチだけだと、
+         Google にとって何のサイトか分からず、トップの表示が90日で0回だった。 -->
+    <h1>この家、かっていい？<span class="h1-sub"><span class="nw">住宅購入の無料診断ツール</span> <span class="nw">HOME INDEX（ホームインデックス）</span></span></h1>
     <p class="tag">買う前に、<em>データで答え合わせ。</em></p>
     <!-- 不安の列挙は下のチェックリストが、中立性は結果サンプル直後の帯が
          それぞれ担っている。ここは問いを1つと、何をするのかだけに絞る。 -->
@@ -4514,7 +4524,12 @@ def guide_page(slug):
               '</a>'
             + (f'　・　<a href="{g.cta2_href}">{html.escape(g.cta2_text)}</a>'
                if getattr(g, "cta2_href", "") else "")
-            + '</p></div>'
+            + '</p>'
+            # 記事の評価をトップへ流す（2026-11-21）。トップへのリンクが文中に
+            # 無く、トップは検索での表示が90日で0回だった。言葉でつなぐ。
+            '<p>HOME INDEX（ホームインデックス）は、戸建・マンション・土地を'
+            '購入前に公的データで100点採点する、<a href="/">住宅購入の無料'
+            '診断ツール</a>です。</p></div>'
             + _share_row(base, g))
     return _guide_shell(g.title, g.description, f"/guide/{g.slug}", head, body,
                         og=_guide_og(base, g))
