@@ -3751,9 +3751,7 @@ _ABOUT_BODY = ("""
 <h2>運営責任者</h2>
 <p><b>""" + OPERATOR + """</b><br>
 宅地建物取引士。住宅の売買仲介に従事しています。</p>
-<p>宅地建物取引業者に在籍しておりますが、<b>本サービスは勤務先とは関係のない、
-個人による運営</b>です。勤務先の業務として行うものではなく、勤務先が保有する
-情報を利用したものでもありません。</p>
+ABOUT_EMPLOYER_PLACEHOLDER
 
 <h2>開発の経緯</h2>
 <p>売買仲介の実務において、購入を検討される方が手にできる判断材料は
@@ -3765,7 +3763,7 @@ _ABOUT_BODY = ("""
 <p>本サービスは、その隔たりを公的データによって埋めることを目的として
 開発しました。</p>
 
-<h2>本サービスが行わないこと</h2>
+ABOUT_WINDOW_PLACEHOLDER<h2>本サービスが行わないこと</h2>
 <ul>
 <li><b>不動産の仲介・媒介は行いません。</b></li>
 ABOUT_REF_PLACEHOLDER
@@ -3813,9 +3811,7 @@ def about():
     on = referral_mod.enabled()
     return _legal_page(
         "運営者について",
-        _ABOUT_BODY.replace("ABOUT_REF_PLACEHOLDER",
-                            _about_ref_on() if on else _ABOUT_REF_OFF)
-        + _ABOUT_JSONLD, path="/about",
+        _fill(_ABOUT_BODY, _about_parts(on)) + _ABOUT_JSONLD, path="/about",
         desc=("HOME INDEX の運営者です。宅地建物取引士が個人で運営して"
               "います。物件は売らず、仲介もしません。診断は中立です。" if on else
               "HOME INDEX の運営者です。宅地建物取引士が個人で運営して"
@@ -3826,6 +3822,40 @@ def about():
 # 本人が申し込むまで渡さない約束に書き換える。
 _ABOUT_REF_OFF = ("<li><b>仲介手数料・紹介料は一切受け取りません。</b>特定の物件、事業者、\n"
                   " 金融機関へ誘導することもありません。</li>")
+
+
+# 運営者の勤務先と、窓口の提携先の関係（2026-11-21）。提携先が勤務先なら、
+# 診断が勤務先から独立していることと、窓口の提携先は勤務先であることを、
+# 分けて書く。伏せると「勤務先とは関係のない」が事実でなくなる。
+_ABOUT_EMPLOYER_OFF = (
+    "<p>宅地建物取引業者に在籍しておりますが、<b>本サービスは勤務先とは関係のない、\n"
+    "個人による運営</b>です。勤務先の業務として行うものではなく、勤務先が保有する\n"
+    "情報を利用したものでもありません。</p>")
+_ABOUT_EMPLOYER_ON = (
+    "<p>宅地建物取引業者に在籍しておりますが、<b>診断は、勤務先の業務としてではなく、\n"
+    "個人で運営しています。</b>勤務先が保有する情報も使っていません。ただし、相談の\n"
+    "窓口の提携先は勤務先です（下記）。</p>")
+
+
+def _about_parts(on: bool) -> dict:
+    emp = [p for p in referral_mod.partners() if p.get("operator_employer")] if on else []
+    window = ""
+    if emp:
+        names = "、".join(html.escape(p["name"]) for p in emp)
+        window = ("<h2>相談の窓口について</h2>\n"
+                  f"<p>運営者は、宅地建物取引士として{names}に在籍しています。"
+                  "HOME INDEX の<a href=\"/soudan\">相談の窓口</a>でご案内している"
+                  "提携先は、この会社です。</p>\n"
+                  "<p>診断は、会社の業務とは切り離して個人で運営しています。採点の"
+                  "ルールは公開しているとおりで、提携先の物件だからといって点数を"
+                  "上げることはありません。会社が保有する情報も使っていません。</p>\n"
+                  "<p>提携先をご案内するのは、物件探しや購入の相談を希望され、"
+                  "ご本人が申し込まれた場合だけです。</p>\n\n")
+    return {
+        "ABOUT_EMPLOYER_PLACEHOLDER": _ABOUT_EMPLOYER_ON if emp else _ABOUT_EMPLOYER_OFF,
+        "ABOUT_WINDOW_PLACEHOLDER": window,
+        "ABOUT_REF_PLACEHOLDER": _about_ref_on() if on else _ABOUT_REF_OFF,
+    }
 
 
 def _about_ref_on() -> str:

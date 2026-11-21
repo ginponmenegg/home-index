@@ -72,15 +72,35 @@ def test_the_scoring_code_does_not_know_the_partners():
 
 # ---- 提携先が無いとき --------------------------------------------------------
 
-def test_no_partner_in_the_repository_means_no_window():
-    """リポジトリの設定は空。会社名が決まるまで、窓口は出ない。"""
-    from src import referral
+def _repo_partners():
     with open(os.path.join(ROOT, "referral_partners.json"), encoding="utf-8") as f:
-        assert json.load(f)["partners"] == []
+        return json.load(f)["partners"]
+
+
+@pytest.fixture
+def off(monkeypatch):
+    """リポジトリの設定のまま、通知先の環境変数だけが無い状態。"""
+    for p in _repo_partners():
+        monkeypatch.delenv(p["notify_env"], raising=False)
+
+
+def test_the_repository_partner_waits_for_its_notify_address(off):
+    """会社名と免許番号は設定済み。通知先を本番の環境変数に入れるまで出ない。"""
+    from src import referral
+    ps = _repo_partners()
+    assert ps and all(p["name"] and p["license"] and p["notify_env"] for p in ps)
     assert not referral.enabled()
 
 
-def test_without_a_partner_the_promise_stays_as_it_was():
+def test_the_partner_is_the_operators_employer_and_says_so():
+    """提携先が運営者の勤務先であることを、設定に書いてある。"""
+    p = [x for x in _repo_partners() if x["key"] == "citycreation"][0]
+    assert p["name"] == "株式会社シティクリエイション"
+    assert p["license"] == "神奈川県知事（2）第029987号"
+    assert p["operator_employer"] is True and p["relation"]
+
+
+def test_without_a_partner_the_promise_stays_as_it_was(off):
     c = _client()
     lp = c.get("/").get_data(as_text=True)
     assert "物件を売らない・紹介しない" in lp
@@ -281,3 +301,36 @@ def test_the_application_is_kept_for_a_year_at_most():
     assert referral.RETENTION_DAYS == 365
     import app as webapp
     assert "1年間保存し、その後削除します" in webapp._PRIVACY_BODY
+
+
+def test_about_says_the_partner_is_the_employer(on, monkeypatch):
+    """勤務先を提携先にするなら、/about の「勤務先とは関係のない」を書き換える。"""
+    webapp, sent, conf = on
+    p = dict(PARTNER, operator_employer=True, relation="運営者が在籍する会社です")
+    conf.write_text(json.dumps({"partners": [p]}, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(webapp, "operator_named", lambda: True)
+    h = _client().get("/about").get_data(as_text=True)
+    assert "相談の窓口について" in h
+    assert "見本不動産株式会社に在籍しています" in h
+    assert "窓口の提携先は勤務先です" in h
+    assert "勤務先とは関係のない" not in h
+    assert "PLACEHOLDER" not in h
+
+
+def test_about_without_an_employer_partner_keeps_the_old_line(on, monkeypatch):
+    webapp, sent, conf = on
+    monkeypatch.setattr(webapp, "operator_named", lambda: True)
+    h = _client().get("/about").get_data(as_text=True)
+    assert "相談の窓口について" not in h
+    assert "勤務先とは関係のない" in h
+
+
+def test_the_relation_is_not_in_the_consent_box(on):
+    """関係は会社情報と結果の枠に出す。同意の欄には入れない。"""
+    webapp, sent, conf = on
+    p = dict(PARTNER, operator_employer=True, relation="運営者が在籍する会社です")
+    conf.write_text(json.dumps({"partners": [p]}, ensure_ascii=False), encoding="utf-8")
+    h = _client().get("/soudan").get_data(as_text=True)
+    agree = h[h.index('class="agree"'):h.index('id="send"')]
+    assert "運営者が在籍する会社です" not in agree
+    assert "運営者が在籍する会社です" in h
