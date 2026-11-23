@@ -60,6 +60,15 @@ EVENTS = {
     "view_soudan":  "相談の窓口を見た",
     "soudan_from_result": "結果から相談の窓口へ進んだ",
     "soudan_sent":  "提携先に相談を申し込んだ",
+    # HOME INDEX 住まいのサービス（広告、2026-11-23）。見た・本体から来た・
+    # 広告のリンクを押した。誰が押したかは数えない。
+    "view_services": "住まいのサービスを見た",
+    "services_from_result": "診断の結果から住まいのサービスへ",
+    "services_from_land": "土地の結果から住まいのサービスへ",
+    "services_from_finance": "資金計画から住まいのサービスへ",
+    "go_chumon": "注文住宅の広告を押した",
+    "go_loan": "住宅ローンの広告を押した",
+    "go_hoken": "火災保険の広告を押した",
     "diag_kodate":  "戸建の診断が出た",
     "diag_mansion": "マンションの診断が出た",
     "diag_land":    "土地の診断が出た",

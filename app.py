@@ -435,6 +435,9 @@ app.jinja_env.globals["diag_intro"] = diag_intro
 from src import referral as referral_mod
 app.jinja_env.globals["referral_block"] = lambda a, k="buy": Markup(
     referral_mod.result_block(a, k))
+# HOME INDEX 住まいのサービス（広告）への小さな導線。広告のリンクが無ければ空。
+from src import group as group_mod
+app.jinja_env.globals["group_bridge"] = lambda place: Markup(group_mod.bridge(place))
 
 
 # ---- スマホの下のタブバー（2026-11-08）----------------------------------
@@ -2336,7 +2339,7 @@ HH_RESULT_PLACEHOLDER
    取得できなかった項目は点数に反映せず、上の「要確認」に表示しています。</p>
  </div>
 
- {% if not sample %}{{ referral_block(s.address, "mansion" if pc_kind == "mansion" else "buy") }}{% endif %}
+ {% if not sample %}{{ referral_block(s.address, "mansion" if pc_kind == "mansion" else "buy") }}{{ group_bridge("result") }}{% endif %}
  {% if warnings %}<p class="foot">{% for w in warnings %}・{{w}}<br>{% endfor %}</p>{% endif %}
  <div class="foot" style="background:#f9fafb;border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:8px">
   <b>免責</b>：本サービスはAIと公的データにもとづく<b>参考情報</b>であり、不動産の価値・適法性・
@@ -3617,6 +3620,10 @@ _TERMS_BODY = ("""
 提携の不動産会社をご案内することがあります。提携先との相談・媒介契約・売買契約は
 利用者と提携先との間のものであり、運営者はその当事者になりません。提携の有無は、
 診断の点数に影響しません。</p>
+<p>「HOME INDEX 住まいのサービス」のページには、成果報酬型の広告を掲載することが
+あります。広告のリンク先のサービスは各事業者が提供するもので、運営者は保険の募集や
+住宅ローンの申込みの取り次ぎを行いません。広告の掲載と報酬は、診断の点数に影響
+しません。</p>
 <h2>第2条（参考情報であること・免責）</h2>
 <p>本サービスの診断結果（成約事例の価格帯・スコア・防災/人口情報等）は、AIと公的データによる
 <b>目安・参考情報</b>であり、物件の価値・適法性・再建築可否・取引の可否・安全性を保証するものでは
@@ -3744,6 +3751,10 @@ OpenStreetMap の Overpass API を利用します。診断のために、<b>入�
 <b>年収・頭金・他の借入・お子さまの年齢などの家計に関する入力は、外部に送信していません。</b>
 これらは当サービス内での計算にのみ用います。
 これらへの照会内容は各提供元の規約・プライバシーポリシーに従います。</p>
+<p>「HOME INDEX 住まいのサービス」のページには、成果報酬型の広告のリンクを掲載することが
+あります。リンクを押すと広告の配信事業者のサイトへ移動し、その事業者が Cookie 等で成果を
+計測します。当サービスは、どのリンクが何回押されたかの件数だけを数え、誰が押したか
+は記録しません。</p>
 """ + _ACC_MAIL + """
 <h2>6. お問い合わせ・開示等の請求</h2>
 <p>本ポリシーに関するお問い合わせ、保有個人データの開示・訂正・削除等のご請求は、
@@ -4158,6 +4169,93 @@ def soudan_send():
 <p><a href="/">トップへ戻る</a></p>
 """
     return _soudan_page(body, done=True)
+
+
+# ---- HOME INDEX 住まいのサービス（グループのページ群、2026-11-23） ----------
+# 決まりごとは src/group.py の冒頭。広告のリンクが1つも無ければ全部404。
+_GROUP_CSS_PAGE = (
+    "h2{margin-top:22px}"
+)
+
+
+def _group_page(title, body, path=None, desc=None):
+    return _legal_page(title, "<style>" + group_mod.CSS + _GROUP_CSS_PAGE + "</style>"
+                       + body, path=path, desc=desc)
+
+
+@app.route("/services")
+def services_hub():
+    if not group_mod.enabled():
+        from flask import abort
+        abort(404)
+    _seen("view_services")
+    if request.args.get("from") in ("result", "land", "finance"):
+        metrics.bump("services_from_" + request.args["from"])
+    esc = html.escape
+    cats = "".join(
+        f'<a href="/services/{c}"><b>{esc(group_mod.CATEGORIES[c]["title"])}</b>'
+        f'<span>{esc(group_mod.CATEGORIES[c]["lead"])}</span></a>'
+        for c in group_mod.categories())
+    soudan = ""
+    if referral_mod.enabled():
+        soudan = (f'<a href="/soudan?from=page"><b>住み替え・空き家・相続の相談'
+                  f'（{esc(referral_mod.area_label())}）</b><span>提携の不動産会社を'
+                  'ご案内します。広告ではなく、ご本人の申込みでつなぐ窓口です。'
+                  f'{esc(referral_mod.fee_line(referral_mod.partners()))}</span></a>')
+    body = (f'<p class="gnote"><span class="gad">広告を含みます</span>{group_mod.AD_NOTE}</p>'
+            "<p>家を買うまでと、買ったあとに要る手続きのうち、比べて選ぶものを"
+            "まとめました。何を確かめればよいかを先に書き、そのあとに見積もりや"
+            "比較のサービスを載せています。</p>"
+            f'<div class="gcats">{cats}{soudan}</div>'
+            '<p class="sub">診断（<a href="/">HOME INDEX</a>）は中立のまま、広告を'
+            '置いていません。このページの広告は、診断の点数に関係しません。</p>')
+    return _group_page(group_mod.BRAND, body, path="/services",
+                       desc=("家を買うまでと買ったあとに、比べて選ぶもの（注文住宅の依頼先・"
+                             "住宅ローン・火災保険）の確かめ方と、見積もり・比較サービスの"
+                             "広告をまとめたページです。"))
+
+
+@app.route("/services/<cat>")
+def services_category(cat):
+    if cat not in group_mod.CATEGORIES or cat not in group_mod.categories():
+        from flask import abort
+        abort(404)
+    _seen("view_services")
+    if request.args.get("from") in ("result", "land", "finance"):
+        metrics.bump("services_from_" + request.args["from"])
+    esc = html.escape
+    c = group_mod.CATEGORIES[cat]
+    checks = "".join(
+        f'<li><b>{esc(t)}</b><span>{esc(d)}</span><br>'
+        f'<a href="{esc(href)}">{esc(lt)} →</a></li>'
+        for t, d, href, lt in c["checks"])
+    cards = "".join(group_mod.offer_card(o) for o in group_mod.offers(cat))
+    body = (f'<p class="gnote"><span class="gad">広告を含みます</span>{group_mod.AD_NOTE}</p>'
+            f'<p>{esc(c["lead"])}</p>'
+            "<h2>比べる前に確かめること</h2>"
+            f'<ul class="gchk">{checks}</ul>'
+            "<h2>見積もり・比較のサービス（広告）</h2>"
+            f'<p class="sub">{esc(c["stance"])}</p>'
+            f"{cards}"
+            f'<p class="sub"><a href="/services">{group_mod.BRAND}の一覧へ</a></p>')
+    return _group_page(f'{c["title"]}｜{group_mod.BRAND}', body,
+                       path=f"/services/{cat}",
+                       desc=(c["lead"] + "確かめることと、見積もり・比較サービスの"
+                             "広告をまとめました。"))
+
+
+@app.route("/go/<key>")
+def go_offer(key):
+    """広告のリンクへ送る。件数だけ数える（誰が押したかは残さない）。"""
+    o = group_mod.offer(key)
+    if not o:
+        from flask import abort
+        abort(404)
+    metrics.bump("go_" + o["category"])
+    resp = redirect(o["url"], code=302)
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    resp.headers["Referrer-Policy"] = "no-referrer-when-downgrade"
+    return resp
 
 
 @app.route("/terms")
@@ -5009,8 +5107,17 @@ table.mx-ev thead th{{font-size:12px;color:#64748b;font-weight:600}}
 def robots():
     from flask import Response
     base = request.url_root.rstrip("/")
-    body = f"User-agent: *\nAllow: /\n\nSitemap: {base}/sitemap.xml\n"
+    # /go/ は広告のリンクへ送るだけの中継。巡回させない（2026-11-23）。
+    body = (f"User-agent: *\nAllow: /\nDisallow: /go/\n\n"
+            f"Sitemap: {base}/sitemap.xml\n")
     return Response(body, mimetype="text/plain")
+
+
+def _group_paths():
+    """住まいのサービスのページ。広告が設定されている分野だけ載せる。"""
+    if not group_mod.enabled():
+        return []
+    return ["/services"] + [f"/services/{c}" for c in group_mod.categories()]
 
 
 @app.route("/sitemap.xml")
@@ -5031,7 +5138,7 @@ def sitemap():
         f"<url><loc>{base}{p}</loc>"
         + (f"<lastmod>{mod[p]}</lastmod>" if p in mod else "")
         + "</url>"
-        for p in SITEMAP_PATHS)
+        for p in SITEMAP_PATHS + _group_paths())
     xml = ('<?xml version="1.0" encoding="UTF-8"?>'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
            f"{urls}</urlset>")
@@ -6998,7 +7105,7 @@ HH_RESULT_PLACEHOLDER
  </div>
  {% endif %}
 
- {{ referral_block(s.address, "land") }}
+ {{ referral_block(s.address, "land") }}{{ group_bridge("land") }}
  {% if warnings %}
  <div class="card">
   <h2>データについて</h2>
@@ -11532,6 +11639,7 @@ HH_RESULT_PLACEHOLDER
    本試算は物件の価格を評価するものではありません。
   </div>
  </div>
+ {{ group_bridge("finance") }}
 </div></body></html>
 """
 

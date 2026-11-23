@@ -1,0 +1,12 @@
+{
+  "_note": "HOME INDEX 住まいのサービスに載せる広告（成果報酬型・ASP）。url にASPの管理画面で発行されたリンク（https）を入れたものだけが表に出る。category は chumon（注文住宅）・loan（住宅ローン）・hoken（火災保険）のどれか。1つも url が無ければ、住まいのサービスのページも本体からの導線も出ない。name は画面に出る名前、advertiser は広告主、note は1〜2文の説明（数字や『おすすめ』『No.1』は書かない）。",
+  "_example": {
+    "key": "chumon_example",
+    "category": "chumon",
+    "name": "（サービス名）",
+    "advertiser": "（広告主の会社名）",
+    "note": "複数の会社に、間取りの提案と見積もりをまとめて請求できるサービスです。",
+    "url": ""
+  },
+  "offers": []
+}
