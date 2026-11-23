@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Optional
 import datetime
 import io
+import os
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
@@ -26,11 +27,23 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase.pdfmetrics import registerFontFamily
 from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
                                 TableStyle, KeepTogether, PageBreak, Flowable)
 
-FONT = "HeiseiKakuGo-W5"
-SERIF = "HeiseiMin-W3"
+# フォントは fonts/ の BIZ UDPゴシック・BIZ UDP明朝を埋め込む（2026-11-23）。
+# Google Fonts 配布の SIL Open Font License 1.1（fonts/OFL-*.txt）。
+# CIDフォント（埋め込まれない標準フォント）は約物の前後が空いて見えたため。
+# ファイルが無い環境では、従来のCIDフォントに戻す（PDFが作れなくならない）。
+_FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "fonts")
+_TTF = {"BIZUDPGothic": "BIZUDPGothic-Regular.ttf",
+        "BIZUDPGothic-Bold": "BIZUDPGothic-Bold.ttf",
+        "BIZUDPMincho": "BIZUDPMincho-Regular.ttf"}
+FONT = "BIZUDPGothic"
+FONT_B = "BIZUDPGothic-Bold"
+SERIF = "BIZUDPMincho"
 _registered = False
 
 # サイトの色（docs/pamphlet/pamphlet.css と app.py の変数）
@@ -54,38 +67,50 @@ SOFT = ZEBRA
 
 
 def _ensure_font():
-    global _registered
-    if not _registered:
+    global _registered, FONT, FONT_B, SERIF
+    if _registered:
+        return
+    try:
+        for name, file in _TTF.items():
+            pdfmetrics.registerFont(TTFont(name, os.path.join(_FONT_DIR, file)))
+        # <b> で太字が使えるように、同じ書体の家族として登録する
+        registerFontFamily("BIZUDPGothic", normal="BIZUDPGothic",
+                           bold="BIZUDPGothic-Bold", italic="BIZUDPGothic",
+                           boldItalic="BIZUDPGothic-Bold")
+    except Exception as e:
+        print(f"[report] 埋め込みフォントを読めません。標準フォントで作ります: {e}")
+        FONT = FONT_B = "HeiseiKakuGo-W5"
+        SERIF = "HeiseiMin-W3"
         pdfmetrics.registerFont(UnicodeCIDFont(FONT))
         pdfmetrics.registerFont(UnicodeCIDFont(SERIF))
-        _registered = True
+    _registered = True
 
 
 def _styles():
     base = dict(fontName=FONT, textColor=INK, leading=14)
-    return {
+    st = {
         "title": ParagraphStyle("t", fontName=SERIF, fontSize=18, leading=24,
                                 textColor=INK, spaceAfter=4),
         "sub": ParagraphStyle("s", fontSize=8.5, textColor=SUB, fontName=FONT,
                               leading=13, spaceAfter=6),
         "h2": ParagraphStyle("h", fontSize=11, spaceBefore=10, spaceAfter=5,
                              **base),
-        "h3": ParagraphStyle("h3", fontSize=9.5, leading=14, fontName=FONT,
+        "h3": ParagraphStyle("h3", fontSize=9.5, leading=14, fontName=FONT_B,
                              textColor=NAVY2, spaceBefore=4, spaceAfter=2),
         "body": ParagraphStyle("b", fontSize=9, **base),
         "lead": ParagraphStyle("l", fontSize=9, fontName=FONT, textColor=INK,
                                leading=15),
         "cell": ParagraphStyle("c", fontSize=8.3, fontName=FONT, textColor=INK,
                                leading=12),
-        "cellhead": ParagraphStyle("ch", fontSize=7.5, fontName=FONT,
+        "cellhead": ParagraphStyle("ch", fontSize=7.5, fontName=FONT_B,
                                    textColor=NAVY2, leading=10),
-        "cellheadr": ParagraphStyle("chr", fontSize=7.5, fontName=FONT,
+        "cellheadr": ParagraphStyle("chr", fontSize=7.5, fontName=FONT_B,
                                     textColor=NAVY2, leading=10, alignment=TA_RIGHT),
         "cellsub": ParagraphStyle("cs", fontSize=7, fontName=FONT,
                                   textColor=SUB, leading=10),
         "num": ParagraphStyle("n", fontSize=8.8, fontName=FONT, textColor=INK,
                               leading=12, alignment=TA_RIGHT),
-        "numbig": ParagraphStyle("nb", fontSize=10, fontName=FONT, textColor=INK,
+        "numbig": ParagraphStyle("nb", fontSize=10, fontName=FONT_B, textColor=INK,
                                  leading=13, alignment=TA_RIGHT),
         "note": ParagraphStyle("no", fontSize=7.5, fontName=FONT, textColor=SUB,
                                leading=11.5),
@@ -93,13 +118,18 @@ def _styles():
                                   leading=12.5),
         "cardk": ParagraphStyle("ck", fontSize=7.2, fontName=FONT, textColor=SUB,
                                 leading=10),
-        "cardv": ParagraphStyle("cv", fontSize=14, fontName=FONT, textColor=INK,
+        "cardv": ParagraphStyle("cv", fontSize=14, fontName=FONT_B, textColor=INK,
                                 leading=18),
-        "cardvs": ParagraphStyle("cvs", fontSize=11.5, fontName=FONT, textColor=INK,
+        "cardvs": ParagraphStyle("cvs", fontSize=11.5, fontName=FONT_B, textColor=INK,
                                  leading=15),
-        "qnum": ParagraphStyle("qn", fontSize=8, fontName=FONT, textColor=NAVY2,
+        "qnum": ParagraphStyle("qn", fontSize=8, fontName=FONT_B, textColor=NAVY2,
                                leading=12, alignment=TA_CENTER),
     }
+    # 日本語は語の切れ目に空白が無いので、どの文字でも折り返せるようにする
+    # （既定のままだと「※」だけが1行に残ることがあった）。
+    for v in st.values():
+        v.wordWrap = "CJK"
+    return st
 
 
 # ---- 部品 -----------------------------------------------------------------
@@ -168,10 +198,10 @@ class _Section(Flowable):
         c.setFillColor(NAVY)
         c.roundRect(0, y - 1.6 * mm, 8.5 * mm, 6.2 * mm, 1.4 * mm, stroke=0, fill=1)
         c.setFillColor(PAPER)
-        c.setFont(FONT, 7.8)
+        c.setFont(FONT_B, 7.8)
         c.drawCentredString(4.25 * mm, y, f"{self.num:02d}")
         c.setFillColor(INK)
-        c.setFont(FONT, 12)
+        c.setFont(FONT_B, 12)
         c.drawString(11.5 * mm, y - 0.3 * mm, self.title)
         c.setStrokeColor(LINE)
         c.setLineWidth(0.6)
