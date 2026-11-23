@@ -153,7 +153,8 @@ def test_the_pdf_carries_the_diagnosis_when_it_came_from_one():
     t = _pdf_text(r.data)
     assert "契約前チェック" in t, "診断から来たら契約前チェックの1冊になる"
     assert "回答・メモ" in t, "聞くことに書き込む欄がある"
-    assert "総合 81点（A）" in t and "情報充足度 68％" in t
+    # 2026-11-23 点数はカードにした（見出しと値が別の行になる）
+    assert "総合" in t and "81点（A）" in t and "情報充足度" in t and "68％" in t
     assert "築16年・木造" in t, "カテゴリの理由まで載せる"
     assert "ハザード未確認" in t
     assert "建築確認済証" in t, "仲介業者に聞くことも同じPDFに入る"
