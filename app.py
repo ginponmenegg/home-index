@@ -3494,8 +3494,9 @@ def _lp_ref_on() -> dict:
         "SOUDAN_SECTION_PLACEHOLDER": (
             '<section id="soudan">\n  <div class="wrap reveal">\n'
             '    <p class="eyebrow">相談</p>\n'
-            f'    <h2>物件探しから相談したい方へ（{area}）</h2>\n'
-            '    <p class="lead-sm">HOME INDEX は物件を売りません。物件探しや購入の'
+            f'    <h2>物件探し・住み替え・空き家や相続の相談（{area}）</h2>\n'
+            '    <p class="lead-sm">HOME INDEX は物件を売りません。物件探しや購入のほか、'
+            '今の家を売って買い替える住み替え、空き家や相続した家・土地の売却の'
             f'相談を希望される方に、{area}の物件を扱う提携の不動産会社をご案内して'
             f'います。点数は提携と関係なく、同じ計算で出します。{fee}</p>\n'
             '    <p class="fine"><a href="/soudan?from=lp">相談の窓口を見る →</a></p>\n'
@@ -3710,7 +3711,7 @@ _PRIVACY_BODY = ("""
 駅距離・種別、任意入力の世帯年収・頭金等。PROでは本人と配偶者それぞれの年収、お子さまの年齢）を処理します。あわせて、アクセスに伴う技術情報
 （IPアドレス等）を、不正利用防止・レート制限の目的で一時的に参照する場合があります。
 提携の不動産会社への相談を申し込まれた場合は、申込みフォームに入力されたお名前・
-メールアドレス・電話番号・物件または探している地域・状況・時期・相談内容を取得します。"""
+メールアドレス・電話番号・相談の種類・物件または地域・状況・時期・相談内容を取得します。"""
 + _ACC_COLLECT + """</p>
 <h2>2. 利用目的</h2>
 <p>取得した情報は、(1) 診断結果の生成・表示、(2) 本サービスの品質改善、
@@ -3932,14 +3933,19 @@ _SOUDAN_JS = """
 (function(){
  var a=document.getElementById('agree'),b=document.getElementById('send'),
      st=document.getElementById('stopOther'),out=OUT_OF_AREA;
+ var sb=document.getElementById('stageBox'),pl=document.getElementById('prefLabel');
  function upd(){
   var o=document.querySelector('input[name=other]:checked');
   var applied=!!(o&&o.value==='applied');
   st.style.display=applied?'block':'none';
   b.disabled=!a.checked||applied||out;
+  var t=document.querySelector('input[name=topic]:checked');
+  var buy=!t||t.value==='buy';
+  if(sb)sb.style.display=buy?'':'none';
+  if(pl)pl.textContent=buy?'探している都県':'家・土地のある都県';
  }
  a.addEventListener('change',upd);
- document.querySelectorAll('input[name=other]').forEach(function(r){
+ document.querySelectorAll('input[name=other],input[name=topic]').forEach(function(r){
   r.addEventListener('change',upd);});
  upd();
 })();
@@ -3981,7 +3987,7 @@ def _soudan_body(v=None, errs=None):
     else:
         opts = "".join(f'<option value="{esc(p)}"{sel("pref", p)}>{esc(p)}</option>'
                        for p in referral_mod.served_prefs())
-        where = ('<label>探している都県</label><select name="pref">'
+        where = ('<label id="prefLabel">探している都県</label><select name="pref">'
                  f'<option value="">選んでください</option>{opts}</select>'
                  '<label>市区町村<span class="hint">任意</span></label>'
                  f'<input type="text" name="area" value="{esc(v.get("area", ""))}"'
@@ -3997,6 +4003,11 @@ def _soudan_body(v=None, errs=None):
                             f'{esc(p["name"])}（{esc("・".join(p["areas"]))}）</span>'
                             for p in ps))
     names = "、".join(p["name"] for p in ps)
+    # 相談の種類（2026-11-23）。診断から来たときは購入のまま。
+    topic_html = "".join(
+        f'<span class="opt"><input type="radio" name="topic" value="{k}"'
+        f'{chk("topic", k, default=(k == "buy"))}> {esc(t)}</span>'
+        for k, t in referral_mod.TOPICS.items())
     default_stage = "found" if has_addr else "search"
     stage_html = "".join(
         f'<span class="opt"><input type="radio" name="stage" value="{k}"'
@@ -4014,8 +4025,9 @@ def _soudan_body(v=None, errs=None):
     fee_more = "" if paid else ("受け取ることになった場合は、このページと窓口を"
                                 "出す場所に書きます。")
     return f"""
-<p>HOME INDEX は物件を売りません。仲介もしません。物件探しや購入の相談を希望される方に、
-{esc(area)}の物件を扱う<b>提携の不動産会社</b>をご案内しています。相談は無料です。</p>
+<p>HOME INDEX は物件を売りません。仲介もしません。物件探し・購入、住み替え、
+空き家や相続した家・土地の売却の相談を希望される方に、{esc(area)}の物件を扱う
+<b>提携の不動産会社</b>をご案内しています。相談は無料です。</p>
 
 <h2>提携の不動産会社</h2>
 {"".join(pcard(p) for p in ps)}
@@ -4033,8 +4045,8 @@ def _soudan_body(v=None, errs=None):
 <ol class="flow">
 <li>このフォームを送る</li>
 <li>提携先から、メールか電話で連絡が来る</li>
-<li>提携先と相談する。物件探しや内見に進むかは、ご自身で決めてください</li>
-<li>購入を頼む場合は、提携先と媒介契約を結ぶ</li>
+<li>提携先と相談する。物件探しや内見、売却に進むかは、ご自身で決めてください</li>
+<li>購入や売却を頼む場合は、提携先と媒介契約を結ぶ</li>
 </ol>
 
 <h2 id="form">申込み</h2>
@@ -4042,15 +4054,19 @@ def _soudan_body(v=None, errs=None):
 <form class="sform" method="post" action="/soudan/send">
 <input type="hidden" name="from" value="{esc(v.get("from", ""))}">
 <div class="hp" aria-hidden="true"><label>ウェブサイト<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+<label>相談の種類</label>
+{topic_html}
 {where}
 {warn_area}
 {choose}
+<div id="stageBox">
 <label>いまの状況</label>
 {stage_html}
+</div>
 <label>ほかの不動産会社とのやりとり</label>
 {other_html}
-<p class="stop" id="stopOther">ほかの会社で申込みや契約に進んでいる物件は、ご案内できません。
-進めている会社とのやりとりを、そのまま続けてください。</p>
+<p class="stop" id="stopOther">ほかの会社で申込みや契約（売却なら媒介契約）に進んでいる物件は、
+ご案内できません。進めている会社とのやりとりを、そのまま続けてください。</p>
 <label>時期</label>
 <select name="when">{when_html}</select>
 <label>お名前</label><input type="text" name="name" value="{esc(v.get("name", ""))}" autocomplete="name">
@@ -4059,7 +4075,7 @@ def _soudan_body(v=None, errs=None):
 <label>相談したいこと<span class="hint">任意</span></label>
 <textarea name="note" rows="4" placeholder="予算、広さ、通勤先、気になっている点など">{esc(v.get("note", ""))}</textarea>
 <div class="agree"><label><input type="checkbox" name="agree" id="agree">
- 上の項目（お名前・連絡先・物件または地域・状況・時期・相談したいこと）を、
+ 上の項目（相談の種類・お名前・連絡先・物件または地域・状況・時期・相談したいこと）を、
  <b>{esc(names)}</b>に提供することに同意します。診断の点数や入力した年収などは渡しません。
  <a href="/privacy">プライバシーポリシー</a></label></div>
 <button type="submit" id="send" disabled>提携の不動産会社に相談を申し込む</button>
@@ -4073,11 +4089,11 @@ def _soudan_page(body: str, done: bool = False):
         return _legal_page("お申込みを受け付けました",
                            "<style>" + _SOUDAN_CSS + "</style>" + body)
     return _legal_page(
-        f"物件探し・購入の相談（{area}）",
+        f"購入・住み替え・売却の相談（{area}）",
         "<style>" + _SOUDAN_CSS + "</style>" + body, path="/soudan",
-        desc=(f"{area}で物件探しや購入の相談を希望される方に、提携の不動産会社を"
-              "ご案内します。HOME INDEX は物件を売らず、仲介もしません。診断の点数は"
-              "提携と関係なく同じ計算です。"))
+        desc=(f"{area}で物件探し・購入、住み替え、空き家や相続した家・土地の売却の"
+              "相談を希望される方に、提携の不動産会社をご案内します。HOME INDEX は"
+              "物件を売らず、仲介もしません。診断の点数は提携と関係なく同じ計算です。"))
 
 
 @app.route("/soudan", methods=["GET", "POST"])

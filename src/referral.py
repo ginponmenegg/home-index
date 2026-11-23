@@ -57,11 +57,19 @@ _CITY_HINTS = {
 }
 
 # 申込みフォームの選択肢。値はここで決めたものしか受け付けない。
+# 相談の種類（2026-11-23）。購入のほかに、住み替え・空き家の売却・相続した
+# 家や土地も受ける（提携先が受けられると確認済み）。
+TOPICS = {"buy": "購入（物件探し・この物件の購入）",
+          "kaikae": "住み替え（今の家を売って、買い替える）",
+          "sell": "売却（空き家など）",
+          "inherit": "相続した家・土地をどうするか"}
+TOPIC_SHORT = {"buy": "購入", "kaikae": "住み替え", "sell": "売却",
+               "inherit": "相続した家・土地"}
 STAGES = {"search": "まだ物件は決まっていない（探したい）",
           "found": "気になる物件がある"}
 OTHERS = {"none": "どこにも相談していない",
-          "viewed": "ほかの会社で内見した（申込みはしていない）",
-          "applied": "ほかの会社で申込み・契約に進んでいる"}
+          "viewed": "ほかの会社にも相談した（申込み・契約はしていない）",
+          "applied": "ほかの会社で申込み・契約（売却なら媒介契約）に進んでいる"}
 WHENS = ("3か月以内", "半年以内", "1年以内", "まだ決めていない")
 KINDS = {"buy": "中古戸建", "mansion": "マンション", "land": "土地", "": "—"}
 FROMS = ("result", "lp", "page", "")
@@ -215,20 +223,27 @@ def validate(form) -> tuple[Optional[dict], List[str]]:
         errs.append("送信できませんでした。")
         return None, errs
     address, area_pref, area = g("address")[:120], g("pref"), g("area")[:80]
+    topic = g("topic") or "buy"
     stage, other, when = g("stage"), g("other"), g("when")
-    if stage not in STAGES:
+    if topic not in TOPICS:
+        errs.append("相談の種類を選んでください。")
+        topic = "buy"
+    if topic == "buy" and stage not in STAGES:
         errs.append("いまの状況を選んでください。")
+    if topic != "buy":
+        stage = ""          # 売却・相続には「探している／決まっている」は無い
     if other not in OTHERS:
         errs.append("ほかの不動産会社とのやりとりを選んでください。")
     elif other == "applied":
-        errs.append("ほかの会社で申込みや契約に進んでいる物件は、ご案内できません。")
+        errs.append("ほかの会社で申込みや契約（媒介契約）に進んでいる物件は、"
+                    "ご案内できません。")
     if when not in WHENS:
         errs.append("時期を選んでください。")
     pref = prefecture(address) if address else (area_pref if area_pref in PREFS else None)
     if address and not pref:
         errs.append("この物件は、提携先の対応地域の外です。")
     elif not address and not pref:
-        errs.append("探している都県を選んでください。")
+        errs.append("都県を選んでください。")
     ps = partners_for_pref(pref)
     if pref and not ps:
         errs.append("この地域を扱う提携先がありません。")
@@ -248,7 +263,7 @@ def validate(form) -> tuple[Optional[dict], List[str]]:
     if errs:
         return None, errs
     return {
-        "partner": chosen[0], "pref": pref, "address": address,
+        "partner": chosen[0], "pref": pref, "address": address, "topic": topic,
         "area": area, "kind": g("kind") if g("kind") in KINDS else "",
         "stage": stage, "other": other, "when": when, "name": name,
         "email": email, "tel": tel, "note": g("note")[:1000],
@@ -258,14 +273,20 @@ def validate(form) -> tuple[Optional[dict], List[str]]:
 
 def shared_rows(r: dict) -> List[tuple]:
     """提携先に渡す項目。画面の確認とメールで同じものを使う。"""
-    rows = [("相談の種類", KINDS.get(r["kind"], "—") if r["address"] else "物件探し"),
-            ("物件", r["address"]) if r["address"] else
-            ("探している地域", f'{r["pref"]} {r["area"]}'.strip()),
-            ("いまの状況", STAGES[r["stage"]]),
-            ("ほかの会社", OTHERS[r["other"]]),
-            ("時期", r["when"]), ("お名前", r["name"]),
-            ("メール", r["email"]), ("電話", r["tel"] or "—"),
-            ("相談したいこと", r["note"] or "—")]
+    topic = r.get("topic") or "buy"
+    kind = KINDS.get(r["kind"], "") if r["address"] and r["kind"] else ""
+    rows = [("相談の種類", TOPICS[topic] + (f"／{kind}" if kind and kind != "—" else ""))]
+    if r["address"]:
+        rows.append(("物件", r["address"]))
+    else:
+        label = "探している地域" if topic == "buy" else "家・土地のある地域"
+        rows.append((label, f'{r["pref"]} {r["area"]}'.strip()))
+    if topic == "buy":
+        rows.append(("いまの状況", STAGES[r["stage"]]))
+    rows += [("ほかの会社", OTHERS[r["other"]]),
+             ("時期", r["when"]), ("お名前", r["name"]),
+             ("メール", r["email"]), ("電話", r["tel"] or "—"),
+             ("相談したいこと", r["note"] or "—")]
     return rows
 
 
@@ -293,7 +314,9 @@ def mail_text(r: dict) -> str:
 def subject(r: dict) -> str:
     where = r["address"] or f'{r["pref"]}{r["area"]}'
     m = re.match(r"^(.*?[市区町村])", where)
-    return f"【HOME INDEX】相談のお申込み（{(m.group(1) if m else where)[:20]}）"
+    what = TOPIC_SHORT.get(r.get("topic") or "buy", "購入")
+    return (f"【HOME INDEX】{what}の相談のお申込み"
+            f"（{(m.group(1) if m else where)[:20]}）")
 
 
 # ---- 記録 -----------------------------------------------------------------
@@ -304,11 +327,12 @@ def store(r: dict) -> None:
         return
     try:
         db.run("INSERT INTO referrals (created_at, partner_key, pref, address, area,"
-               " kind, stage, other, when_, name, email, tel, note, came_from, status)"
-               " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+               " kind, stage, other, when_, name, email, tel, note, came_from, status,"
+               " topic)"
+               " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                (db.now(), r["partner"]["key"], r["pref"], r["address"], r["area"],
                 r["kind"], r["stage"], r["other"], r["when"], r["name"], r["email"],
-                r["tel"], r["note"], r["came_from"], "sent"))
+                r["tel"], r["note"], r["came_from"], "sent", r.get("topic") or "buy"))
     except Exception as e:
         print(f"[referral] 記録できませんでした: {e}")
     _purge_once_a_day()

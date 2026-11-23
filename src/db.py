@@ -251,6 +251,8 @@ ADDED_COLUMNS = [
     # 90日パス（2026-11-03）。PROにした決済（Checkoutセッション）のID。
     # Webhookと戻り画面の両方から来るので、同じ決済で二度延ばさないために持つ。
     ("users", "plan_pass_sessions", "TEXT"),
+    # 相談の種類（購入・住み替え・売却・相続）。2026-11-23
+    ("referrals", "topic", "TEXT"),
 ]
 
 

@@ -337,3 +337,47 @@ def test_the_relation_is_not_in_the_consent_box(on):
     agree = h[h.index('class="agree"'):h.index('id="send"')]
     assert "運営者が在籍する会社です" not in agree
     assert "運営者が在籍する会社です" in h
+
+
+# ---- 相談の種類（2026-11-23）------------------------------------------------
+
+def test_the_form_offers_four_kinds_of_consultation(on):
+    h = _client().get("/soudan").get_data(as_text=True)
+    for word in ("購入（物件探し・この物件の購入）", "住み替え（今の家を売って、買い替える）",
+                 "売却（空き家など）", "相続した家・土地をどうするか"):
+        assert word in h, word
+
+
+def test_a_sale_of_an_empty_house_goes_without_a_buying_stage(on):
+    """売却・相続には「探している／決まっている」が無い。聞かずに送る。"""
+    webapp, sent, conf = on
+    _client().post("/soudan/send", data=_form(
+        address="", topic="sell", stage="", pref="神奈川県", area="平塚市"))
+    to_partner = [m for m in sent if m["to"] == "partner@example.jp"]
+    assert len(to_partner) == 1
+    text = to_partner[0]["text"]
+    assert "売却（空き家など）" in text
+    assert "家・土地のある地域：神奈川県 平塚市" in text
+    assert "いまの状況" not in text
+    assert to_partner[0]["subject"].startswith("【HOME INDEX】売却の相談")
+
+
+def test_a_move_names_itself_in_the_subject(on):
+    webapp, sent, conf = on
+    _client().post("/soudan/send", data=_form(address="", topic="kaikae", stage="",
+                                              pref="東京都", area="世田谷区"))
+    assert sent[0]["subject"].startswith("【HOME INDEX】住み替えの相談")
+
+
+def test_an_unknown_kind_is_refused(on):
+    webapp, sent, conf = on
+    h = _client().post("/soudan/send", data=_form(topic="loan")).get_data(as_text=True)
+    assert "相談の種類を選んでください" in h
+    assert sent == []
+
+
+def test_a_sale_outside_the_area_is_not_sent(on):
+    webapp, sent, conf = on
+    _client().post("/soudan/send", data=_form(address="", topic="inherit", stage="",
+                                              pref="千葉県", area="船橋市"))
+    assert sent == []
