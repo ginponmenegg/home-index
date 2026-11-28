@@ -2242,18 +2242,41 @@ HH_RESULT_PLACEHOLDER
     重要事項説明と契約の前に、手元に置いておく1冊（PDF）を、この物件について
     作ります。仲介業者に聞くこと（回答を書き込む欄つき）、重要事項説明書で
     読む欄、諸費用・金利が上がった場合・住宅ローン控除まで入れた資金計画を
-    まとめたものです。<b>この物件の価格・面積・築年・借入条件は引き継がれます。</b><br>
-    <a href="/sample/finance.pdf">見本（PDF）を開く</a>　・
-    <a href="/sample/finance">資金計画の見本を見る</a>
+    まとめたものです。<b>この物件の価格・面積・築年・借入条件は引き継がれます。</b>
    </p>
+   <!-- 見本の中身を、押す前に見せる（2026-11-28）。画像は tools/make_pro_sample.py で
+        /sample/finance.pdf から作る。 -->
+   <style>
+    .pdfprev{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 0;text-decoration:none}
+    .pdfprev img{width:100%;height:auto;border:1px solid #e1e5eb;border-radius:6px;
+      box-shadow:0 2px 8px rgba(12,27,42,.08);background:#fff}
+    .trialmail{display:block;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;
+      padding:12px 14px;margin:0 0 12px;font-size:14px;line-height:1.85}
+    .trialmail .tmrow{display:flex;flex-direction:column;gap:8px;margin:8px 0 6px}
+    .trialmail input[type=email]{width:100%;box-sizing:border-box;font-size:16px;
+      padding:11px 12px;border:1px solid #cfd6de;border-radius:8px}
+    .trialmail button{width:100%;padding:12px 14px;font-size:15px}
+   </style>
+   <a class="pdfprev" href="/sample/finance.pdf" target="_blank" rel="noopener">
+    <img src="/static/pro_sample_p1.png" alt="契約前チェックの見本：仲介業者に聞くことの一覧" loading="lazy">
+    <img src="/static/pro_sample_p3.png" alt="契約前チェックの見本：資金の全体像と諸費用の内訳" loading="lazy">
+   </a>
+   <p class="muted" style="margin:6px 0 12px;font-size:13px">見本のPDF（実在しない物件）の1ページ目と3ページ目です。
+    <a href="/sample/finance.pdf">見本（PDF）を開く</a>　・
+    <a href="/sample/finance">資金計画の見本を見る</a></p>
    {% if trial_state == 'guest' %}
-   <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px;margin:0 0 12px;font-size:14px;line-height:1.85">
-    <b>会員登録（メールアドレスだけ）しておけば、契約前チェックを1物件ぶん無料で作れます。</b>
-    登録しただけでは、お試しは減りません。<b>本命が決まってから</b>、
-    その物件で使えます。会員登録は、この画面の下の「この結果を保存する」から
-    できます（保存も同時に済みます）。<br>
-    <a href="#save" style="display:inline-block;margin-top:8px;font-weight:700">この結果を保存して、会員登録する ↓</a>
-   </div>
+   <form method="post" action="/trial/mail" class="trialmail">
+    {% for k, val in finance_carry.items() %}
+    <input type="hidden" name="{{k}}" value="{{val}}">
+    {% endfor %}
+    <b>メールアドレスだけで、この物件の契約前チェックを無料で作れます</b>（1物件だけ）。
+    <span class="muted">届いたリンクを開くと、資金計画の画面が開き、PDFまで作れます。
+     会員登録もリンクを開いたときに済みます。</span>
+    <div class="tmrow"><input type="email" name="email" required autocomplete="email"
+      placeholder="メールアドレス"><button type="submit">リンクを受け取る</button></div>
+    <span class="muted" style="font-size:12px">本命がまだなら、使わずにおけます。下の「この結果を保存する」で
+     マイページに残しておけば、契約が近づいたときに戻ってきて作れます。</span>
+   </form>
    {% elif trial_state == 'unused' %}
    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px;margin:0 0 12px;font-size:14px;line-height:1.85">
     <b>この物件で、契約前チェックを無料で作れます</b>（1物件だけのお試し）。
@@ -3697,7 +3720,11 @@ _ACC_STORE = ("""<p>アカウントをご利用の場合に限り、利用者ご
 1回かぎりで無効になります。</p>
 <p>ログインせずに結果画面の「この結果を保存する」を使った場合は、メールのリンクが
 押されるまでのあいだ（最長24時間）、保存する診断結果とメールアドレスをお預かりします。
-リンクが押されたら保存し、期限を過ぎたものは削除します。</p>"""
+リンクが押されたら保存し、期限を過ぎたものは削除します。</p>
+<p>結果画面から、メールアドレスだけで契約前チェックを始めた場合も、リンクが押される
+までのあいだ（最長24時間）、物件の価格・面積・築年などの入力と診断の要点、メール
+アドレスをお預かりします。<b>年収・頭金・家族の入力はお預かりしません</b>
+（リンクを開いた画面で入れ直していただきます）。</p>"""
               if db.enabled() else "")
 
 _ACC_PURPOSE = ("""、(5) アカウントの認証と、保存された診断結果の保管・表示"""
@@ -9398,7 +9425,7 @@ def _safe_next(p):
     if not p.startswith("/") or p.startswith("//") or "\\" in p:
         return None
     path = p.split("?", 1)[0].split("#", 1)[0]
-    if path in _NEXT_OK or path.startswith(("/pro/", "/save/claim/")):
+    if path in _NEXT_OK or path.startswith(("/pro/", "/save/claim/", "/trial/claim/")):
         return path
     return None
 
@@ -9671,6 +9698,157 @@ SAVE_MAIL_SENT = """
  {% endif %}
 </div>
 """
+
+
+# ---- メールだけで、この物件の契約前チェックを作る（2026-11-28） -----------
+# 会員登録（別タブでログイン→戻ってもう一度押す）をしないと、お試しが
+# 始められなかった。30日で0件。結果の画面でメールアドレスを入れるだけにする。
+# 届いたリンクがログインとお試しの開始を兼ねる（メールを受け取れる人だけが
+# 使えるので、お試しは今までどおり1メールアドレスにつき1物件）。
+#
+# 預かるのは物件の側の値だけ。年収・頭金・家族の入力はサーバーに残さない
+# （プライバシーポリシーの約束）。リンクを開いたら、その欄だけ入れ直してもらう。
+_TRIAL_DROP = ({"income", "down", "reserve", "other_debt", "edit"}
+               | set(HH_DEFAULTS))
+
+TRIAL_MAIL_SENT = """
+<div class="card">
+ <h1>契約前チェックのリンクをお送りしました</h1>
+ <div class="note ok">{{ email }} 宛にリンクを送りました。リンクを開くと、
+  <b>この物件の資金計画の入力画面が開き、契約前チェック（PDF）まで作れます。</b>
+  リンクは{{ ttl }}時間・1回かぎり有効です。</div>
+ <p class="lead" style="margin-top:14px">届かない場合は、迷惑メールに入っていないか
+  ご確認ください。この画面を閉じても、リンクはそのまま使えます。</p>
+ <p class="sub">リンクを開くと会員登録も済み、この物件が無料のお試しの物件になります
+  （お試しは1物件だけ）。年収と頭金はお預かりしていないので、開いた画面で
+  入れ直してください。</p>
+ {% if devlink %}
+  <div class="note warn" style="margin-top:10px">
+   <b>開発用の表示です。</b>メール送信が設定されていないため、リンクを直接出しています。<br>
+   <a href="{{ devlink }}" style="word-break:break-all">{{ devlink }}</a></div>
+ {% endif %}
+</div>
+"""
+
+
+def _trial_mail(to, url, title, ttl_h):
+    esc = html.escape
+    subj = "【HOME INDEX】この物件の契約前チェックを作るリンク"
+    body_html = (
+        "<p>HOME INDEX で診断した物件の、契約前チェック（PDF）を作るためのリンクです。</p>"
+        f"<p><b>{esc(title)}</b></p>"
+        f'<p><a href="{esc(url)}">この物件の契約前チェックを作る</a></p>'
+        "<p>リンクを開くと会員登録が済み、この物件が無料のお試し（1物件）に"
+        "なります。年収と頭金はお預かりしていないので、開いた画面で入れ直して"
+        f"ください。</p><p>このリンクは{ttl_h}時間で使えなくなります。1回だけ有効です。"
+        "心当たりがない場合は破棄してください。</p><p>HOME INDEX</p>")
+    text = ("HOME INDEX で診断した物件の、契約前チェック（PDF）を作るためのリンクです。\n\n"
+            f"{title}\n\n{url}\n\n"
+            "リンクを開くと会員登録が済み、この物件が無料のお試し（1物件）になります。\n"
+            "年収と頭金はお預かりしていないので、開いた画面で入れ直してください。\n"
+            f"このリンクは{ttl_h}時間で使えなくなります。1回だけ有効です。\n"
+            "心当たりがない場合は破棄してください。")
+    return mailer.send(to, subj, body_html, text)
+
+
+@app.route("/trial/mail", methods=["POST"])
+def trial_mail():
+    """結果の画面から、メールアドレスだけで契約前チェックを始める。"""
+    if not accounts_on():
+        return _account_page("準備中", _OFF_BODY)
+    f = request.form
+    snap = _unsign_snapshot(f.get("dx") or "") or {}
+    if not snap.get("tk"):
+        return redirect("/")
+    if current_user():
+        # 別のタブでログイン済みなら、いつもの入口と同じに開く。
+        return pro_finance_start()
+    carry = {k: v for k, v in f.items()
+             if k not in _TRIAL_DROP and k != "email" and v}
+    email = accounts.normalize_email(f.get("email"))
+
+    def again(err):
+        return _account_page("契約前チェック", (
+            '<div class="card"><h1>送れませんでした</h1>'
+            f'<div class="note warn">{html.escape(err)}</div>'
+            '<p style="margin-top:14px">ブラウザの「戻る」で結果の画面に戻り、'
+            'もう一度お試しください。</p></div>'), chip="PRO")
+
+    if not accounts.valid_email(email):
+        return again("メールアドレスの形式をご確認ください。")
+    ttl = accounts.SAVE_LINK_TTL_MIN
+    try:
+        token = accounts.issue_login_token(email, ttl_min=ttl)
+        pid = saved.add_pending(email, sign_snapshot({"kind": "trial_check",
+                                                     "carry": carry}), ttl)
+    except accounts.TooManyRequests as e:
+        return again("短い時間に何度も送信されています。しばらく置いてからお試しください。"
+                     if str(e) == "email" else
+                     "本日の送信上限に達しました。お手数ですが翌日にお試しください。")
+    except Exception:
+        return again("ただいま混み合っています。時間をおいてお試しください。")
+    link = (urllib.parse.urljoin(request.url_root, f"login/{token}")
+            + "?next=" + urllib.parse.quote(f"/trial/claim/{pid}"))
+    ok, msg = _trial_mail(email, link, snap.get("title") or "診断した物件", ttl // 60)
+    devlink = None if (ok or mailer.enabled()) else link
+    if not ok and mailer.enabled():
+        metrics.bump("mail_failed")
+        return again(msg)
+    if ok:
+        _did("trial_mail_sent")
+    return _account_page("契約前チェック", render_template_string(
+        TRIAL_MAIL_SENT, email=email, ttl=ttl // 60, devlink=devlink), chip="PRO")
+
+
+@app.route("/trial/claim/<pid>")
+def trial_claim(pid):
+    """メールのリンクの行き先。ログインは済んでいる（/login/<token> を通る）。"""
+    r = _require_login()
+    if r is not None:
+        return r
+    user = current_user()
+    data = None
+    try:
+        data = _unsign_snapshot(saved.take_pending(pid, user["email"]) or "")
+    except Exception:
+        data = None
+    if not data or data.get("kind") != "trial_check":
+        return _account_page("契約前チェック", (
+            '<div class="card"><h1>開けませんでした</h1>'
+            '<div class="note warn">期限（24時間）が切れているか、すでに使ったか、'
+            '別のメールアドレスで送ったリンクです。お手数ですが、もう一度診断して'
+            '送り直してください。</div>'
+            '<p style="margin-top:14px"><a class="btn" href="/buy">診断する</a></p>'
+            '</div>'), chip="PRO"), 400
+    carry = data.get("carry") or {}
+    snap = _unsign_snapshot(carry.get("dx") or "") or {}
+    tk = snap.get("tk")
+    ok = accounts.is_pro(user) or (tk and tk == user.get("trial_key"))
+    if not ok and tk and accounts.trial_unused(user) and accounts.use_trial(user["id"], tk):
+        _bump("trial_start")
+        ok = True
+    _did("trial_mail_open")
+    if not ok:
+        return _account_page("契約前チェック", (
+            '<div class="card"><h1>お試しは、すでに別の物件で使いました</h1>'
+            '<div class="note warn">無料のお試しは1物件だけです。この物件で契約前'
+            'チェックを作るには、PROのお申し込みが必要です。</div>'
+            '<p style="margin-top:14px"><a class="btn" href="/plan">プランを見る</a></p>'
+            '</div>'), chip="PRO")
+    v = _pro_defaults()
+    for k in v:
+        if k == "newbuild":
+            continue
+        if carry.get(k):
+            v[k] = carry.get(k)
+    v["newbuild"] = (carry.get("newbuild") == "1")
+    _hh_values(v)
+    return render_template_string(
+        PRO_FINANCE_FORM, v=v, **_finance_tmpl_kw(),
+        banner=("<b>メールのリンクから開きました。この物件が無料のお試しの物件です。</b>"
+                "価格・面積・築年は入っています。<b>年収と頭金はお預かりしていない"
+                "ので、ここで入れてください。</b>計算すると、契約前チェック（PDF）を"
+                "作れます。"))
 
 
 @app.route("/save/mail", methods=["POST"])
